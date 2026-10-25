@@ -89,6 +89,8 @@ const CARDS = {
   mine:  { name: "Landmine",    kind: "curse", text: "On this hole, a net bogey busts you." },
 };
 /* Optional bonuses and penalties, logged per player per hole. They only ever move game points. */
+const EV_ART = { sandy: "e_sandy", updown: "e_updown", chipin: "e_chipin", barkie: "e_barkie", lost: "e_lost", water: "e_water", fourputt: "e_four" };
+const EV_FX = { sandy: "hole points double", updown: "+2 to the pot", chipin: "+4 to the pot", barkie: "+2 to the pot", lost: "−3 from the pot", water: "−2 from the pot", fourputt: "pot cut in half" };
 const EVENTS = {
   sandy:    { kind: "bonus",   name: "Sandy",       tag: "Sandy x2",        hint: "Up and down from a bunker. This hole's points count double." },
   updown:   { kind: "bonus",   name: "Up and down", tag: "Up and down +2",  hint: "Chip or pitch, then one putt." },
@@ -102,8 +104,15 @@ const BLESSINGS = ["dd", "safe", "vault", "hot", "life"];
 const CURSES = ["tax", "heavy", "leaky", "shout", "mine"];
 
 /* 8-bit sprites. Each row is a line of pixels; letters map to the palette below. */
-const PAL = { o: "#14150F", w: "#EDE8DD", g: "#D9B07A", r: "#B4472E", l: "#8FAE8B", d: "#3E6B4B", m: "#CFC9B8", n: "#7A5232", c: "#4A4D45", s: "#E6D3AE" };
+const PAL = { o: "#14150F", w: "#EDE8DD", g: "#D9B07A", r: "#B4472E", l: "#8FAE8B", d: "#3E6B4B", m: "#CFC9B8", n: "#7A5232", c: "#4A4D45", s: "#E6D3AE", b: "#4F7FA3", t: "#9CC3DB" };
 const SPRITES = {
+  e_sandy: ["...oooo...", "..owwwwo..", "..owmwwo..", "...oooo...", "..oossoo..", ".osssssso.", "ossmssssso", "osssssssso", "oooooooooo", ".........."],
+  e_updown: [".w........", ".wrr......", ".wrrr.....", ".wrr......", ".w........", ".w...oo...", ".w..owwo..", "lllllllll.", "dddoooddd.", "dddddddddd"],
+  e_chipin: ["g...gg...g", ".g..gg..g.", "..g.oo.g..", "...owwwo..", "...owmwo..", "....oo....", "llllllllll", "ddddoooddd", "dddddddddd", "dddddddddd"],
+  e_barkie: ["..dddd....", ".dllddd...", "dddlldddd.", ".dddddddd.", "..dddddd..", "....nn....", "....nn.oo.", "....nnowwo", "....nn.oo.", "lllnnnllll"],
+  e_lost: ["...oooo...", "..owwwwo..", ".owrrrwwo.", ".owwwrwwo.", ".owwrrwwo.", ".owwwwwwo.", ".owwrwwwo.", "..owwwwo..", "...oooo...", ".........."],
+  e_water: ["..t..t....", ".t..oo..t.", "...owwo...", "....oo....", "..........", "bbtbbbtbbb", "bbbbbbbbbb", "tbbbtbbbtb", "bbbbbbbbbb", "bbbbbbbbbb"],
+  e_four: ["....rr....", "...rrr....", "..rrrr....", ".rr.rr....", "rr..rr....", "rrrrrrrrr.", "....rr....", "....rr....", "....rr....", ".........."],
   flag: [".w......", ".wrr....", ".wrrrr..", ".wrr....", ".w......", ".w......", ".w......", ".w......", "dlllllld", "dddddddd"],
   crown: ["g.g.g.g", "ggggggg", "gwgrgwg", "ooooooo"],
   ball: ["..ooo..", ".owwwo.", "owmwwwo", "owwwmwo", "owmwwwo", ".owwwo.", "..ooo.."],
@@ -229,6 +238,16 @@ const SFX = (() => {
     mult: mk(a => run(a, [523, 659, 784, 1047, 1319], 0.045, { vol: 0.06 })),
     ntp: mk(a => { noise(a, 0, 0.1, { vol: 0.08, from: 600, to: 3000 }); [392, 523, 659, 784, 1047].forEach((f, i) => tone(a, f, 0.08 + i * 0.07, 0.14, { vol: 0.06 })); tone(a, 523, 0.5, 0.4, { type: "triangle", vol: 0.08 }); tone(a, 784, 0.5, 0.4, { type: "triangle", vol: 0.06 }); }),
     birdie: mk(a => { run(a, [659, 784, 988, 1319], 0.06, { type: "triangle", vol: 0.1 }); tone(a, 1319, 0.26, 0.3, { vol: 0.05 }); }),
+    event: k => mk(a => {
+      const ding = (at = 0, f = 1319) => { tone(a, f * 0.75, at, 0.07); tone(a, f, at + 0.07, 0.3, { vol: 0.055 }); };
+      if (k === "sandy") { noise(a, 0, 0.16, { vol: 0.1, from: 900, to: 400 }); ding(0.14, 1175); }
+      else if (k === "updown") { [659, 880, 1175].forEach((f, i) => tone(a, f, i * 0.07, 0.12, { type: "triangle", vol: 0.09 })); ding(0.22, 1568); }
+      else if (k === "chipin") { run(a, [523, 659, 784, 1047, 1319], 0.055, { vol: 0.06 }); noise(a, 0.3, 0.2, { vol: 0.05, from: 4000, to: 1500 }); ding(0.3, 1568); }
+      else if (k === "barkie") { tone(a, 160, 0, 0.07, { type: "square", vol: 0.1, det: 0 }); tone(a, 140, 0.1, 0.07, { type: "square", vol: 0.1, det: 0 }); ding(0.24, 988); }
+      else if (k === "lost") { tone(a, 1100, 0, 0.55, { type: "sine", vol: 0.1, to: 180, det: 0 }); tone(a, 140, 0.5, 0.2, { type: "sawtooth", vol: 0.05 }); }
+      else if (k === "water") { noise(a, 0, 0.25, { vol: 0.12, from: 2500, to: 500 }); tone(a, 300, 0.2, 0.18, { type: "sine", vol: 0.1, to: 700, det: 0 }); tone(a, 250, 0.38, 0.14, { type: "sine", vol: 0.08, to: 600, det: 0 }); }
+      else if (k === "fourputt") { [0, 0.12, 0.24, 0.36].forEach(s => tone(a, 110, s, 0.08, { type: "square", vol: 0.1, det: 0, to: 70 })); [330, 262, 196].forEach((f, i) => tone(a, f, 0.55 + i * 0.12, 0.14, { type: "sawtooth", vol: 0.05 })); }
+    })(),
     flip: mk(a => { noise(a, 0, 0.07, { vol: 0.1, from: 5000, to: 1500 }); tone(a, 280, 0, 0.09, { to: 900, vol: 0.04 }); }),
     bless: mk(a => { run(a, [523, 659, 784, 1047], 0.07, { type: "triangle", vol: 0.1 }); tone(a, 1047, 0.3, 0.3, { type: "triangle", vol: 0.04 }); }),
     curse: mk(a => { run(a, [392, 370, 349, 311], 0.1, { type: "sawtooth", vol: 0.05 }); tone(a, 98, 0.1, 0.6, { vol: 0.05, to: 60 }); }),
@@ -829,7 +848,14 @@ const CSS = `
 @keyframes burst{0%{transform:translate(0,0) scale(1.2);opacity:1}100%{transform:translate(var(--bx),var(--by)) scale(.3);opacity:0}}
 .fxo{position:fixed;inset:0;max-width:430px;margin:0 auto;z-index:60;pointer-events:none;display:grid;place-items:center;}
 .fxflash{position:absolute;inset:0;animation:fxfl .5s steps(5) forwards;}
-.fxo.bust .fxflash{background:rgba(184,74,50,.4);}
+.fxo.bust .fxflash,.fxo.penalty .fxflash{background:rgba(184,74,50,.4);}
+.fxo.bonus .fxflash{background:rgba(255,224,138,.22);}
+.fxo.penalty .fxbox{animation:shake .45s steps(6) 1;}
+.fxo.penalty .fxt{color:#E26A3B;}
+.fxbadge{margin:0 auto 10px !important;animation:stampin .6s steps(6) both;}
+.fxo.penalty .fxbadge{animation:stampdrop .6s steps(6) both;}
+@keyframes stampin{0%{transform:scale(3) rotate(-30deg);opacity:0}55%{transform:scale(.88) rotate(5deg);opacity:1}100%{transform:scale(1) rotate(0)}}
+@keyframes stampdrop{0%{transform:translateY(-120px) rotate(20deg);opacity:0}60%{transform:translateY(8px) rotate(-4deg);opacity:1}100%{transform:none}}
 .fxo.birdie .fxflash,.fxo.bank .fxflash{background:rgba(255,224,138,.22);}
 @keyframes fxfl{from{opacity:1}to{opacity:0}}
 .fxo.bust .fxbox{animation:shake .45s steps(6) 1;}
@@ -854,6 +880,20 @@ const CSS = `
 `;
 
 const initials = p => ((p.first || p.name || "?")[0] + (p.last ? p.last[0] : "")).toUpperCase();
+// Bonuses are smooth gold octagon coins. Penalties are red hazard diamonds. Cards stay tall and rectangular.
+function EventBadge({ k, px = 2, className }) {
+  const pen = EVENTS[k].kind === "penalty"; const box = px * 15;
+  const clip = pen ? "polygon(50% 0,100% 50%,50% 100%,0 50%)" : "polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)";
+  const w = pen ? box * 1.35 : box;
+  return (
+    <div className={className} aria-hidden="true" style={{ width: w, height: w, flex: "none", display: "grid", placeItems: "center", background: "#14150F", clipPath: clip, margin: pen ? `${-(w - box) / 2}px ${-(w - box) / 2}px` : 0 }}>
+      <div style={{ width: w - 6, height: w - 6, display: "grid", placeItems: "center", clipPath: clip,
+        background: pen ? "repeating-linear-gradient(45deg,#B84A32 0 4px,#8F3724 4px 8px)" : "radial-gradient(circle at 35% 30%,#F3DA9C,#D9B07A 60%,#B88A52)" }}>
+        <Sprite name={EV_ART[k]} size={px} />
+      </div>
+    </div>
+  );
+}
 function Avatar({ p, size = 38, ring }) {
   return (
     <div style={{ width: size, height: size, background: p.color, color: "#fff", display: "grid", placeItems: "center", fontWeight: 700,
@@ -937,6 +977,18 @@ function TipSheet({ k, onClose }) {
   );
 }
 
+Object.assign(TIPS, {
+  sandy: ["Sandy", "Up and down from a bunker. This hole's points count double. Needs net par or better."],
+  updown: ["Up and down", "Missed the green, chipped or pitched on, then one putt. +2 to your pot. Needs net par or better."],
+  chipin: ["Chip-in", "Holed it from off the green. +4 to your pot, on any hole except a bust."],
+  barkie: ["Barkie", "Hit a tree and still made par. +2 to your pot. Needs net par or better."],
+  lost: ["Lost ball", "Lost it off the tee. Takes 3 points out of your pot (it can't go below zero)."],
+  water: ["Wet one", "Found the water. Takes 2 points out of your pot (it can't go below zero)."],
+  fourputt: ["Four putt", "Four putts or worse. Your pot is cut in half, rounded down."],
+  bonusfx: ["Bonus points", "Extra points from bonuses logged this hole: sandy, up and down, chip-in, barkie or nearest the pin."],
+  penfx: ["Penalty points", "Points taken out of the pot by a penalty logged this hole: lost ball, wet one or four putt."],
+});
+
 function PickRow({ label, hint, ids, people, value, onPick, extra, tip }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "8px 0" }}>
@@ -1004,11 +1056,12 @@ const BURST_C = ["#B84A32", "#E26A3B", "#3A302B", "#7A7A72"];
 
 function Celebrate({ fx }) {
   if (!fx) return null;
-  const gold = fx.kind !== "bust";
+  const gold = fx.kind !== "bust" && fx.kind !== "penalty";
   return (
     <div className={`fxo ${fx.kind}`} key={fx.key} aria-live="polite" role="status">
       <div className="fxflash" />
       <div className="fxbox">
+        {fx.badge && <EventBadge k={fx.badge} px={6} className="fxbadge" />}
         <div className="fxt">{fx.text}</div>
         <div className="fxs">{fx.sub}</div>
         <Burst colors={gold ? (fx.kind === "bank" ? ["#FFE08A", "#E0C799", "#A9BFA3", "#FFF3C9"] : BURST_B) : BURST_C} n={fx.kind === "birdie" ? 24 : 18} reach={fx.kind === "birdie" ? 120 : 95} />
@@ -1102,6 +1155,7 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
   const [open, setOpen] = useState(null);
   const [zoom, setZoom] = useState(null);
   const [hintK, setHintK] = useState(null);
+  const showTip = useContext(TipCtx);
   const ids = round.playerIds;
   const done = holeDone(round, h);
   const meta = GAMES.find(g => g.id === gid);
@@ -1169,8 +1223,8 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
                 )}
                 {eff && (eff.bonus > 0 || eff.penalty > 0) && (
                   <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                    {eff.bonus > 0 && <span className="pill beat" style={{ background: "var(--dk)", color: "var(--lime)", borderColor: "var(--dk)", fontSize: 13 }}><Sprite name="star" size={2} />Bonus +{eff.bonus}</span>}
-                    {eff.penalty > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 13 }}>Penalty -{eff.penalty}</span>}
+                    {eff.bonus > 0 && <span className="pill beat" style={{ background: "var(--dk)", color: "var(--lime)", borderColor: "var(--dk)", fontSize: 13 }}><Sprite name="star" size={2} /><Tip k="bonusfx">Bonus +{eff.bonus}</Tip></span>}
+                    {eff.penalty > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 13 }}><Tip k="penfx">Penalty -{eff.penalty}</Tip></span>}
                   </div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
@@ -1189,7 +1243,7 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
                   <div style={{ marginTop: 6 }}>
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
                       {active.map(k => (
-                        <span key={k} className="pill" style={{ background: EVENTS[k].kind === "bonus" ? "var(--lime)" : "var(--red)", color: EVENTS[k].kind === "bonus" ? "var(--dk)" : "#fff", fontSize: 11 }}>{EVENTS[k].name}</span>
+                        <span key={k} className="pill" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: EVENTS[k].kind === "bonus" ? "var(--lime)" : "var(--red)", color: EVENTS[k].kind === "bonus" ? "var(--dk)" : "#fff", fontSize: 11 }}><EventBadge k={k} px={1} /><Tip k={k}>{EVENTS[k].name}</Tip></span>
                       ))}
                       <button className="chip" aria-expanded={open === id} onClick={() => setOpen(open === id ? null : id)} style={{ padding: "1px 6px", fontSize: 12, marginLeft: active.length ? 0 : "auto" }}>
                         {open === id ? "Done" : "+ Bonus or penalty"}
@@ -1201,10 +1255,13 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
                           {avail.map(k => {
                             const on = !!evs[k]; const pen = EVENTS[k].kind === "penalty"; const dud = !pen && k !== "chipin" && round.scores[id][h] != null && netOf(round, id, h) - PAR[h] >= 1;
                             return (
-                              <button key={k} className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => { api.setEvent(id, h, k); setHintK(k); }}
-                                title={dud ? "Needs net par or better" : undefined} style={{ padding: "1px 6px", fontSize: 12, opacity: dud ? 0.4 : 1, textDecoration: dud && on ? "line-through" : "none", ...(on && pen ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : {}) }}>
-                                {EVENTS[k].tag}
-                              </button>
+                              <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                                <button className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => { api.setEvent(id, h, k); setHintK(k); if (!on) { SFX.event(k); if (!dud) api.celebrate(pen ? "penalty" : "bonus", EVENTS[k].name.toUpperCase() + (pen ? "" : "!"), `${people[id].name}: ${EV_FX[k]}`, k); } }}
+                                  title={dud ? "Needs net par or better" : undefined} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 6px 1px 3px", fontSize: 12, opacity: dud ? 0.4 : 1, textDecoration: dud && on ? "line-through" : "none", ...(on && pen ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : {}) }}>
+                                  <EventBadge k={k} px={1} />{EVENTS[k].tag}
+                                </button>
+                                <button type="button" aria-label={`What is ${EVENTS[k].name}?`} onClick={() => showTip(k)} style={{ width: 20, height: 20, display: "grid", placeItems: "center", fontWeight: 800, fontSize: 11, border: "2px solid var(--night)", background: "var(--card)", color: "var(--ink)" }}>?</button>
+                              </span>
                             );
                           })}
                         </div>
@@ -2525,7 +2582,7 @@ export default function App() {
   const [history, setHistory] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.history) ? s.history : []; });
   const [fx, setFx] = useState(null);
   const [tipK, setTipK] = useState(null);
-  const celebrate = (kind, text, sub) => { const key = Date.now() + Math.random(); setFx({ key, kind, text, sub }); setTimeout(() => setFx(f => (f && f.key === key ? null : f)), 1500); };
+  const celebrate = (kind, text, sub, badge) => { const key = Date.now() + Math.random(); setFx({ key, kind, text, sub, badge }); setTimeout(() => setFx(f => (f && f.key === key ? null : f)), 1500); };
   const [del, setDel] = useState(null);
   const [rulesFrom, setRulesFrom] = useState("tabs");
   const [saved, setSaved] = useState(loadSaved);
