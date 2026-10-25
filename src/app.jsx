@@ -21,7 +21,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.36";
+const APP_VERSION = "0.37";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -1513,7 +1513,7 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}><Tiles size={20} hang toy /><button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 }}>
-          <p style={{ opacity: 0.8 }}>Handicap index {people.me.hi.toFixed(1)}</p>
+          <p style={{ opacity: 0.8 }}>HCP {people.me.hi.toFixed(1)}</p>
           <div style={{ display: "flex", gap: 5, flex: "none" }}>
             <SoundChip />
             <button className="chip" onClick={() => setDark(!dark)} style={{ padding: "1px 6px", fontSize: 11 }}>{dark ? "Light mode" : "Dark mode"}</button>
@@ -2070,7 +2070,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
               <Avatar p={people[id]} size={26} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700 }}>{people[id].name}</div>
-                <div className="cap">Index {people[id].hi.toFixed(1)}{people[id].guest ? " · guest" : ""}</div>
+                <div className="cap">HCP {people[id].hi.toFixed(1)}{people[id].guest ? " · guest" : ""}</div>
               </div>
               {effMode === "2v2" && (
                 <button className="pill" aria-label={`${people[id].name} team ${teamOf(id) + 1}, tap to switch`} onClick={() => setTeam(id, 1 - teamOf(id))} style={{ background: teamOf(id) ? "var(--mint)" : "var(--flag)", color: "var(--dk)" }}>Team {teamOf(id) + 1}</button>
@@ -2100,7 +2100,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
               {pickList.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                   <Avatar p={people[id]} size={28} />
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">Index {people[id].hi.toFixed(1)}{people[id].guest ? " · guest" : ""}</div></div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {people[id].hi.toFixed(1)}{people[id].guest ? " · guest" : ""}</div></div>
                   <button className="chip" disabled={sel.includes(id) || sel.length >= MAXP} onClick={() => addPlayer(id)}>{sel.includes(id) ? "Added" : "Add"}</button>
                 </div>
               ))}
@@ -2128,7 +2128,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
               {sel.map(id => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
                   <Avatar p={people[id]} size={24} />
-                  <div style={{ flex: 1, fontWeight: 600 }}>{people[id].name} <span className="cap">index {people[id].hi.toFixed(1)}</span></div>
+                  <div style={{ flex: 1, fontWeight: 600 }}>{people[id].name} <span className="cap">HCP {people[id].hi.toFixed(1)}</span></div>
                   <div style={{ fontWeight: 800 }}>{courseHcp(people[id].hi, cinfo)} <span className="cap" style={{ fontWeight: 400 }}>strokes</span></div>
                 </div>
               ))}
@@ -2549,7 +2549,7 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
                 <Avatar p={people[r.id]} size={28} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[r.id].name}</div>
-                  <div className="cap" style={{ fontSize: 10 }}>idx {people[r.id].hi.toFixed(1)}</div>
+                  <div className="cap" style={{ fontSize: 10 }}>HCP {people[r.id].hi.toFixed(1)}</div>
                 </div>
               </div>
               {METRICS.map(x => {
@@ -2573,7 +2573,7 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
               {sample.map(id => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
                   <Avatar p={people[id]} size={30} />
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">Index {people[id].hi.toFixed(1)}</div></div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {people[id].hi.toFixed(1)}</div></div>
                   <button onClick={() => setFriendIds(f => [...f, id])} className="chip">Add</button>
                 </div>
               ))}
