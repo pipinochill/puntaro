@@ -1261,6 +1261,7 @@ function validateCourse(f) {
     if (!Number.isInteger(s) || s < 55 || s > 155) return `${t.name}: slope must be a whole number from 55 to 155.`;
     if (!(r >= 50 && r <= 90)) return `${t.name}: course rating should be between 50 and 90, like 71.4.`;
   }
+  if (f.holes.some(h => !(h.par >= 3 && h.par <= 6))) return "Pick the par for every hole (3, 4, 5 or 6).";
   const sis = f.holes.map(h => Number(h.si));
   if (sis.some(s => !Number.isInteger(s) || s < 1 || s > 18)) return "Every hole needs a stroke index from 1 to 18.";
   if (new Set(sis).size !== 18) return "Stroke indexes must be 1 to 18 with no repeats.";
@@ -1280,10 +1281,10 @@ function ScorecardForm({ draft, onCancel, onSave }) {
   const [f, setF] = useState(() => ({
     name: draft.name || "",
     tees: draft.tees && draft.tees.length ? draft.tees.map(t => ({ name: t.name, slope: String(t.slope ?? ""), rating: String(t.rating ?? "") })) : [{ name: "White", slope: "", rating: "" }],
-    holes: draft.holes ? draft.holes.map(h => ({ par: h.par, si: h.si >= 1 && h.si <= 18 ? String(h.si) : "" })) : range18.map(i => ({ par: DEF_PAR[i], si: String(DEF_SI[i]) })),
+    holes: draft.holes ? draft.holes.map(h => ({ par: h.par, si: h.si >= 1 && h.si <= 18 ? String(h.si) : "" })) : range18.map(() => ({ par: null, si: "" })),
   }));
   const err = validateCourse(f);
-  const par = f.holes.reduce((a, h) => a + h.par, 0);
+  const par = f.holes.reduce((a, h) => a + (h.par || 0), 0);
   const setTee = (i, k, v) => setF(x => ({ ...x, tees: x.tees.map((t, j) => (j === i ? { ...t, [k]: v } : t)) }));
   const setHole = (i, k, v) => setF(x => ({ ...x, holes: x.holes.map((h, j) => (j === i ? { ...h, [k]: v } : h)) }));
   return (
@@ -1294,7 +1295,7 @@ function ScorecardForm({ draft, onCancel, onSave }) {
       </div>
       <div style={{ padding: "10px 12px 96px", display: "grid", gap: 10 }}>
         <div className="card" style={{ padding: 10, display: "grid", gap: 6 }}>
-          <div className="cap">{draft.source === "osm" ? (draft.holes ? "Course and holes from OpenStreetMap. Slope and rating aren't on the map, so add them from the scorecard." : "Found on OpenStreetMap, but no hole details are mapped. Add slope, rating, par and stroke index from the scorecard.") : "Type these in from the scorecard."}</div>
+          <div className="cap">{draft.source === "osm" ? (draft.holes ? "Pars and stroke indexes below are from OpenStreetMap volunteers and can be wrong. Check every hole against the scorecard. Slope and rating aren't on the map, so add them yourself." : "Found on OpenStreetMap, but no hole details are mapped. Add slope, rating, par and stroke index for every hole from the scorecard. Nothing is guessed for you.") : "Type these in from the scorecard."}</div>
           <a href={GA_RATINGS_URL} target="_blank" rel="noreferrer" style={{ color: "var(--fair)", fontWeight: 600 }}>Look up official ratings on the Golf Australia site ↗</a>
         </div>
         <div>
@@ -1316,7 +1317,7 @@ function ScorecardForm({ draft, onCancel, onSave }) {
           {f.tees.length < 4 && <button className="chip" style={{ marginTop: 6 }} onClick={() => setF(x => ({ ...x, tees: [...x.tees, { name: "", slope: "", rating: "" }] }))}>+ Add tee</button>}
         </div>
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><div className="cap">Holes: par and stroke index (SI)</div><div className="cap" style={{ fontWeight: 700 }}>Par {par}</div></div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><div className="cap">Holes: par and stroke index (SI)</div><div className="cap" style={{ fontWeight: 700 }}>{f.holes.every(h => h.par) ? `Par ${par}` : `${f.holes.filter(h => h.par).length} of 18 pars set`}</div></div>
           <div className="card" style={{ padding: "4px 8px", marginTop: 3 }}>
             {f.holes.map((h, i) => (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "26px 1fr 64px", gap: 8, alignItems: "center", padding: "4px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
