@@ -69,9 +69,9 @@ const GAMES = [
   { id: "punt", name: "Puntaro", blurb: "Bank it or bust it. Net scores, so every handicap has a shot.", hero: true },
 ];
 const RECENT = [
-  { course: "Cedar Ridge", when: "Sat", gross: 88, net: 74, note: "Won the back 9" },
-  { course: "Pebble Hollow", when: "Last Sun", gross: 84, net: 71, note: "Won Wolf" },
-  { course: "Sunrise Links", when: "2 weeks ago", gross: 91, net: 77, note: "Rabbit holder at 18" },
+  { course: "Cedar Ridge", when: "Sat", gross: 88, net: 74, note: "Banked 31 on the back 9" },
+  { course: "Pebble Hollow", when: "Last Sun", gross: 84, net: 71, note: "Busted a 14 point pot on 15" },
+  { course: "Sunrise Links", when: "2 weeks ago", gross: 91, net: 77, note: "Streak hit x3 on the 6th" },
 ];
 const STAKES = [0, 5, 10, 20, 50];
 const SPLITS = [["win", "Winner takes all"], ["603010", "60/30/10"], ["spoon", "Wooden spoon pays"]];
@@ -122,6 +122,7 @@ const SPRITES = {
   c_shout: [".oooooooooo.", "ommmmmmmmmmo", "ommrmmmwwmmo", "ommrmmwwwwmo", "ommrmmwwwwmo", "ommmmmmwwmmo", "ommrmmmmmmmo", "ommmmmmmmmmo", ".ooommmmooo.", "....ommo....", ".....oo.....", "............"],
   c_ball: ["....oooo....", "...owwwwo...", "..owwwwwwo..", ".owwmwwmwwo.", ".owwwwwwwwo.", ".owmwwwwmwo.", ".owwwmwwwwo.", "..owwwwwwo..", "...owwwwo...", "....onno....", "....onno....", ".....oo....."],
   c_mine: [".....ooo....", "....orrro...", "....orro....", "...oomooo...", "..occcccco..", ".ocmccccmco.", "omcccrrcccmo", "omcmcrrcccmo", ".occcccccco.", "..occcccco..", "...occcco...", "....oooo...."],
+  logo: [".oooooooooooooooo.", "oggggggggggggggggo", "ogrrrsssssssssssgo", "ogrsrsssssssssssgo", "ogrrrsssssssssssgo", "ogrsssssssssssssgo", "ogrsssssssssssssgo", "ogsssssoooosssssgo", "ogssssowwwwossssgo", "ogsssowwmwwwosssgo", "ogsssowwwwmwosssgo", "ogsssowmwwwwosssgo", "ogsssowwwwwwosssgo", "ogssssowwwwossssgo", "ogsssssoooosssssgo", "ogsssssnnnnsssssgo", "ogssssssnnssssssgo", "ogssssssnnsssssrgo", "ogsssslllllssssrgo", "ogsssdddddddsrrrgo", "ogsssssssssssrsrgo", "ogsssssssssssrrrgo", "oggggggggggggggggo", ".oooooooooooooooo."],
   rabbit: ["..ww..ww..", "..ww..ww..", "..ww..ww..", "..wwwwww..", ".wwwwwwww.", ".wowwwwow.", ".wwwwrwww.", "..wwwwww..", ".wwwwwwww.", ".ww....ww."],
 };
 function Sprite({ name, size = 4, className, style }) {
@@ -132,6 +133,145 @@ function Sprite({ name, size = 4, className, style }) {
     </svg>
   );
 }
+
+/* ───────────── SOUND (8-bit synth, no audio files) ───────────── */
+const SFX = (() => {
+  let ctx = null; let on = true; let last = 0;
+  try { on = localStorage.getItem("puntaro.sound") !== "off"; } catch (e) { /* default on */ }
+  const ac = () => {
+    if (!on) return null;
+    try {
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") ctx.resume();
+      return ctx;
+    } catch (e) { return null; }
+  };
+  // Two slightly detuned voices make the chunky, wobbly chip sound.
+  const tone = (a, f, t, d, o = {}) => {
+    const { type = "square", vol = 0.07, to = null, det = 7 } = o;
+    [0, det].forEach((c, k) => {
+      const osc = a.createOscillator(), g = a.createGain(), t0 = a.currentTime + t;
+      osc.type = type; osc.detune.value = c; osc.frequency.setValueAtTime(f, t0);
+      if (to) osc.frequency.exponentialRampToValueAtTime(to, t0 + d);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol * (k ? 0.5 : 1), t0 + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+      osc.connect(g); g.connect(a.destination); osc.start(t0); osc.stop(t0 + d + 0.03);
+    });
+  };
+  const noise = (a, t, d, o = {}) => {
+    const { vol = 0.08, from = 3000, to = 800 } = o;
+    const n = Math.max(1, Math.floor(a.sampleRate * d)); const buf = a.createBuffer(1, n, a.sampleRate); const dat = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) dat[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = a.createBufferSource(); src.buffer = buf;
+    const f = a.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 0.9;
+    f.frequency.setValueAtTime(from, a.currentTime + t); f.frequency.exponentialRampToValueAtTime(to, a.currentTime + t + d);
+    const g = a.createGain(); g.gain.value = vol; src.connect(f); f.connect(g); g.connect(a.destination); src.start(a.currentTime + t);
+  };
+  const run = (a, notes, step, o) => notes.forEach((f, i) => tone(a, f, i * step, step * 1.7, o));
+  const mk = fn => () => { const a = ac(); if (!a) return; last = Date.now(); fn(a); };
+  return {
+    isOn: () => on,
+    set: v => { on = v; try { localStorage.setItem("puntaro.sound", v ? "on" : "off"); } catch (e) { /* fine */ } if (v) { const a = ac(); if (a) tone(a, 880, 0, 0.08, { type: "triangle" }); } },
+    sinceSpecial: () => Date.now() - last,
+    tap: () => { const a = ac(); if (a) tone(a, 740, 0, 0.05, { type: "triangle", vol: 0.05 }); },
+    up: mk(a => { tone(a, 523, 0, 0.07); tone(a, 784, 0.06, 0.1); }),
+    down: mk(a => { tone(a, 392, 0, 0.07); tone(a, 262, 0.06, 0.13, { type: "triangle", vol: 0.1 }); }),
+    bank: mk(a => { tone(a, 988, 0, 0.07); tone(a, 1319, 0.07, 0.36, { vol: 0.06 }); tone(a, 1976, 0.09, 0.26, { vol: 0.025, type: "triangle" }); }),
+    bust: mk(a => { noise(a, 0, 0.38, { vol: 0.13, from: 1200, to: 120 }); tone(a, 220, 0, 0.55, { type: "sawtooth", vol: 0.07, to: 45 }); tone(a, 330, 0, 0.28, { vol: 0.04, to: 80 }); }),
+    mult: mk(a => run(a, [523, 659, 784, 1047, 1319], 0.045, { vol: 0.06 })),
+    flip: mk(a => { noise(a, 0, 0.07, { vol: 0.1, from: 5000, to: 1500 }); tone(a, 280, 0, 0.09, { to: 900, vol: 0.04 }); }),
+    bless: mk(a => { run(a, [523, 659, 784, 1047], 0.07, { type: "triangle", vol: 0.1 }); tone(a, 2093, 0.3, 0.3, { type: "triangle", vol: 0.03 }); }),
+    curse: mk(a => { run(a, [392, 370, 349, 311], 0.1, { type: "sawtooth", vol: 0.05 }); tone(a, 98, 0.1, 0.6, { vol: 0.05, to: 60 }); }),
+    swing: mk(a => { noise(a, 0, 0.22, { vol: 0.12, from: 400, to: 5000 }); tone(a, 2093, 0.24, 0.12, { type: "triangle", vol: 0.07 }); tone(a, 1568, 0.3, 0.2, { type: "triangle", vol: 0.05 }); }),
+    start: mk(a => {
+      noise(a, 0, 0.2, { vol: 0.1, from: 500, to: 6000 });
+      [523, 659, 784, 1047].forEach((f, i) => tone(a, f, 0.18 + i * 0.075, 0.12, { vol: 0.06 }));
+      [1047, 1319, 1568].forEach(f => tone(a, f, 0.52, 0.55, { type: "triangle", vol: 0.07 }));
+      tone(a, 523, 0.52, 0.55, { vol: 0.04 });
+    }),
+  };
+})();
+
+function SoundChip() {
+  const [on, setOn] = useState(SFX.isOn());
+  return <button className="chip" onClick={() => { SFX.set(!on); setOn(!on); }} aria-pressed={on} style={{ padding: "1px 6px", fontSize: 11 }}>{on ? "Sound on" : "Sound off"}</button>;
+}
+function SoundRow() {
+  const [on, setOn] = useState(SFX.isOn());
+  return (
+    <div className="card" style={{ padding: "8px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
+      <div><div style={{ fontWeight: 700, fontSize: 13 }}>Sound effects</div><div className="cap">Little 8-bit blips for scores, banks, busts and cards.</div></div>
+      <Toggle on={on} onChange={v => { SFX.set(v); setOn(v); }} />
+    </div>
+  );
+}
+
+/* ───────────── LOGO AND SPLASH ───────────── */
+function Wordmark({ size = 54, still }) {
+  return (
+    <div className={`wm${still ? " still" : ""}`} style={{ fontSize: size }} aria-label={APP_NAME} role="img">
+      {[..."PUNTARO"].map((c, i) => <span key={i} aria-hidden="true" style={{ animationDelay: `${0.45 + i * 0.07}s, ${1.1 + i * 0.12}s` }}>{c}</span>)}
+    </div>
+  );
+}
+
+// Slow warped colour bands, drawn tiny and scaled up so the pixels stay chunky.
+function SwirlBg() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const cv = ref.current; if (!cv) return undefined;
+    const ctx = cv.getContext("2d"); if (!ctx) return undefined;
+    const W = 72, H = 128; cv.width = W; cv.height = H;
+    const img = ctx.createImageData(W, H);
+    const cols = [[16, 18, 15], [27, 44, 33], [40, 68, 50], [92, 66, 40]];
+    const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let raf = 0; let lastT = -1; const t0 = performance.now();
+    const draw = now => {
+      const t = (now - t0) / 1000;
+      if (still || t - lastT > 0.04) {
+        lastT = t;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const u0 = (x / W - 0.5) * 2 * (W / H) * 1.6, v0 = (y / H - 0.5) * 2;
+          const r = Math.hypot(u0, v0), a = Math.atan2(v0, u0) + r * 2.6 + t * 0.35;
+          let u = r * Math.cos(a), v = r * Math.sin(a);
+          for (let i = 1; i < 4; i++) { u += (0.45 / i) * Math.sin(i * v * 2.1 + t * 0.6); v += (0.45 / i) * Math.cos(i * u * 2.1 + t * 0.45); }
+          const s = (Math.sin(u * 3 + v * 2) + 0.5 * Math.sin(v * 4 - u)) / 1.5;
+          const band = s < -0.35 ? 0 : s < 0.1 ? 1 : s < 0.55 ? 2 : 3;
+          const dim = Math.max(0.35, 1 - r * 0.38);
+          const o = (y * W + x) * 4; const c = cols[band];
+          img.data[o] = c[0] * dim; img.data[o + 1] = c[1] * dim; img.data[o + 2] = c[2] * dim; img.data[o + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      if (!still) raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas ref={ref} className="swirl" aria-hidden="true" />;
+}
+
+function Splash({ onDone }) {
+  const [leaving, setLeaving] = useState(false);
+  const go = () => { if (leaving) return; setLeaving(true); SFX.start(); setTimeout(onDone, 300); };
+  useEffect(() => {
+    const k = e => { if (e.key === "Enter" || e.key === " ") go(); };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  });
+  return (
+    <div className={`splash${leaving ? " out" : ""}`} onPointerDown={go} role="button" tabIndex={0} aria-label={`${APP_NAME}. Tap to start`}>
+      <SwirlBg />
+      <div className="scan" aria-hidden="true" />
+      <div className="stack">
+        <div className="mark"><Sprite name="logo" size={9} /></div>
+        <Wordmark size={56} />
+        <div className="tag"><i /><span>BANK IT. OR BUST.</span><i /></div>
+      </div>
+      <div className="tapgo">TAP TO TEE OFF</div>
+      <div className="ver">ALPHA {APP_VERSION}</div>
+    </div>
+  );
+}
+
 
 /* ───────────── LOGIC ───────────── */
 const MINUS = "−";
@@ -502,6 +642,30 @@ const CSS = `
 @keyframes pop{0%{transform:scale(.6)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
 .sheet{animation:up .25s steps(5);}
 @keyframes up{from{transform:translateY(40px)}to{transform:none}}
+.splash{position:fixed;inset:0;z-index:100;background:#14150F;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;}
+.splash.out{animation:splout .3s steps(5) forwards;}
+@keyframes splout{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.12)}}
+.splash .swirl{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;}
+.splash .scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 2px,transparent 2px 4px);mix-blend-mode:multiply;}
+.splash .stack{position:relative;display:flex;flex-direction:column;align-items:center;gap:18px;padding:0 16px;}
+.splash .mark{transform:rotate(-6deg);filter:drop-shadow(6px 6px 0 rgba(0,0,0,.55));animation:markin .55s steps(7) both,markbob 2.4s steps(6) .8s infinite;}
+@keyframes markin{0%{transform:translateY(-70vh) rotate(-40deg)}70%{transform:translateY(14px) rotate(-3deg)}100%{transform:translateY(0) rotate(-6deg)}}
+@keyframes markbob{0%,100%{transform:rotate(-6deg) translateY(0)}50%{transform:rotate(-4deg) translateY(-7px)}}
+.wm{display:flex;font-family:'Pixelify Sans',ui-monospace,monospace;font-weight:700;letter-spacing:2px;line-height:1;transform:rotate(-2deg);}
+.wm span{display:inline-block;color:#EDE8DD;text-shadow:1px 1px 0 #D9B07A,2px 2px 0 #D9B07A,3px 3px 0 #7A5232,4px 4px 0 #7A5232,5px 5px 0 #14150F,6px 6px 0 #14150F,7px 7px 0 #14150F;animation:wmpop .4s steps(5) both,wmbob 1.8s steps(4) infinite;}
+.wm span:nth-child(5){color:#D9B07A;}
+.wm.still span{animation:none;text-shadow:1px 1px 0 #7A5232,2px 2px 0 #14150F;}
+.wm.still{letter-spacing:1px;transform:none;}
+@keyframes wmpop{0%{opacity:0;transform:translateY(-34px) scale(1.5)}100%{opacity:1;transform:none}}
+@keyframes wmbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.splash .tag{display:flex;align-items:center;gap:10px;color:#D9B07A;font-size:12px;letter-spacing:.28em;font-weight:600;animation:tagin .5s steps(4) 1.1s both;}
+.splash .tag i{display:block;width:34px;height:2px;background:#D9B07A;}
+@keyframes tagin{from{opacity:0}to{opacity:1}}
+.splash .tapgo{position:absolute;bottom:calc(64px + env(safe-area-inset-bottom,0px));color:#EDE8DD;font-weight:700;font-size:15px;letter-spacing:.2em;animation:blink 1s steps(2) infinite;text-shadow:2px 2px 0 #14150F;}
+@keyframes blink{0%{opacity:1}50%{opacity:.25}}
+.splash .ver{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom,0px));color:#9B968A;font-size:11px;letter-spacing:.2em;}
+@media (prefers-reduced-motion:reduce){.splash .mark,.wm span,.splash .tapgo,.splash .tag{animation:none}}
+
 @keyframes flip{from{transform:scaleY(0)}to{transform:scaleY(1)}}
 .reveal{transform-origin:top;animation:flip .35s steps(5);}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
@@ -669,6 +833,7 @@ function CardReveal({ round, people, h, onDone }) {
   const [up, setUp] = useState({});
   const allUp = ids.every(id => up[id]);
   const cw = ids.length > 3 ? 82 : 100;
+  const flipSfx = id => { SFX.flip(); setTimeout(() => (CARDS[draw[id]].kind === "bless" ? SFX.bless() : SFX.curse()), 260); };
   return (
     <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 35, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.75)" }}>
       <div className="sheet card" role="dialog" aria-label="Draw your cards" style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "92vh", overflowY: "auto" }}>
@@ -676,7 +841,7 @@ function CardReveal({ round, people, h, onDone }) {
         <p className="cap" style={{ marginTop: 3 }}>{allUp ? "Banks are locked. Here's what everyone drew." : "Tap a card to flip it, or flip them all."}</p>
         <div style={{ display: "flex", justifyContent: "center", gap: 8, margin: "16px 0 8px", flexWrap: "wrap" }}>
           {ids.map((id, i) => (
-            <button key={id} onClick={() => setUp(u => ({ ...u, [id]: true }))} aria-label={`${people[id].name}: ${up[id] ? CARDS[draw[id]].name : "flip card"}`} style={{ display: "grid", justifyItems: "center", gap: 6 }}>
+            <button key={id} onClick={() => { if (!up[id]) flipSfx(id); setUp(u => ({ ...u, [id]: true })); }} aria-label={`${people[id].name}: ${up[id] ? CARDS[draw[id]].name : "flip card"}`} style={{ display: "grid", justifyItems: "center", gap: 6 }}>
               <PCard id={draw[id]} cw={cw} down={!up[id]} rot={(i - (ids.length - 1) / 2) * 4} delay={i * 0.35} />
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}><Avatar p={people[id]} size={18} /><span style={{ fontWeight: 700, fontSize: 12 }}>{people[id].name}</span></div>
             </button>
@@ -698,7 +863,7 @@ function CardReveal({ round, people, h, onDone }) {
         <div style={{ marginTop: 10 }}>
           {allUp
             ? <button className="cta" onClick={onDone}>Let's play</button>
-            : <button className="cta" onClick={() => setUp(Object.fromEntries(ids.map(i => [i, true])))}>Flip all</button>}
+            : <button className="cta" onClick={() => { ids.filter(i => !up[i]).forEach((i, k) => setTimeout(() => flipSfx(i), k * 180)); setUp(Object.fromEntries(ids.map(i => [i, true]))); }}>Flip all</button>}
         </div>
       </div>
     </div>
@@ -986,13 +1151,15 @@ function HoldRow({ onHold, children, style, className }) {
 function Home({ people, round, recent, board, onStart, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
   return (
     <div style={{ paddingBottom: 19 }}>
-      <div className="stripes" style={{ padding: "17px 14px 47px" }}>
+      <div className="stripes" style={{ padding: "17px 14px 44px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}><Sprite name="ball" size={5} />{APP_NAME}<button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
-          <button className="chip" onClick={() => setDark(!dark)} style={{ padding: "1px 6px", fontSize: 11 }}>{dark ? "Light mode" : "Dark mode"}</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}><Wordmark size={24} still />&nbsp;<button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
+          <div style={{ display: "flex", gap: 5 }}>
+            <SoundChip />
+            <button className="chip" onClick={() => setDark(!dark)} style={{ padding: "1px 6px", fontSize: 11 }}>{dark ? "Light mode" : "Dark mode"}</button>
+          </div>
         </div>
-        <h1 style={{ fontSize: 32, lineHeight: 1.02, fontWeight: 800, letterSpacing: -1.2, marginTop: 11 }}>Ready to tee off?</h1>
-        <p style={{ marginTop: 8, opacity: 0.8 }}>Handicap index {people.me.hi.toFixed(1)}</p>
+        <p style={{ marginTop: 14, opacity: 0.8 }}>Handicap index {people.me.hi.toFixed(1)}</p>
       </div>
       <div style={{ padding: "0 12px", marginTop: -36, display: "grid", gap: 11 }}>
         <button onClick={onStart} style={{ background: "var(--flag)", color: "var(--dk)", borderRadius: 24, padding: "16px 16px", textAlign: "left", display: "flex", alignItems: "center", gap: 11, boxShadow: "0 6px 0 var(--night)", border: "3px solid var(--night)" }}>
@@ -1605,7 +1772,15 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
   if (nextIsCard) notices.push({ key: "bank", icon: "c_vault", isize: 2, urgent: true, title: `Next hole is the ${SI[h + 1] === 1 ? "hardest" : "easiest"}: last chance to bank`, text: "Everyone draws a card at the tee, then banks lock. Ask each player now.", action: ["Review banks", () => setLastCall(true)] });
   const bump = (id, d) => {
     const cur = round.scores[id][h];
-    api.setScore(id, h, cur == null ? PAR[h] : Math.min(12, Math.max(1, cur + d)));
+    const val = cur == null ? PAR[h] : Math.min(12, Math.max(1, cur + d));
+    try {
+      const nr = { ...round, scores: { ...round.scores, [id]: round.scores[id].map((x, i) => (i === h ? val : x)) } };
+      const a = puntCalc(round)[id], b = puntCalc(nr)[id];
+      if (b.bustAt[h] && !a.bustAt[h]) SFX.bust();
+      else if ((b.multAt[h] || 0) > (a.multAt[h] || 0)) SFX.mult();
+      else if (d > 0) SFX.down(); else SFX.up();
+    } catch (e) { /* sound is optional */ }
+    api.setScore(id, h, val);
   };
   const StepBtn = ({ onClick, label, children }) => (
     <button onClick={onClick} aria-label={label} style={{ width: 36, height: 36, borderRadius: "50%", border: "1.5px solid var(--line)", display: "grid", placeItems: "center", background: "var(--card)", flex: "none" }}>{children}</button>
@@ -1932,6 +2107,7 @@ function Me({ people, setPeople, dark, setDark, saved, onAbout }) {
           <div><div style={{ fontWeight: 700, fontSize: 13 }}>Dark mode</div><div className="cap">Easier on the eyes on the course at dusk.</div></div>
           <Toggle on={dark} onChange={setDark} />
         </div>
+        <SoundRow />
         <div className="card" style={{ padding: 12 }}>
           <div className="cap" style={{ fontWeight: 600 }}>Handicap index</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 5 }}>
@@ -1980,6 +2156,7 @@ export default function App() {
   const [del, setDel] = useState(null);
   const [rulesFrom, setRulesFrom] = useState("tabs");
   const [saved, setSaved] = useState(loadSaved);
+  const [splash, setSplash] = useState(true);
   const [about, setAbout] = useState(false);
   const saveCourse = c => setSaved(s => { const n = [c, ...s.filter(x => x.id !== c.id)]; storeSaved(n); return n; });
   const resetDemo = () => {
@@ -2013,7 +2190,7 @@ export default function App() {
 
   const api = {
     setScore: (id, h, v) => setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })),
-    setBank: (id, h, v) => setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })),
+    setBank: (id, h, v) => { if (v) SFX.bank(); return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })); },
     setNtp: (h, id) => setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)), ntpOk: r.ntpOk.map((x, i) => (i === h ? false : x)) })),
     setNtpOk: h => setRound(r => ({ ...r, ntpOk: r.ntpOk.map((x, i) => (i === h ? !x : x)) })),
     setEvent: (id, h, k) => setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? { ...(x || {}), [k]: !(x && x[k]) } : x)) } })),
@@ -2038,8 +2215,9 @@ export default function App() {
   const tabs = [["home", "Home", HomeIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon]];
 
   return (
-    <div className={`sg${dark ? " dark" : ""}`}>
+    <div className={`sg${dark ? " dark" : ""}`} onClickCapture={e => { if (e.target.closest && e.target.closest("button")) setTimeout(() => { if (SFX.sinceSpecial() > 60) SFX.tap(); }, 0); }}>
       <style>{CSS}</style>
+      {splash && <Splash onDone={() => setSplash(false)} />}
       {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
       {del && (
         <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onPointerDown={() => { armed.current = true; }} onClick={() => ready() && setDel(null)}>
@@ -2053,7 +2231,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onBack={() => setView("tabs")} onGo={cfg => { setRound(buildRound(cfg, people, false)); setView("round"); }} />}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); setRound(buildRound(cfg, people, false)); setView("round"); }} />}
       {view === "round" && round && <Round round={round} people={people} api={api} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => setView("summary")} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
       {view === "summary" && round && <Summary round={round} people={people} onSave={save} onBack={() => setView("round")} />}
