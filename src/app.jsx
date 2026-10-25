@@ -450,6 +450,9 @@ function drawCards(r, h, rng) {
   return out;
 }
 
+/* Handicap cushion: on a bust you keep 2% of the pot per course handicap stroke, up to half, rounded down. */
+const cushionRate = (r, id) => (r.opts.cushion && r.useHcp ? Math.min(0.5, 0.02 * (r.hcp[id] || 0)) : 0);
+const cushionKeep = (r, id, pot) => Math.floor(pot * cushionRate(r, id));
 function puntCalc(r, upTo = 18) {
   const ids = r.playerIds;
   const S = {};
@@ -474,7 +477,12 @@ function puntCalc(r, upTo = 18) {
       if (card === "hot") st.streak = Math.max(st.streak, 2);
       if (diff >= (card === "mine" ? 1 : 2)) {
         if (st.shields > 0) { st.shields--; st.log[h] = note + "Safety net saved the pot"; }
-        else { st.bustAt[h] = { lost: st.pot }; st.log[h] = note + (st.pot > 0 ? `Bust. Lost ${st.pot}` : "Bust"); st.pot = 0; st.streak = 0; st.busts++; }
+        else {
+          const kept = cushionKeep(r, id, st.pot);
+          st.bustAt[h] = { lost: st.pot - kept, kept };
+          st.log[h] = note + (st.pot > 0 ? `Bust. Lost ${st.pot - kept}${kept > 0 ? `, kept ${kept}` : ""}` : "Bust");
+          st.banked += kept; st.pot = 0; st.streak = 0; st.busts++;
+        }
       } else {
         const base = diff <= -2 ? 4 : diff === -1 ? 3 : diff === 0 ? 2 : 1;
         st.streak = diff <= 0 ? st.streak + 1 : 0;
@@ -549,19 +557,25 @@ const tally = (st, c) => [
   c.p ? `${c.p} penalt${c.p > 1 ? "ies" : "y"}` : null,
 ].filter(Boolean).join(", ");
 
-function payouts(r, ranked) {
+/* ranked is best first. score (optional) maps id to points: tied players split the money for the places they cover. */
+function payouts(r, ranked, score) {
   const n = ranked.length; const pool = r.stake * n; const pay = {};
   ranked.forEach(id => (pay[id] = 0));
   if (r.stake === 0) return pay;
-  if (r.split === "win") pay[ranked[0]] = pool;
-  else if (r.split === "603010") {
-    const sh = n >= 3 ? [0.6, 0.3, 0.1] : [0.7, 0.3];
-    sh.forEach((s, i) => (pay[ranked[i]] = Math.round(pool * s * 100) / 100));
-  } else {
-    const last = ranked[n - 1];
-    const share = Math.floor((r.stake + r.stake / (n - 1)) * 100) / 100;
-    ranked.forEach(id => { if (id !== last) pay[id] = share; });
+  const by = Array(n).fill(0);
+  if (r.split === "win") by[0] = pool;
+  else if (r.split === "603010") (n >= 3 ? [0.6, 0.3, 0.1] : [0.7, 0.3]).forEach((s, i) => (by[i] = pool * s));
+  else { const share = r.stake + r.stake / (n - 1); for (let i = 0; i < n - 1; i++) by[i] = share; }
+  if (score) {
+    let i = 0;
+    while (i < n) {
+      let j = i; while (j + 1 < n && score[ranked[j + 1]] === score[ranked[i]]) j++;
+      const avg = by.slice(i, j + 1).reduce((a, b) => a + b, 0) / (j - i + 1);
+      for (let k = i; k <= j; k++) by[k] = avg;
+      i = j + 1;
+    }
   }
+  ranked.forEach((id, i) => (pay[id] = Math.floor(by[i] * 100 + 1e-6) / 100));
   /* any stray cents from rounding go to first place, so the pool always adds up */
   const paid = ranked.reduce((a, id) => a + pay[id], 0);
   pay[ranked[0]] = Math.round((pay[ranked[0]] + (pool - paid)) * 100) / 100;
@@ -582,10 +596,11 @@ function bankAdvice(r, id, h, s) {
   const risk = bustRisk(r, id, h + 1);
   const streak = s.streakAt[h] != null ? s.streakAt[h] : s.streak; const mult = streak + 1 >= 5 ? 3 : streak + 1 >= 3 ? 2 : 1;
   const cardNext = r.opts.cards && cardHole(h + 1);
-  const exposure = risk * pot; const gain = 1.7 * mult * (1 - risk);
+  const eff = pot * (1 - cushionRate(r, id)); /* what a bust would really cost */
+  const exposure = risk * eff; const gain = 1.7 * mult * (1 - risk);
   let level = "hold";
-  if (pot >= 20 || (cardNext && pot >= 10) || (pot >= 8 && exposure >= gain * 1.5)) level = "bank";
-  else if (pot >= 12 || exposure >= gain) level = "think";
+  if (eff >= 20 || (cardNext && eff >= 10) || (eff >= 8 && exposure >= gain * 1.5)) level = "bank";
+  else if (eff >= 12 || exposure >= gain) level = "think";
   return { risk, level, pot, cardNext };
 }
 const teamRows = (r, pc) => [0, 1].map(k => { const ids = r.playerIds.filter(id => r.teams[id] === k); return { k, ids, total: ids.reduce((a, id) => a + pc[id].total, 0) }; });
@@ -662,7 +677,7 @@ function buildRound(cfg, people, seed) {
   });
   const r = {
     course, holes, mode: cfg.mode || "ffa", teams: cfg.teams || null, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
-    opts: cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true },
+    opts: cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true, cushion: true },
     draws: Array(18).fill(null), seen: Array(18).fill(false), drawSeed: seed ? 20241024 : Math.floor(Math.random() * 1e9),
     ntp: Array(18).fill(null),
     ntpOk: Array(18).fill(false),
@@ -1023,7 +1038,7 @@ function GamePanel({ gid, round, people, h, api }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                     <Sprite name="skull" size={4} className="flick" />
                     <div className="px blink" style={{ fontSize: 16 }}>BUST!</div>
-                    <div style={{ marginLeft: "auto", fontWeight: 700 }}>{bust.lost > 0 ? `Lost ${bust.lost}` : "Pot was empty"}</div>
+                    <div style={{ marginLeft: "auto", fontWeight: 700 }}>{bust.lost + (bust.kept || 0) === 0 ? "Pot was empty" : `Lost ${bust.lost}${bust.kept ? `, kept ${bust.kept}` : ""}`}</div>
                   </div>
                 )}
                 {hot && (
@@ -1386,6 +1401,7 @@ function Rules({ onBack }) {
           <p>Points sit in your pot until you bank them. You can bank after any hole. Banked points can never be lost.</p>
           <p>Banking resets your streak multiplier back to x1. Banking an empty pot does nothing.</p>
           <p>Whatever is still in your pot after the 18th hole banks automatically.</p>
+          <p>Handicap cushion (optional, on by default): when you bust you keep 2% of your pot for every handicap stroke you get, up to half, rounded down. A 16 stroke player busting with 20 points keeps 6 and loses 14. It's there to level the field.</p>
         </RuleSection>
         <RuleSection title="Bank hints">
           <p>Under each player's pot you'll see the chance of a net double bogey or worse on the next hole, with a hint: Hold, Think about it, or Bank it.</p>
@@ -1735,7 +1751,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
   const [custom, setCustom] = useState(false);
   const [customText, setCustomText] = useState("");
   const [split, setSplit] = useState("603010");
-  const [opts, setOpts] = useState({ cards: true, catchup: true, bonuses: true, penalties: true, ntp: true });
+  const [opts, setOpts] = useState({ cards: true, catchup: true, bonuses: true, penalties: true, ntp: true, cushion: true });
   const tee = course.tees[Math.min(teeI, course.tees.length - 1)];
   const cpar = course.holes ? course.holes.reduce((a, h) => a + h.par, 0) : course.par;
   const cinfo = { slope: tee.slope, rating: tee.rating, par: cpar };
@@ -1842,7 +1858,8 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
             ["catchup", "Catch-up odds", "Last place draws more blessings, the leader more curses."],
             ["bonuses", "Bonuses", "Sandy x2, up and down +2, chip-in +4, barkie +2."],
             ["ntp", "Nearest the pin", "Closest to the pin on a par 3 earns +3. Ball must be on the green or fringe."],
-            ["penalties", "Penalties", "Lost ball -3, wet one -2, four putt halves your pot."]].filter(([k]) => k !== "catchup" || opts.cards).map(([k, t, d], i) => (
+            ["penalties", "Penalties", "Lost ball -3, wet one -2, four putt halves your pot."],
+            ["cushion", "Handicap cushion", useHcp ? "On a bust you keep 2% of your pot per handicap stroke, up to half. Evens things out for higher handicaps." : "Needs handicaps switched on."]].filter(([k]) => k !== "catchup" || opts.cards).map(([k, t, d], i) => (
             <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
               <div><div style={{ fontWeight: 700, fontSize: 15 }}>{t}</div><div className="cap">{d}</div></div>
               <Toggle on={opts[k]} onChange={v => setOpts(o => ({ ...o, [k]: v }))} />
@@ -2075,7 +2092,9 @@ function Summary({ round, people, onSave, onBack }) {
   const tr = isTeam ? teamRows(round, pc).sort((x, y) => y.total - x.total) : null;
   const tied = isTeam && tr[0].total === tr[1].total;
   const ranked = isTeam ? [...round.playerIds].sort((x, y) => (round.teams[x] === tr[0].k ? 0 : 1) - (round.teams[y] === tr[0].k ? 0 : 1) || pc[y].total - pc[x].total) : hasPunt ? punt : comp.map(r => r.id);
-  const pay = isTeam ? teamPayouts(round, pc) : payouts(round, ranked);
+  const score = Object.fromEntries(round.playerIds.map(id => [id, pc[id].total]));
+  const pay = isTeam ? teamPayouts(round, pc) : payouts(round, ranked, score);
+  const anyTie = !isTeam && new Set(ranked.map(id => score[id])).size < ranked.length;
   const nets = {}; round.playerIds.forEach(id => (nets[id] = Math.round((pay[id] - round.stake) * 100) / 100));
   const owes = settle(nets);
   const sign = v => (v > 0 ? `+${money(v)}` : v < 0 ? `${MINUS}${money(-v)}` : "$0");
@@ -2140,7 +2159,7 @@ function Summary({ round, people, onSave, onBack }) {
         {round.stake > 0 && (
           <div className="card" style={{ padding: 12 }}>
             <h3 style={{ fontWeight: 800, fontSize: 15 }}>Prize pool</h3>
-            <p className="cap">{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}. {isTeam ? "Winning team splits the pool." : SPLITS.find(s => s[0] === round.split)[1] + "."}</p>
+            <p className="cap">{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}. {isTeam ? "Winning team splits the pool." : SPLITS.find(s => s[0] === round.split)[1] + "."}{anyTie ? " Tied players share the prize for the places they cover." : ""}</p>
             <div style={{ marginTop: 6 }}>
               {ranked.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
