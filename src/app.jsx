@@ -21,7 +21,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.28";
+const APP_VERSION = "0.29";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -108,7 +108,7 @@ const CURSES = ["tax", "heavy", "leaky", "shout", "mine"];
 /* 8-bit sprites. Each row is a line of pixels; letters map to the palette below. */
 const PAL = { o: "#14150F", w: "#EDE8DD", g: "#D9B07A", r: "#B4472E", l: "#8FAE8B", d: "#3E6B4B", m: "#CFC9B8", n: "#7A5232", c: "#4A4D45", s: "#E6D3AE", b: "#4F7FA3", t: "#9CC3DB" };
 const SPRITES = {
-  c_back: ["ooooooooo.", "ogggggggoo", "oggggggggo", "oggooooggo", "oggo..oggo", "oggooooggo", "oggggggggo", "ogggggggoo", "oggoooooo.", "oggo......", "oggo......", "oggo......", "oooo......"],
+  c_back: ["..oooooooooo....", "..owrrrrrrroo...", "..owrrrrrrrro...", "..owrrooorrro...", "..owrrooorrro...", "..owrrrrrrrro...", "..owrrrrrrroo...", "..owoooooooo....", "..owo...........", "..owo...........", "..owo...........", "..owo...........", "..owo...........", "ooowoooooooooooo", "ollloolllllllllo", "oddddddddddddddo", "oooooooooooooooo"],
   e_sandy: ["...oooo...", "..owwwwo..", "..owmwwo..", "...oooo...", "..oossoo..", ".osssssso.", "ossmssssso", "osssssssso", "oooooooooo", ".........."],
   e_updown: [".w........", ".wrr......", ".wrrr.....", ".wrr......", ".w........", ".w...oo...", ".w..owwo..", "lllllllll.", "dddoooddd.", "dddddddddd"],
   e_chipin: ["g...gg...g", ".g..gg..g.", "..g.oo.g..", "...owwwo..", "...owmwo..", "....oo....", "llllllllll", "ddddoooddd", "dddddddddd", "dddddddddd"],
