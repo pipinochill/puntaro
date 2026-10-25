@@ -21,7 +21,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.33";
+const APP_VERSION = "0.34";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -300,15 +300,15 @@ function Tiles({ size = 20, hang = false, toy = false }) {
 // Splash hero: the flagstick rises out of the cup, the pennant unrolls in the wind,
 // then a ball putts along the line and drops in. Times in seconds.
 const PN_SLICES = 10;
-function Pennant({ quick }) {
+function Pennant() {
   return (
-    <div className={`pn${quick ? " quick" : ""}`} aria-hidden="true">
+    <div className="pn" aria-hidden="true">
       <div className="pn-flag">
         {Array.from({ length: PN_SLICES }, (_, i) => {
           const fromPole = PN_SLICES - 1 - i;
           return (
             <div key={i} className="pn-sl" style={{ animationDelay: `${0.4 + fromPole * 0.09}s` }}>
-              <div className="pn-wv" style={{ animationDelay: `${(quick ? 0 : 1.3) + fromPole * 0.1}s` }}>
+              <div className="pn-wv" style={{ animationDelay: `${1.3 + fromPole * 0.1}s` }}>
                 <div style={{ left: -i * 20 }}>{APP_NAME.toUpperCase()}</div>
               </div>
             </div>
@@ -357,18 +357,15 @@ function SwirlBg() {
   return <canvas ref={ref} className="swirl" aria-hidden="true" />;
 }
 
-const SPLASH_DAY_KEY = "puntaro.splash.day";
 function Splash({ onDone }) {
   const [leaving, setLeaving] = useState(false);
   const [music, setMusic] = useState(false);
-  // Full show on the first launch of the day, a short one after that.
-  const [quick] = useState(() => { try { const d = new Date().toDateString(); const q = localStorage.getItem(SPLASH_DAY_KEY) === d; localStorage.setItem(SPLASH_DAY_KEY, d); return q; } catch (e) { return false; } });
+  // The full show plays every launch; a tap skips it.
   useEffect(() => {
-    if (quick) return undefined;
     if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
     const t = [setTimeout(() => SFX.putt(), 1550), setTimeout(() => SFX.cup(), 2900)];
     return () => t.forEach(clearTimeout);
-  }, [quick]);
+  }, []);
   useEffect(() => { SFX.themeIfAllowed(); setMusic(SFX.themePlaying()); }, []);
   const go = () => {
     if (leaving) return;
@@ -380,11 +377,11 @@ function Splash({ onDone }) {
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
   });
   return (
-    <div className={`splash${leaving ? " out" : ""}${quick ? " quick" : ""}`} onPointerDown={go} role="button" tabIndex={0} aria-label={`${APP_NAME}. Tap to start`}>
+    <div className={`splash${leaving ? " out" : ""}`} onPointerDown={go} role="button" tabIndex={0} aria-label={`${APP_NAME}. Tap to start`}>
       <SwirlBg />
       <div className="scan" aria-hidden="true" />
       <div className="stack">
-        <Pennant quick={quick} />
+        <Pennant />
         <div className="tag"><i /><span>BANK IT. OR BUST.</span><i /></div>
       </div>
       <div className="tapgo">{music || !SFX.isOn() ? "TAP TO TEE OFF" : "TAP TO START"}</div>
@@ -831,11 +828,9 @@ const CSS = `
 @keyframes markin{0%{transform:translateY(-70vh) rotate(-40deg)}70%{transform:translateY(14px) rotate(-3deg)}100%{transform:translateY(0) rotate(-6deg)}}
 @keyframes markbob{0%,100%{transform:rotate(-6deg) translateY(0)}50%{transform:rotate(-4deg) translateY(-7px)}}
 .splash .tag{display:flex;align-items:center;gap:10px;color:#D9B07A;font-size:12px;letter-spacing:.28em;font-weight:600;animation:tagin .5s steps(4) 3s both;}
-.splash.quick .tag{animation-delay:.3s;}
 .splash .tag i{display:block;width:34px;height:2px;background:#D9B07A;}
 @keyframes tagin{from{opacity:0}to{opacity:1}}
 .splash .tapgo{position:absolute;bottom:calc(64px + env(safe-area-inset-bottom,0px));color:#EDE8DD;font-weight:700;font-size:15px;letter-spacing:.2em;animation:tagin .01s 3.3s both,blink 1s steps(2) 3.35s infinite;text-shadow:2px 2px 0 #14150F;}
-.splash.quick .tapgo{animation-delay:.4s,.45s;}
 .tiles{display:inline-flex;gap:2px;padding:3px;background:#14150F;box-shadow:3px 3px 0 rgba(0,0,0,.45);font-family:'Pixelify Sans',ui-monospace,monospace;font-weight:700;line-height:1;vertical-align:middle;}
 .tiles>span{width:var(--ts);height:calc(var(--ts)*1.3);display:grid;place-items:center;background:#EDE8DD;color:#2C4536;font-size:calc(var(--ts)*.86);box-shadow:inset 0 calc(var(--ts)*-.1) 0 #CFC9B8;transform-origin:top;}
 .tiles.toy>span{cursor:pointer;}
@@ -864,8 +859,6 @@ const CSS = `
 @keyframes pnputt{from{left:4px}to{left:250px}}
 @keyframes pndrop{to{top:8px;height:0;opacity:0}}
 @keyframes pnspark{0%{opacity:0;transform:translateY(6px)}40%{opacity:1}100%{opacity:0;transform:translateY(-8px)}}
-.pn.quick .pn-pole,.pn.quick .pn-sl{animation:none;}
-.pn.quick .pn-ball,.pn.quick .pn-spark{display:none;}
 @keyframes blink{0%{opacity:1}50%{opacity:.25}}
 .splash .ver{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom,0px));color:#9B968A;font-size:11px;letter-spacing:.2em;}
 @media (prefers-reduced-motion:reduce){.splash .mark,.splash .tapgo,.splash .tag,.tiles>span,.pn *{animation:none !important}.pn-ball,.pn-spark{display:none}}
