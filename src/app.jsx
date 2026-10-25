@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 /* ───────────── ICONS (inline, no library) ───────────── */
 function Ico({ size = 24, color = "currentColor", children }) {
@@ -33,6 +33,7 @@ const COURSES = [
   { id: "sunrise", name: "Sunrise Links", source: "sample", par: 72, holes: null, tees: [{ name: "White", slope: 118, rating: 69.9 }] },
   { id: "cedar", name: "Cedar Ridge", source: "sample", par: 72, holes: null, tees: [{ name: "White", slope: 140, rating: 73.4 }] },
 ];
+const TRASH_MS = 5 * 60 * 1000;
 const SAVED_KEY = "puntaro.courses.v1";
 const loadSaved = () => { try { const v = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
 const storeSaved = v => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(v)); } catch (e) { /* private mode: fine */ } };
@@ -435,7 +436,7 @@ function buildRound(cfg, people, seed) {
     events[id] = Array(18).fill(null);
   });
   const r = {
-    course, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
+    course, holes, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
     opts: cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true },
     draws: Array(18).fill(null), seen: Array(18).fill(false), drawSeed: seed ? 20241024 : Math.floor(Math.random() * 1e9),
     ntp: Array(18).fill(null),
@@ -973,14 +974,14 @@ function HoldRow({ onHold, children, style, className }) {
     <div className={className} onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
       onContextMenu={e => e.preventDefault()}
       onClickCapture={e => { if (fired.current) { e.stopPropagation(); e.preventDefault(); fired.current = false; } }}
-      style={{ position: "relative", overflow: "hidden", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", ...style }}>
+      style={{ position: "relative", overflow: "hidden", touchAction: "manipulation", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", ...style }}>
       {holding && <div className="holdfill" aria-hidden="true" />}
       {children}
     </div>
   );
 }
 
-function Home({ people, round, recent, board, onStart, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout }) {
+function Home({ people, round, recent, board, onStart, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 47px" }}>
@@ -1037,6 +1038,26 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
             ))}
           </div>
         </div>
+
+        {trash.length > 0 && (
+          <div>
+            <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recently deleted</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 5 minutes, then gone for good.</p></div>
+            <div className="card" style={{ padding: "5px 11px" }}>
+              {trash.map((x, i) => {
+                const left = Math.max(0, Math.ceil((TRASH_MS - (now - x.at)) / 1000));
+                return (
+                  <div key={x.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700 }}>{x.kind === "round" ? x.item.course.name : x.item.course}</div>
+                      <div className="cap">{x.kind === "round" ? "In progress" : x.item.when} · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</div>
+                    </div>
+                    <button className="chip" onClick={() => onRestore(x)}>Restore</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div>
           <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recent rounds</h2><p className="cap" style={{ marginTop: 2 }}>Hold a round to delete it.</p></div>
@@ -1169,21 +1190,51 @@ const kmBetween = (a, b, c, d) => {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 };
+const NOMINATIM = "https://nominatim.openstreetmap.org/search?format=json&limit=15&q=";
+const isGolf = r => r.type === "golf_course" || r.class === "leisure" && r.type === "golf_course";
+const nomCourse = (r, lat, lon) => ({
+  osm: `${r.osm_type}-${r.osm_id}`, type: r.osm_type, id: r.osm_id, name: r.name || r.display_name.split(",")[0],
+  lat: +r.lat, lon: +r.lon, dist: lat == null ? null : kmBetween(lat, lon, +r.lat, +r.lon), place: r.display_name.split(", ").slice(1, 3).join(", "),
+});
+async function nominatim(path) {
+  const res = await fetch(NOMINATIM + path, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error("nominatim " + res.status);
+  return res.json();
+}
+// Resolves with the first non-empty list. Empty only if every source answered empty. Throws only if every source failed.
+const firstNonEmpty = ps => new Promise((res, rej) => {
+  let n = ps.length, empty = false;
+  ps.forEach(p => p.then(v => { if (v.length) res(v); else { empty = true; if (--n === 0) res([]); } }, () => { if (--n === 0) (empty ? res([]) : rej(new Error("net"))); }));
+});
+async function overpassNear(lat, lon) {
+  const j = await overpass(`[out:json][timeout:20];nwr["leisure"="golf_course"]["name"](around:5000,${lat},${lon});out tags center 60;`);
+  if (j.remark && /error|timed out/i.test(j.remark)) throw new Error("overpass busy");
+  return (j.elements || []).filter(e => e.tags && e.tags.name).map(e => {
+    const c = e.center || { lat: e.lat, lon: e.lon };
+    return { osm: `${e.type}-${e.id}`, type: e.type, id: e.id, name: e.tags.name, lat: c.lat, lon: c.lon, dist: kmBetween(lat, lon, c.lat, c.lon) };
+  });
+}
+async function nominatimNear(lat, lon) {
+  const dLat = 0.05, dLon = 0.05 / Math.max(0.2, Math.cos((lat * Math.PI) / 180));
+  const rows = await nominatim(`golf+course&bounded=1&viewbox=${lon - dLon},${lat + dLat},${lon + dLon},${lat - dLat}`);
+  return rows.filter(isGolf).map(r => nomCourse(r, lat, lon));
+}
 async function findCoursesNear(lat, lon) {
   const key = `near5:${lat.toFixed(2)},${lon.toFixed(2)}`;
   const hit = cacheGet(key);
-  const j = hit ? { elements: hit } : await overpass(`[out:json][timeout:12];nwr["leisure"="golf_course"]["name"](around:5000,${lat},${lon});out tags center 60;`);
-  if (!hit) cacheSet(key, j.elements || []);
+  const found = hit || await firstNonEmpty([overpassNear(lat, lon), nominatimNear(lat, lon)]);
+  if (!hit && found.length) cacheSet(key, found);
   const seen = new Set();
-  return (j.elements || [])
-    .filter(e => e.tags && e.tags.name)
-    .map(e => {
-      const c = e.center || { lat: e.lat, lon: e.lon };
-      return { osm: `${e.type}-${e.id}`, type: e.type, id: e.id, name: e.tags.name, lat: c.lat, lon: c.lon, dist: kmBetween(lat, lon, c.lat, c.lon) };
-    })
-    .filter(c => (seen.has(c.name) ? false : seen.add(c.name)))
-    .sort((a, b) => a.dist - b.dist)
-    .slice(0, 15);
+  return found.filter(c => (seen.has(c.name) ? false : seen.add(c.name))).sort((a, b) => a.dist - b.dist).slice(0, 15);
+}
+// Type a course name or a town. Course names come back as a list; a town becomes a nearby search.
+async function searchPlaces(q) {
+  let rows = await nominatim(encodeURIComponent(q));
+  let golf = rows.filter(isGolf);
+  if (!golf.length && rows.length) { const more = await nominatim(encodeURIComponent(q + " golf")); golf = more.filter(isGolf); }
+  if (golf.length) { const seen = new Set(); return { courses: golf.map(r => nomCourse(r)).filter(c => (seen.has(c.osm) ? false : seen.add(c.osm))).slice(0, 10) }; }
+  if (!rows.length) throw new Error("notfound");
+  return { town: { lat: +rows[0].lat, lon: +rows[0].lon } };
 }
 async function loadOsmHoles(c) {
   if (c.type === "node") return null;
@@ -1197,13 +1248,6 @@ async function loadOsmHoles(c) {
     if (n >= 1 && n <= 18 && par >= 3 && par <= 6 && !holes[n - 1]) holes[n - 1] = { par, si: parseInt(t.handicap, 10) };
   });
   return holes.every(Boolean) ? holes : null;
-}
-async function geocode(q) {
-  const res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q), { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) throw new Error("geocode " + res.status);
-  const j = await res.json();
-  if (!j.length) throw new Error("notfound");
-  return { lat: +j[0].lat, lon: +j[0].lon };
 }
 // Returns "" when the form is good, otherwise the first problem in plain words.
 function validateCourse(f) {
@@ -1318,8 +1362,11 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
   const search = async () => {
     if (!q.trim()) return;
     setBusy("Searching…"); setMsg("");
-    try { const g = await geocode(q.trim()); await near(g.lat, g.lon); }
-    catch (e) { setBusy(""); setMsg(e.message === "notfound" ? "Couldn't find that place." : "Couldn't reach the map service. Check your connection, or add the course by hand."); }
+    try {
+      const r = await searchPlaces(q.trim());
+      if (r.courses) { setResults(r.courses); setBusy(""); }
+      else await near(r.town.lat, r.town.lon);
+    } catch (e) { setBusy(""); setMsg(e.message === "notfound" ? "Couldn't find that place or course. Try the town name, or add it by hand." : "Couldn't reach the map service. Check your connection, or add the course by hand."); }
   };
   const choose = async c => {
     const id = "osm-" + c.osm;
@@ -1349,11 +1396,11 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
         {msg && <p role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{msg}</p>}
         {results && results.length > 0 && (
           <div>
-            <div className="cap" style={{ marginBottom: 4 }}>Nearby (from OpenStreetMap)</div>
+            <div className="cap" style={{ marginBottom: 4 }}>Courses found (from OpenStreetMap)</div>
             <div style={{ display: "grid", gap: 6 }}>
               {results.map(c => (
                 <button key={c.osm} className="card" onClick={() => choose(c)} style={{ padding: "9px 11px", textAlign: "left", display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ fontWeight: 700 }}>{c.name}</span><span className="cap">{c.dist < 10 ? c.dist.toFixed(1) : Math.round(c.dist)} km</span>
+                  <span style={{ fontWeight: 700 }}>{c.name}</span><span className="cap">{c.dist == null ? c.place : c.dist < 10 ? c.dist.toFixed(1) : Math.round(c.dist)} {c.dist == null ? "" : "km"}</span>
                 </button>
               ))}
             </div>
@@ -1956,7 +2003,28 @@ export default function App() {
     setRound(buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
     setView("tabs"); setTab("home");
   };
-  const confirmDelete = () => { if (del.kind === "round") setRound(null); else setRecent(r => r.filter((_, j) => j !== del.i)); setDel(null); };
+  const [trash, setTrash] = useState([]);
+  const [now, setNow] = useState(Date.now());
+  const armed = useRef(false);
+  const ready = () => armed.current; // a click only counts after a fresh press on the sheet, so the finger lifting after a hold is ignored
+  useEffect(() => {
+    if (!trash.length) return undefined;
+    const id = setInterval(() => { const n = Date.now(); setNow(n); setTrash(t => { const k = t.filter(x => n - x.at < TRASH_MS); return k.length === t.length ? t : k; }); }, 1000);
+    return () => clearInterval(id);
+  }, [trash.length]);
+  const confirmDelete = () => {
+    const at = Date.now();
+    if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); setRound(null); }
+    else { const item = recent[del.i]; setTrash(t => [{ id: at, kind: "recent", item, idx: del.i, at }, ...t]); setRecent(r => r.filter((_, j) => j !== del.i)); }
+    setNow(at); setDel(null);
+  };
+  const restore = x => {
+    setTrash(t => t.filter(y => y.id !== x.id));
+    if (x.kind === "round") {
+      if (round) { const at = Date.now(); setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); }
+      applyHoles(x.item.holes || null); setRound(x.item);
+    } else setRecent(r => { const n = r.slice(); n.splice(Math.min(x.idx, n.length), 0, x.item); return n; });
+  };
 
   const api = {
     setScore: (id, h, v) => setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })),
@@ -1989,13 +2057,13 @@ export default function App() {
       <style>{CSS}</style>
       {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
       {del && (
-        <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={() => setDel(null)}>
+        <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onPointerDown={() => { armed.current = true; }} onClick={() => ready() && setDel(null)}>
           <div className="sheet card" role="dialog" aria-label="Delete round" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
             <h2 className="h2">Delete this round?</h2>
-            <p className="cap" style={{ marginTop: 3 }}>{del.kind === "round" ? `${round.course.name}, in progress` : `${recent[del.i].course}, ${recent[del.i].when}`}. This can't be undone.</p>
+            <p className="cap" style={{ marginTop: 3 }}>{del.kind === "round" ? `${round.course.name}, in progress` : `${recent[del.i].course}, ${recent[del.i].when}`}. You can restore it from Recently deleted for 5 minutes.</p>
             <div style={{ display: "grid", gap: 6, marginTop: 9 }}>
-              <button className="cta" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={confirmDelete}>Delete round</button>
-              <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => setDel(null)}>Keep it</button>
+              <button className="cta" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => ready() && confirmDelete()}>Delete round</button>
+              <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => ready() && setDel(null)}>Keep it</button>
             </div>
           </div>
         </div>
@@ -2007,7 +2075,7 @@ export default function App() {
       {view === "tabs" && (
         <>
           <div style={{ flex: 1 }}>
-            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => setDel({ kind, i })} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => setView("setup")} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => setView("setup")} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "friends" && <Friends people={people} friendIds={friendIds} setFriendIds={setFriendIds} />}
             {tab === "me" && <Me people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
           </div>
