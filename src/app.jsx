@@ -1,0 +1,2010 @@
+import { useState, useRef } from "react";
+
+/* ───────────── ICONS (inline, no library) ───────────── */
+function Ico({ size = 24, color = "currentColor", children }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" aria-hidden="true" style={{ flex: "none" }}>{children}</svg>;
+}
+function HomeIcon(p) { return <Ico {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M9 22V12h6v10" /></Ico>; }
+function UsersIcon(p) { return <Ico {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Ico>; }
+function UserIcon(p) { return <Ico {...p}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></Ico>; }
+function Plus(p) { return <Ico {...p}><path d="M5 12h14" /><path d="M12 5v14" /></Ico>; }
+function Minus(p) { return <Ico {...p}><path d="M5 12h14" /></Ico>; }
+function Check(p) { return <Ico {...p}><path d="M20 6 9 17l-5-5" /></Ico>; }
+function ChevronLeft(p) { return <Ico {...p}><path d="m15 18-6-6 6-6" /></Ico>; }
+function ChevronRight(p) { return <Ico {...p}><path d="m9 18 6-6-6-6" /></Ico>; }
+function Search(p) { return <Ico {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></Ico>; }
+function X(p) { return <Ico {...p}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></Ico>; }
+function LinkIcon(p) { return <Ico {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></Ico>; }
+function Sparkles(p) { return <Ico {...p}><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" /></Ico>; }
+function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></Ico>; }
+
+/* ───────────── DATA ───────────── */
+const APP_NAME = "Puntaro"; // working title, change here only
+const APP_VERSION = "0.2";
+const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
+const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
+// PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
+const PAR = [...DEF_PAR];
+const SI = [...DEF_SI];
+const applyHoles = holes => range18.forEach(i => { PAR[i] = holes ? holes[i].par : DEF_PAR[i]; SI[i] = holes ? holes[i].si : DEF_SI[i]; });
+// Made-up sample courses. Real courses come from the finder.
+const COURSES = [
+  { id: "pebble", name: "Pebble Hollow", source: "sample", par: 72, holes: null, tees: [{ name: "White", slope: 131, rating: 71.8 }] },
+  { id: "sunrise", name: "Sunrise Links", source: "sample", par: 72, holes: null, tees: [{ name: "White", slope: 118, rating: 69.9 }] },
+  { id: "cedar", name: "Cedar Ridge", source: "sample", par: 72, holes: null, tees: [{ name: "White", slope: 140, rating: 73.4 }] },
+];
+const SAVED_KEY = "puntaro.courses.v1";
+const loadSaved = () => { try { const v = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
+const storeSaved = v => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(v)); } catch (e) { /* private mode: fine */ } };
+const PEOPLE = {
+  me:    { id: "me", name: "You", hi: 14.2, color: "#4F7A5A" },
+  sam:   { id: "sam", name: "Sam", hi: 8.4, color: "#8B6B4A" },
+  priya: { id: "priya", name: "Priya", hi: 19.0, color: "#A5543A" },
+  jake:  { id: "jake", name: "Jake", hi: 11.6, color: "#6F7F73" },
+  maya:  { id: "maya", name: "Maya", hi: 5.2, color: "#9A7650" },
+  leo:   { id: "leo", name: "Leo", hi: 23.5, color: "#5E4636" },
+  dani:  { id: "dani", name: "Dani", hi: 13.1, color: "#3F5F4B" },
+  omar:  { id: "omar", name: "Omar", hi: 21.8, color: "#7A7A72" },
+};
+const STATS = {
+  me:    { month: { avg: 73.4, bird: 3, wins: 5, rounds: 6 }, season: { avg: 74.1, bird: 19, wins: 31, rounds: 38 } },
+  sam:   { month: { avg: 71.9, bird: 5, wins: 4, rounds: 5 }, season: { avg: 72.6, bird: 27, wins: 29, rounds: 34 } },
+  priya: { month: { avg: 74.8, bird: 2, wins: 6, rounds: 7 }, season: { avg: 75.2, bird: 11, wins: 38, rounds: 41 } },
+  jake:  { month: { avg: 73.9, bird: 4, wins: 3, rounds: 4 }, season: { avg: 74.0, bird: 16, wins: 22, rounds: 27 } },
+  maya:  { month: { avg: 70.6, bird: 8, wins: 5, rounds: 6 }, season: { avg: 71.2, bird: 34, wins: 30, rounds: 36 } },
+  leo:   { month: { avg: 76.2, bird: 1, wins: 2, rounds: 3 }, season: { avg: 76.8, bird: 9, wins: 15, rounds: 19 } },
+  dani:  { month: { avg: 72.7, bird: 4, wins: 4, rounds: 5 }, season: { avg: 73.1, bird: 21, wins: 24, rounds: 28 } },
+  omar:  { month: { avg: 75.5, bird: 2, wins: 1, rounds: 4 }, season: { avg: 75.9, bird: 12, wins: 12, rounds: 22 } },
+};
+const METRICS = [
+  { id: "avg", label: "Avg net score", low: true, fmt: v => v.toFixed(1) },
+  { id: "bird", label: "Birdies", fmt: v => v },
+  { id: "wins", label: "Side-game wins", fmt: v => v },
+  { id: "rounds", label: "Rounds", fmt: v => v },
+];
+const GAMES = [
+  { id: "punt", name: "The Punt", blurb: "Bank it or bust it. Net scores, so every handicap has a shot.", hero: true },
+];
+const RECENT = [
+  { course: "Cedar Ridge", when: "Sat", gross: 88, net: 74, note: "Won the back 9" },
+  { course: "Pebble Hollow", when: "Last Sun", gross: 84, net: 71, note: "Won Wolf" },
+  { course: "Sunrise Links", when: "2 weeks ago", gross: 91, net: 77, note: "Rabbit holder at 18" },
+];
+const STAKES = [0, 5, 10, 20, 50];
+const SPLITS = [["win", "Winner takes all"], ["603010", "60/30/10"], ["spoon", "Wooden spoon pays"]];
+
+/* The Punt cards. They only ever move game points, never how a shot is played or counted. */
+const CARDS = {
+  dd:    { name: "Double dip",  kind: "bless", text: "This hole's points count double." },
+  safe:  { name: "Safety net",  kind: "bless", text: "Your next bust is cancelled." },
+  vault: { name: "Bank vault",  kind: "bless", text: "Your next bank keeps your streak." },
+  hot:   { name: "Hot hand",    kind: "bless", text: "Your streak jumps to x2 this hole. Needs net par or better." },
+  life:  { name: "Lifeline",    kind: "bless", text: "+3 points straight into your pot." },
+  tax:   { name: "Taxman",      kind: "curse", text: "Lose 2 points from your pot after this hole." },
+  heavy: { name: "Heavy pot",   kind: "curse", text: "You must bank straight after this hole, and your streak resets." },
+  leaky: { name: "Leaky pot",   kind: "curse", text: "Lose 1 point from your pot at the start of each of the next 3 holes." },
+  shout: { name: "Your shout",  kind: "curse", text: "Give 1 point to each mate, out of your pot." },
+  mine:  { name: "Landmine",    kind: "curse", text: "On this hole, a net bogey busts you." },
+};
+/* Optional bonuses and penalties, logged per player per hole. They only ever move game points. */
+const EVENTS = {
+  sandy:    { kind: "bonus",   name: "Sandy",       tag: "Sandy x2",        hint: "Up and down from a bunker. This hole's points count double." },
+  updown:   { kind: "bonus",   name: "Up and down", tag: "Up and down +2",  hint: "Chip or pitch, then one putt." },
+  chipin:   { kind: "bonus",   name: "Chip-in",     tag: "Chip-in +4",      hint: "Holed it from off the green." },
+  barkie:   { kind: "bonus",   name: "Barkie",      tag: "Barkie +2",       hint: "Hit a tree and still made par." },
+  lost:     { kind: "penalty", name: "Lost ball",   tag: "Lost ball -3",    hint: "Lost it off the tee." },
+  water:    { kind: "penalty", name: "Wet one",     tag: "Wet one -2",      hint: "Found the water." },
+  fourputt: { kind: "penalty", name: "Four putt",   tag: "Four putt: half pot", hint: "Four putts or worse." },
+};
+const BLESSINGS = ["dd", "safe", "vault", "hot", "life"];
+const CURSES = ["tax", "heavy", "leaky", "shout", "mine"];
+
+/* 8-bit sprites. Each row is a line of pixels; letters map to the palette below. */
+const PAL = { o: "#14150F", w: "#EDE8DD", g: "#D9B07A", r: "#B4472E", l: "#8FAE8B", d: "#3E6B4B", m: "#CFC9B8", n: "#7A5232", c: "#4A4D45", s: "#E6D3AE" };
+const SPRITES = {
+  flag: [".w......", ".wrr....", ".wrrrr..", ".wrr....", ".w......", ".w......", ".w......", ".w......", "dlllllld", "dddddddd"],
+  crown: ["g.g.g.g", "ggggggg", "gwgrgwg", "ooooooo"],
+  ball: ["..ooo..", ".owwwo.", "owmwwwo", "owwwmwo", "owmwwwo", ".owwwo.", "..ooo.."],
+  skull: ["..oooo..", ".owwwwo.", "owwwwwwo", "owrwwrwo", "owwwwwwo", ".owwwwo.", ".owowwo.", "..oooo.."],
+  flame: ["...r...", "..rr...", "..rrr..", ".rrrgr.", ".rrggr.", "rrrggrr", "rrrgggr", ".rrrgr.", "..rrr.."],
+  star: ["...g...", "..ggg..", "ggggggg", ".ggggg.", "..ggg..", ".gg.gg.", ".g...g."],
+  c_dd: ["......oooo..", ".....osssso.", "....osssssso", "..ooossmssso", ".owwwwssssso", "owwmwwwsssso", "owwwwwwssso.", "owwwmwwooo..", "owwwwwwo....", ".owwwwo.....", "..oooo......", "............"],
+  c_safe: ["..oooooooo..", ".oddddddddo.", ".odlllllldo.", ".odlwwwwldo.", ".odwwwwwwdo.", ".odwmwwwwdo.", ".odwwwmwwdo.", ".odlwwwwldo.", ".odlllllldo.", "..odlllldo..", "...oddddo...", "....oooo...."],
+  c_vault: ["....oooo....", "..oommmmoo..", ".ommoooommo.", ".ommo..ommo.", ".ommoooommo.", "oggggggggggo", "oggggwwggggo", "ogggwmwwgggo", "ogggwwwmgggo", "oggggwwggggo", "oggggggggggo", ".oooooooooo."],
+  c_hot: ["..o..o..o...", ".ogoogoogo..", ".ogrogrogro.", ".orrorrorro.", ".owwowwowwo.", ".owwowwowwo.", "owwwwwwwwwo.", "owwwwwwwwwo.", ".owwwwwwwwo.", ".occcccccco.", ".ocmmmmmmco.", "..oooooooo.."],
+  c_life: ["...oooooo...", "..oggwwggo..", ".owwggggwwo.", "owwwggggwwwo", "ogggoooogggo", "ogggowwogggo", "ogggowwogggo", "ogggoooogggo", "owwwggggwwwo", ".owwggggwwo.", "..oggwwggo..", "...oooooo..."],
+  c_tax: ["....oooo....", "...occcco...", "..occcccco..", ".oorrrrrroo.", "occcccccccco", ".owwowwowwo.", ".owmwwwwmwo.", ".owwoooowwo.", "..owwwwwwo..", "...owwwwo...", "....oooo....", "............"],
+  c_heavy: [".oo.oo.oo...", "ommonnoggo..", ".omoonoogo..", ".omoonoogo..", ".occcccccco.", ".ocrrrrrrco.", ".occcccccco.", ".occcgcccco.", ".occcccccco.", "..occcccco..", "..occcccco..", "...oooooo..."],
+  c_leaky: ["....oooo....", "...owwwwo...", "..owmwwwwo..", ".owwwwrwwwo.", ".owwwrrwwwo.", ".owmwrwwmwo.", "..owwwwwwo..", "...owwwwo...", "....ooolo...", ".......o....", "......olo...", ".......o...."],
+  c_shout: [".oooooooooo.", "ommmmmmmmmmo", "ommrmmmwwmmo", "ommrmmwwwwmo", "ommrmmwwwwmo", "ommmmmmwwmmo", "ommrmmmmmmmo", "ommmmmmmmmmo", ".ooommmmooo.", "....ommo....", ".....oo.....", "............"],
+  c_ball: ["....oooo....", "...owwwwo...", "..owwwwwwo..", ".owwmwwmwwo.", ".owwwwwwwwo.", ".owmwwwwmwo.", ".owwwmwwwwo.", "..owwwwwwo..", "...owwwwo...", "....onno....", "....onno....", ".....oo....."],
+  c_mine: [".....ooo....", "....orrro...", "....orro....", "...oomooo...", "..occcccco..", ".ocmccccmco.", "omcccrrcccmo", "omcmcrrcccmo", ".occcccccco.", "..occcccco..", "...occcco...", "....oooo...."],
+  rabbit: ["..ww..ww..", "..ww..ww..", "..ww..ww..", "..wwwwww..", ".wwwwwwww.", ".wowwwwow.", ".wwwwrwww.", "..wwwwww..", ".wwwwwwww.", ".ww....ww."],
+};
+function Sprite({ name, size = 4, className, style }) {
+  const rows = SPRITES[name]; const w = rows[0].length, h = rows.length;
+  return (
+    <svg width={w * size} height={h * size} viewBox={`0 0 ${w} ${h}`} shapeRendering="crispEdges" className={className} style={{ display: "block", flex: "none", ...style }} aria-hidden="true">
+      {rows.flatMap((row, y) => [...row].map((c, x) => (c === "." ? null : <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" fill={PAL[c]} />)))}
+    </svg>
+  );
+}
+
+/* ───────────── LOGIC ───────────── */
+const MINUS = "−";
+const fmtPar = n => (n === 0 ? "E" : n > 0 ? `+${n}` : `${MINUS}${Math.abs(n)}`);
+const money = n => "$" + (Number.isInteger(n) ? n : n.toFixed(2));
+// c = { slope, rating, par }. WHS: index x slope/113 + (rating - par)
+const courseHcp = (hi, c) => Math.max(0, Math.round(hi * c.slope / 113 + (c.rating - (c.par ?? 72))));
+const strokesOn = (ch, h) => Math.floor(ch / 18) + (SI[h] <= ch % 18 ? 1 : 0);
+const range18 = [...Array(18).keys()];
+
+const netOf = (r, id, h) => {
+  const s = r.scores[id][h];
+  if (s == null) return null;
+  return s - (r.useHcp ? strokesOn(r.hcp[id], h) : 0);
+};
+const holeDone = (r, h) => r.playerIds.every(id => r.scores[id][h] != null);
+const lowestUnique = (r, h) => {
+  const nets = r.playerIds.map(id => [id, netOf(r, id, h)]);
+  const min = Math.min(...nets.map(n => n[1]));
+  const w = nets.filter(n => n[1] === min);
+  return w.length === 1 ? w[0][0] : null;
+};
+const totalsFor = (r, id) => {
+  let thru = 0, gross = 0, net = 0, grossPar = 0, netPar = 0;
+  range18.forEach(h => {
+    const s = r.scores[id][h];
+    if (s == null) return;
+    thru++; gross += s; grossPar += s - PAR[h];
+    const n = netOf(r, id, h); net += n; netPar += n - PAR[h];
+  });
+  return { thru, gross, net, grossPar, netPar };
+};
+
+function nassauCalc(r) {
+  const t = {};
+  r.playerIds.forEach(id => (t[id] = { front: 0, back: 0 }));
+  range18.forEach(h => {
+    if (!holeDone(r, h)) return;
+    const w = lowestUnique(r, h);
+    if (w) t[w][h < 9 ? "front" : "back"]++;
+  });
+  return t;
+}
+function bbbCalc(r) {
+  const p = {};
+  r.playerIds.forEach(id => (p[id] = 0));
+  r.bbb.forEach(e => e && ["bingo", "bango", "bongo"].forEach(k => e[k] && p[e[k]]++));
+  return p;
+}
+function wolfCalc(r) {
+  const ids = r.playerIds; const pts = {}; const hole = {};
+  ids.forEach(id => (pts[id] = 0));
+  range18.forEach(h => {
+    const c = r.wolf[h];
+    if (!c || !holeDone(r, h)) return;
+    const wolf = ids[h % 4];
+    const team = c === "lone" ? [wolf] : [wolf, c];
+    const others = ids.filter(i => !team.includes(i));
+    const tb = Math.min(...team.map(i => netOf(r, i, h)));
+    const ob = Math.min(...others.map(i => netOf(r, i, h)));
+    if (tb < ob) {
+      if (c === "lone") { pts[wolf] += 4; hole[h] = "Lone wolf wins 4"; }
+      else { team.forEach(i => (pts[i] += 2)); hole[h] = "Wolf team wins 2 each"; }
+    } else if (ob < tb) {
+      others.forEach(i => (pts[i] += 2)); hole[h] = "Pack wins 2 each";
+    } else hole[h] = "Halved";
+  });
+  return { pts, hole };
+}
+function sixesCalc(r) {
+  const ids = r.playerIds;
+  const pairs = [[[0, 1], [2, 3]], [[0, 2], [1, 3]], [[0, 3], [1, 2]]];
+  return pairs.map((pr, s) => {
+    const A = pr[0].map(i => ids[i]); const B = pr[1].map(i => ids[i]);
+    let a = 0, b = 0, done = 0;
+    for (let h = s * 6; h < s * 6 + 6; h++) {
+      if (!holeDone(r, h)) continue;
+      done++;
+      const ba = Math.min(...A.map(i => netOf(r, i, h)));
+      const bb = Math.min(...B.map(i => netOf(r, i, h)));
+      if (ba < bb) a++; else if (bb < ba) b++;
+    }
+    return { A, B, a, b, done };
+  });
+}
+function rabbitCalc(r) {
+  let holder = null, atNine = null, atEighteen = null, current = null;
+  for (let h = 0; h < 18; h++) {
+    if (!holeDone(r, h)) break;
+    const w = lowestUnique(r, h);
+    if (w) holder = w;
+    current = holder;
+    if (h === 8) atNine = holder;
+    if (h === 17) atEighteen = holder;
+  }
+  return { holder: current, atNine, atEighteen };
+}
+
+/* The Punt: net Stableford points go into a pot. Bank to lock them in. Net double bogey or worse busts the pot. */
+const cardHole = h => SI[h] === 1 || SI[h] === 18;
+const cardHoleLabel = h => (SI[h] === 1 ? "Hardest hole on the card." : "Easiest hole on the card.");
+/* seeded random, so a round's draws are fixed once made and can be replayed */
+const mulberry32 = a => () => {
+  a |= 0; a = (a + 0x6D2B79F5) | 0;
+  let t = Math.imul(a ^ (a >>> 15), 1 | a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+/* Everyone draws one card from the mixed deck. With catch-up odds on, the leader draws
+   mostly curses (70%) and last place mostly blessings (70%). Everyone else, and ties, get 50/50. */
+function drawCards(r, h, rng) {
+  const pc = puntCalc(r, h);
+  const totals = r.playerIds.map(id => pc[id].total);
+  const hi = Math.max(...totals), lo = Math.min(...totals);
+  const out = {};
+  r.playerIds.forEach(id => {
+    let pBless = 0.5;
+    if (r.opts.catchup && hi > lo) {
+      if (pc[id].total === hi) pBless = 0.3;
+      else if (pc[id].total === lo) pBless = 0.7;
+    }
+    const deck = rng() < pBless ? BLESSINGS : CURSES;
+    out[id] = deck[Math.floor(rng() * deck.length)];
+  });
+  return out;
+}
+
+function puntCalc(r, upTo = 18) {
+  const ids = r.playerIds;
+  const S = {};
+  ids.forEach(id => (S[id] = { pot: 0, banked: 0, streak: 0, shields: 0, vaults: 0, leak: 0, busts: 0, alive: true,
+    log: [], bustAt: [], multAt: [], evAt: [], potAt: [], streakAt: [] }));
+  for (let h = 0; h < upTo; h++) {
+    const gifts = {}; ids.forEach(id => (gifts[id] = 0));
+    const played = [];
+    ids.forEach(id => {
+      const st = S[id];
+      if (!st.alive) return;
+      if (r.scores[id][h] == null) { st.alive = false; return; }
+      played.push(id);
+      const card = r.opts.cards && r.draws[h] ? r.draws[h][id] || null : null;
+      const evs = (r.events[id] && r.events[id][h]) || {};
+      const diff = netOf(r, id, h) - PAR[h];
+      let bonus = 0, penalty = 0, note = "";
+      /* a leaky pot drips 1 point at the start of each of the three holes after it was drawn */
+      if (st.leak > 0) { if (st.pot > 0) { st.pot -= 1; note = "Leak -1. "; } st.leak--; }
+      if (card === "safe") st.shields++;
+      if (card === "vault") st.vaults++;
+      if (card === "hot") st.streak = Math.max(st.streak, 2);
+      if (diff >= (card === "mine" ? 1 : 2)) {
+        if (st.shields > 0) { st.shields--; st.log[h] = note + "Safety net saved the pot"; }
+        else { st.bustAt[h] = { lost: st.pot }; st.log[h] = note + (st.pot > 0 ? `Bust. Lost ${st.pot}` : "Bust"); st.pot = 0; st.streak = 0; st.busts++; }
+      } else {
+        const base = diff <= -2 ? 4 : diff === -1 ? 3 : diff === 0 ? 2 : 1;
+        st.streak = diff <= 0 ? st.streak + 1 : 0;
+        const mult = st.streak >= 5 ? 3 : st.streak >= 3 ? 2 : 1;
+        st.multAt[h] = mult;
+        const sandy = r.opts.bonuses && evs.sandy && diff <= 0 ? 2 : 1;
+        const core = base * mult * (card === "dd" ? 2 : 1);
+        const pts = core * sandy;
+        let flat = 0;
+        if (r.opts.bonuses) {
+          if (evs.updown && diff <= 0) flat += 2;
+          if (evs.barkie && diff <= 0) flat += 2;
+          if (evs.chipin) flat += 4;
+        }
+        if (r.opts.ntp && PAR[h] === 3 && r.ntp[h] === id && r.ntpOk[h]) flat += 3;
+        st.pot += pts + flat; bonus = pts - core + flat;
+        st.log[h] = note + `+${pts + flat}` + (mult > 1 ? ` (x${mult} streak)` : "") + (card === "dd" ? " (double dip)" : "") + (sandy > 1 ? " (sandy x2)" : "") + (flat > 0 ? ` (bonus +${flat})` : "");
+      }
+      if (card === "life") { st.pot += 3; st.log[h] += ", lifeline +3"; }
+      if (r.opts.penalties) {
+        const before = st.pot;
+        if (evs.lost) st.pot = Math.max(0, st.pot - 3);
+        if (evs.water) st.pot = Math.max(0, st.pot - 2);
+        if (evs.fourputt) st.pot = Math.floor(st.pot / 2);
+        penalty = before - st.pot;
+        if (penalty > 0) st.log[h] += `, penalty -${penalty}`;
+      }
+      if (bonus > 0 || penalty > 0) st.evAt[h] = { bonus, penalty };
+      if (card === "shout") {
+        let given = 0;
+        ids.forEach(m => { if (m !== id && st.pot > 0 && r.scores[m][h] != null) { st.pot -= 1; gifts[m] += 1; given++; } });
+        if (given > 0) st.log[h] += `, shouted ${given}`;
+      }
+      if (card === "tax") { st.pot = Math.max(0, st.pot - 2); st.log[h] += ", taxed 2"; }
+      if (card === "leaky") st.leak = 3;
+      st.potAt[h] = st.pot; st.streakAt[h] = st.streak;
+      if (h === 17 || card === "heavy" || r.bank[id][h]) {
+        if (st.pot > 0) {
+          st.log[h] += `, banked ${st.pot}`;
+          if (h !== 17) {
+            if (st.vaults > 0) { st.vaults--; st.log[h] += ", vault kept your streak"; }
+            else { st.streak = 0; st.log[h] += ", streak reset"; }
+          }
+        }
+        st.banked += st.pot; st.pot = 0;
+      }
+    });
+    played.forEach(id => { S[id].pot += gifts[id]; });
+  }
+  const out = {};
+  ids.forEach(id => {
+    const st = S[id];
+    const mult = st.streak >= 5 ? 3 : st.streak >= 3 ? 2 : 1;
+    out[id] = { pot: st.pot, banked: st.banked, total: st.banked + st.pot, streak: st.streak, mult, shields: st.shields, vaults: st.vaults, leak: st.leak,
+      busts: st.busts, log: st.log, bustAt: st.bustAt, multAt: st.multAt, evAt: st.evAt, potAt: st.potAt, streakAt: st.streakAt };
+  });
+  return out;
+}
+
+function countEvents(r, id) {
+  let b = 0, p = 0;
+  (r.events[id] || []).forEach(e => {
+    if (!e) return;
+    Object.keys(e).forEach(k => { if (e[k]) { if (EVENTS[k].kind === "bonus") b++; else p++; } });
+  });
+  const ntpWins = r.opts.ntp ? r.ntp.filter((w, h) => w === id && PAR[h] === 3 && r.ntpOk[h]).length : 0;
+  return { b: (r.opts.bonuses ? b : 0) + ntpWins, p: r.opts.penalties ? p : 0 };
+}
+const tally = (st, c) => [
+  st.busts === 0 ? "No busts" : st.busts === 1 ? "1 bust" : `${st.busts} busts`,
+  c.b ? `${c.b} bonus${c.b > 1 ? "es" : ""}` : null,
+  c.p ? `${c.p} penalt${c.p > 1 ? "ies" : "y"}` : null,
+].filter(Boolean).join(", ");
+
+function payouts(r, ranked) {
+  const n = ranked.length; const pool = r.stake * n; const pay = {};
+  ranked.forEach(id => (pay[id] = 0));
+  if (r.stake === 0) return pay;
+  if (r.split === "win") pay[ranked[0]] = pool;
+  else if (r.split === "603010") {
+    const sh = n >= 3 ? [0.6, 0.3, 0.1] : [0.7, 0.3];
+    sh.forEach((s, i) => (pay[ranked[i]] = Math.round(pool * s * 100) / 100));
+  } else {
+    const last = ranked[n - 1];
+    const share = Math.floor((r.stake + r.stake / (n - 1)) * 100) / 100;
+    ranked.forEach(id => { if (id !== last) pay[id] = share; });
+  }
+  /* any stray cents from rounding go to first place, so the pool always adds up */
+  const paid = ranked.reduce((a, id) => a + pay[id], 0);
+  pay[ranked[0]] = Math.round((pay[ranked[0]] + (pool - paid)) * 100) / 100;
+  return pay;
+}
+function settle(nets) {
+  const d = [], c = [];
+  Object.entries(nets).forEach(([id, v]) => {
+    const x = Math.round(v * 100) / 100;
+    if (x < 0) d.push([id, -x]); else if (x > 0) c.push([id, x]);
+  });
+  const out = []; let i = 0, j = 0;
+  while (i < d.length && j < c.length) {
+    const amt = Math.min(d[i][1], c[j][1]);
+    out.push([d[i][0], c[j][0], Math.round(amt * 100) / 100]);
+    d[i][1] = Math.round((d[i][1] - amt) * 100) / 100;
+    c[j][1] = Math.round((c[j][1] - amt) * 100) / 100;
+    if (d[i][1] === 0) i++;
+    if (c[j][1] === 0) j++;
+  }
+  return out;
+}
+
+function summarize(r, people, gid) {
+  const n = id => people[id].name;
+  const top = pts => {
+    const m = Math.max(...Object.values(pts));
+    if (m === 0) return "No points yet";
+    return Object.keys(pts).filter(k => pts[k] === m).map(n).join(" & ") + ` (${m})`;
+  };
+  if (gid === "nassau") {
+    const t = nassauCalc(r);
+    const f = {}, b = {}, o = {};
+    r.playerIds.forEach(id => { f[id] = t[id].front; b[id] = t[id].back; o[id] = t[id].front + t[id].back; });
+    return [["Front 9", top(f)], ["Back 9", top(b)], ["Overall", top(o)]];
+  }
+  if (gid === "bbb") return [["Most points", top(bbbCalc(r))]];
+  if (gid === "wolf") return [["Most points", top(wolfCalc(r).pts)]];
+  if (gid === "sixes")
+    return sixesCalc(r).map((s, i) => [
+      `Holes ${i * 6 + 1} to ${i * 6 + 6}`,
+      s.a === s.b ? `Tied ${s.a} to ${s.b}` : `${(s.a > s.b ? s.A : s.B).map(n).join(" & ")} win ${Math.max(s.a, s.b)} to ${Math.min(s.a, s.b)}`,
+    ]);
+  if (gid === "rabbit") {
+    const x = rabbitCalc(r);
+    return [["Held at 9", x.atNine ? n(x.atNine) : "Nobody"], ["Held at 18", x.atEighteen ? n(x.atEighteen) : "Nobody"]];
+  }
+  return [];
+}
+
+function buildRound(cfg, people, seed) {
+  let course = cfg.course;
+  let holes = cfg.holes || null;
+  if (!course) { // older callers pass courseId
+    const c = COURSES.find(x => x.id === cfg.courseId);
+    course = { name: c.name, tee: c.tees[0].name, slope: c.tees[0].slope, rating: c.tees[0].rating, par: c.par };
+    holes = c.holes;
+  }
+  applyHoles(holes);
+  const hcp = {}; const scores = {}; const bank = {}; const events = {};
+  cfg.playerIds.forEach(id => {
+    hcp[id] = courseHcp(people[id].hi, course);
+    scores[id] = Array(18).fill(null);
+    bank[id] = Array(18).fill(false);
+    events[id] = Array(18).fill(null);
+  });
+  const r = {
+    course, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
+    opts: cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true },
+    draws: Array(18).fill(null), seen: Array(18).fill(false), drawSeed: seed ? 20241024 : Math.floor(Math.random() * 1e9),
+    ntp: Array(18).fill(null),
+    ntpOk: Array(18).fill(false),
+    stake: cfg.stake ?? 0, split: cfg.split || "603010",
+    wolf: Array(18).fill(null), bbb: Array(18).fill(null), hole: 0,
+  };
+  if (seed) {
+    const off = { me: [0, 1, 0, -1, 1, 0], sam: [0, 0, 1, 0, 0, 1], priya: [1, 1, 0, 1, 2, 0], jake: [1, 0, 0, 0, 1, -1] };
+    Object.keys(off).forEach(id => off[id].forEach((o, h) => (r.scores[id][h] = PAR[h] + o)));
+    r.wolf = ["sam", "lone", "jake", "lone", "priya", "jake", ...Array(12).fill(null)];
+    const B = (a, b, c) => ({ bingo: a, bango: b, bongo: c });
+    r.bbb = [B("sam", "me", "sam"), B("me", "me", "jake"), B("priya", "priya", "priya"), B("jake", "sam", "me"), B("sam", "me", "priya"), B("jake", "jake", "jake"), ...Array(12).fill(null)];
+    r.bank.sam[2] = true; r.bank.jake[4] = true;
+    r.events.me[3] = { chipin: true }; r.events.sam[0] = { sandy: true }; r.events.priya[4] = { lost: true }; r.events.jake[1] = { water: true };
+    r.ntp[2] = "me"; r.ntpOk[2] = true;
+    r.hole = 6; r.seen[3] = true;
+  }
+  if (r.opts.cards) range18.forEach(h => { if (cardHole(h) && h <= r.hole) r.draws[h] = drawCards(r, h, mulberry32(r.drawSeed + h * 977)); });
+  return r;
+}
+
+/* ───────────── SMALL PARTS ───────────── */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+.sg{--ink:#242622;--muted:#6E6A5E;--chalk:#E7E2D5;--card:#F4F0E6;--sel:#D3DACB;--night:#2A2C28;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C7BFAB;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
+.sg.dark{--ink:#E8E3D6;--muted:#9B968A;--chalk:#1B1C1A;--card:#252724;--sel:#2C4033;--night:#454841;--pine:#4F7A5A;--fair:#7FA886;--lime:#E0C799;--red:#CC5A3E;--bogey:#CC5A3E;--line:#383A35;--track:#1B1C1A;--head1:#2C4536;--head2:#27402F;--grid:rgba(232,227,214,.03);--on-bg:#C69C6D;--on-fg:#1B1C1A;}
+.sg{font-family:'Pixelify Sans',ui-monospace,monospace;font-size:13px;line-height:1.22;letter-spacing:-.01em;color:var(--ink);background-color:var(--chalk);
+ background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:8px 8px;
+ font-variant-numeric:tabular-nums;max-width:430px;margin:0 auto;min-height:100vh;position:relative;display:flex;flex-direction:column;}
+.sg *{box-sizing:border-box;border-radius:0 !important;}
+.sg h1,.sg h2,.sg h3,.sg p{margin:0;}
+.sg h1,.sg h2,.sg h3,.sg .px,.sg .cta{font-weight:700 !important;letter-spacing:0 !important;}
+.sg h1{font-size:22px !important;line-height:1.15 !important;}
+.sg h2,.sg .h2{font-size:15px !important;line-height:1.2 !important;}
+.sg h3{font-size:13px !important;line-height:1.2 !important;}
+.sg button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;-webkit-tap-highlight-color:transparent;}
+.sg button:focus-visible{outline:3px solid var(--water);outline-offset:2px;}
+.sg svg{shape-rendering:crispEdges;}
+.sg svg *{stroke-linecap:square;stroke-linejoin:miter;}
+.stripes{background:repeating-linear-gradient(90deg,var(--head1) 0 32px,var(--head2) 32px 64px);border-bottom:4px solid var(--night);color:var(--hi);}
+.card{background:var(--card);border:3px solid var(--night);box-shadow:3px 3px 0 var(--night);}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;font-weight:600;font-size:11px;color:var(--dk);border:2px solid var(--night);}
+.stripes .pill{color:var(--hi);}
+.chip{border:2px solid var(--night);background:var(--card);color:var(--ink);padding:2px 8px;font-weight:600;font-size:13px;white-space:nowrap;box-shadow:2px 2px 0 var(--night);}
+.chip.on{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg);box-shadow:none;transform:translate(2px,2px);}
+.cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;font-size:15px !important;background:var(--on-bg);color:var(--on-fg);border:3px solid var(--on-bg);box-shadow:0 3px 0 var(--fair);}
+.cta:active{transform:translateY(3px);box-shadow:none;}
+.cta:disabled{opacity:.4;cursor:not-allowed;}
+.cap{font-size:11.5px;color:var(--muted);line-height:1.22;}
+.scrollx{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 16px 5px;margin:0 -16px;}
+.scrollx::-webkit-scrollbar{display:none;}
+.tile{width:40px;height:40px;background:var(--dk);display:grid;place-items:center;flex:none;}
+.holdfill{position:absolute;left:0;top:0;bottom:0;background:var(--red);opacity:.35;pointer-events:none;animation:holdfill .6s steps(6) forwards;}
+@keyframes holdfill{from{width:0}to{width:100%}}
+.is-bust{color:#fff;}
+.is-bust .cap{color:#fff;}
+.hot{color:var(--dk);}
+.hot .cap{color:var(--dk);}
+.pop{display:inline-block;animation:pop .25s steps(4);}
+@keyframes pop{0%{transform:scale(.6)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+.sheet{animation:up .25s steps(5);}
+@keyframes up{from{transform:translateY(40px)}to{transform:none}}
+@keyframes flip{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.reveal{transform-origin:top;animation:flip .35s steps(5);}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+@keyframes bustflash{0%,100%{background:var(--red)}50%{background:var(--dk)}}
+.bust{animation:shake .5s steps(8) 1,bustflash .3s steps(1) 5;}
+@keyframes hotflash{0%{background:var(--flag)}50%{background:var(--lime)}}
+.hot{animation:hotflash .7s steps(1) infinite;}
+@keyframes beat{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
+.beat{display:inline-block;animation:beat .6s steps(2) infinite;}
+@keyframes flick{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.flick{animation:flick .5s steps(2) infinite;}
+@keyframes blink{50%{opacity:0}}
+.blink{animation:blink .8s steps(1) infinite;}
+.pcard{--cw:76px;--n:calc(var(--cw)*.05);--rx:0deg;--ry:0deg;--edge:#D9B07A;--bg:#2F4A3A;--band:#1F3A2B;--art1:#3E6B4B;--art2:#365F44;
+ position:relative;width:var(--cw);height:calc(var(--cw)*1.36);flex:none;perspective:700px;transform:rotate(var(--rot,0deg));}
+.pcard.curse{--edge:#B4472E;--bg:#2A2C28;--band:#16110F;--art1:#3A302B;--art2:#2F2622;}
+.pcard:not(.still){animation:bob 2.6s steps(4) infinite;animation-delay:var(--d,0s);}
+@keyframes bob{0%,100%{translate:0 0}50%{translate:0 -3px}}
+.pc-tilt{position:absolute;inset:0;transform:rotateX(var(--rx)) rotateY(var(--ry));transform-style:preserve-3d;transition:transform .15s steps(3);}
+.pc-flip{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .45s steps(6);}
+.pcard.down .pc-flip{transform:rotateY(180deg);}
+.pc-face,.pc-in{clip-path:polygon(var(--n) 0,calc(100% - var(--n)) 0,calc(100% - var(--n)) var(--n),100% var(--n),100% calc(100% - var(--n)),calc(100% - var(--n)) calc(100% - var(--n)),calc(100% - var(--n)) 100%,var(--n) 100%,var(--n) calc(100% - var(--n)),0 calc(100% - var(--n)),0 var(--n),var(--n) var(--n));}
+.pc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:var(--edge);}
+.pc-back{transform:rotateY(180deg);}
+.pc-in{position:absolute;inset:calc(var(--cw)*.045);display:flex;flex-direction:column;background:var(--bg);overflow:hidden;}
+.pc-name{height:calc(var(--cw)*.2);flex:none;display:grid;place-items:center;background:var(--band);color:#EDE8DD;font-weight:700;font-size:calc(var(--cw)*.135);white-space:nowrap;line-height:1;}
+.pc-art{flex:1;display:grid;place-items:center;background-color:var(--art1);background-image:linear-gradient(45deg,var(--art2) 25%,transparent 25%,transparent 75%,var(--art2) 75%),linear-gradient(45deg,var(--art2) 25%,transparent 25%,transparent 75%,var(--art2) 75%);background-size:calc(var(--cw)*.1) calc(var(--cw)*.1);background-position:0 0,calc(var(--cw)*.05) calc(var(--cw)*.05);}
+.pc-art svg{filter:drop-shadow(0 calc(var(--cw)*.03) 0 rgba(0,0,0,.45));}
+.pc-kind{height:calc(var(--cw)*.17);flex:none;display:grid;place-items:center;background:var(--edge);color:#14150F;font-weight:700;font-size:calc(var(--cw)*.105);line-height:1;}
+.pcard.mini .pc-name,.pcard.mini .pc-kind{display:none;}
+.pc-fx{position:absolute;inset:0;pointer-events:none;}
+.pcard.bless .pc-fx{background:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.38) 50%,transparent 58%);background-size:260% 100%;background-position:150% 0;animation:shine 3.2s steps(14) infinite;animation-delay:var(--d,0s);}
+@keyframes shine{0%{background-position:150% 0}45%,100%{background-position:-60% 0}}
+.pcard.curse .pc-fx{background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);animation:glitch 3.4s steps(1) infinite;animation-delay:var(--d,0s);}
+@keyframes glitch{0%,88%,100%{transform:translateX(0);opacity:1}90%{transform:translateX(-2px);opacity:.6}93%{transform:translateX(2px);opacity:1}}
+.pc-back .pc-in{background-color:#2A4535;background-image:repeating-linear-gradient(45deg,#2F4A3A 0 4px,#294133 4px 8px);align-items:center;justify-content:center;box-shadow:inset 0 0 0 calc(var(--cw)*.03) #14150F;}
+@media (prefers-reduced-motion:reduce){.pc-flip,.pc-tilt{transition:none !important;}}
+@media (prefers-reduced-motion:reduce){.sg *{animation:none !important;}}
+`;
+
+function Avatar({ p, size = 38, ring }) {
+  return (
+    <div style={{ width: size, height: size, background: p.color, color: "#fff", display: "grid", placeItems: "center", fontWeight: 700,
+      fontSize: Math.max(10, Math.round(size * 0.5)), flex: "none", border: "3px solid var(--night)", boxShadow: ring ? "0 0 0 3px var(--card), 0 0 0 6px var(--night)" : "none" }}>
+      {p.name[0]}
+    </div>
+  );
+}
+
+/* Birdies are chamfered "round" boxes, bogeys are square. Doubles get a second ring. */
+const CH = "polygon(25% 0,75% 0,100% 25%,100% 75%,75% 100%,25% 100%,0 75%,0 25%)";
+function ScoreMark({ v, par, size = 50 }) {
+  const wrap = { width: size, height: size, display: "grid", placeItems: "center", flex: "none" };
+  if (v == null) return <div style={{ ...wrap, fontSize: 20, fontWeight: 700, color: "var(--muted)" }}>–</div>;
+  const d = v - par;
+  const g = "var(--fair)", r = "var(--red)", m = "var(--mint)", w = "var(--card)";
+  const layers = d <= -2 ? [[46, g], [41, w], [36, g], [31, m]] : d === -1 ? [[41, g], [36, m]] : d === 1 ? [[41, r], [36, w]] : d >= 2 ? [[46, r], [41, w], [36, r], [31, w]] : [];
+  const birdie = d < 0;
+  const num = <span key={v} className="pop" style={{ fontWeight: 700, fontSize: 16, lineHeight: 1, color: d > 0 ? "var(--red)" : d < 0 ? "var(--dk)" : "var(--ink)" }}>{v}</span>;
+  const art = layers.reduceRight((child, [sz, bg]) => (
+    <div style={{ width: sz, height: sz, background: bg, clipPath: birdie ? CH : "none", display: "grid", placeItems: "center" }}>{child}</div>
+  ), num);
+  return <div style={wrap}>{art}</div>;
+}
+
+function Toggle({ on, onChange }) {
+  return (
+    <button onClick={() => onChange(!on)} role="switch" aria-checked={on}
+      style={{ width: 52, height: 30, borderRadius: 999, background: on ? "var(--fair)" : "var(--muted)", position: "relative", flex: "none", transition: "background .15s" }}>
+      <span style={{ position: "absolute", top: 3, left: on ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+    </button>
+  );
+}
+
+function PointsList({ round, people, pts }) {
+  const rows = round.playerIds.map(id => ({ id, v: pts[id] })).sort((a, b) => b.v - a.v);
+  const max = Math.max(1, ...rows.map(r => r.v));
+  return (
+    <div style={{ display: "grid", gap: 8, marginTop: 9 }}>
+      {rows.map(r => (
+        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Avatar p={people[r.id]} size={24} />
+          <div style={{ width: 52, fontWeight: 600, fontSize: 13 }}>{people[r.id].name}</div>
+          <div style={{ flex: 1, height: 10, background: "var(--track)", borderRadius: 99 }}>
+            <div style={{ width: `${(r.v / max) * 100}%`, height: "100%", borderRadius: 99, background: r.v === max && max > 0 ? "var(--fair)" : "var(--lime)", transition: "width .25s" }} />
+          </div>
+          <div style={{ width: 24, textAlign: "right", fontWeight: 800 }}>{r.v}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PickRow({ label, hint, ids, people, value, onPick }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "8px 0" }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>{label}</div>
+        <div className="cap">{hint}</div>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {ids.map(id => (
+          <button key={id} onClick={() => onPick(id)} aria-label={`${label}: ${people[id].name}`} aria-pressed={value === id}
+            style={{ opacity: value && value !== id ? 0.35 : 1 }}>
+            <Avatar p={people[id]} size={31} ring={value === id} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const CARD_ART = { dd: "c_dd", safe: "c_safe", vault: "c_vault", hot: "c_hot", life: "c_life", tax: "c_tax", heavy: "c_heavy", leaky: "c_leaky", shout: "c_shout", mine: "c_mine" };
+
+/* A Balatro-style card: notched pixel edges, tilts toward your finger, flips over, shimmers (blessings) or flickers (curses). */
+function PCard({ id, cw = 76, down = false, still = false, rot = 0, delay = 0 }) {
+  const ref = useRef(null);
+  const c = CARDS[id];
+  const ps = Math.max(2, Math.floor(cw * 0.07));
+  const tilt = e => {
+    const el = ref.current; if (!el) return;
+    const b = el.getBoundingClientRect();
+    el.style.setProperty("--ry", `${((e.clientX - b.left) / b.width - 0.5) * 26}deg`);
+    el.style.setProperty("--rx", `${-((e.clientY - b.top) / b.height - 0.5) * 26}deg`);
+  };
+  const rest = () => { const el = ref.current; if (el) { el.style.setProperty("--rx", "0deg"); el.style.setProperty("--ry", "0deg"); } };
+  return (
+    <div ref={ref} className={`pcard ${c.kind} ${cw < 56 ? "mini" : ""} ${still ? "still" : ""} ${down ? "down" : ""}`}
+      onPointerMove={tilt} onPointerLeave={rest} onPointerUp={rest} role="img"
+      aria-label={down ? "Face-down card" : `${c.name}, ${c.kind === "bless" ? "blessing" : "curse"}. ${c.text}`}
+      style={{ "--cw": `${cw}px`, "--rot": `${rot}deg`, "--d": `${delay}s` }}>
+      <div className="pc-tilt"><div className="pc-flip">
+        <div className="pc-face pc-front"><div className="pc-in">
+          <div className="pc-name">{c.name}</div>
+          <div className="pc-art"><Sprite name={CARD_ART[id]} size={ps} /></div>
+          <div className="pc-kind">{c.kind === "bless" ? "Blessing" : "Curse"}</div>
+          <div className="pc-fx" />
+        </div></div>
+        <div className="pc-face pc-back"><div className="pc-in"><Sprite name="c_ball" size={ps} /></div></div>
+      </div></div>
+    </div>
+  );
+}
+
+function CardZoom({ id, who, onClose }) {
+  const c = CARDS[id];
+  return (
+    <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "grid", placeItems: "center", background: "rgba(0,0,0,.75)" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-label={c.name} style={{ display: "grid", justifyItems: "center", gap: 14, padding: 16 }}>
+        <PCard id={id} cw={180} rot={-2} />
+        <div className="card" style={{ padding: "8px 12px", maxWidth: 300, boxShadow: "none", textAlign: "center" }}>
+          <div className="cap">{who ? `${who} drew` : c.kind === "bless" ? "Blessing" : "Curse"}</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>
+          <div>{c.text}</div>
+        </div>
+        <button className="chip" onClick={onClose} style={{ padding: "4px 18px" }}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+/* Shown the first time you open a card hole: everyone's card starts face down. */
+function CardReveal({ round, people, h, onDone }) {
+  const ids = round.playerIds; const draw = round.draws[h];
+  const [up, setUp] = useState({});
+  const allUp = ids.every(id => up[id]);
+  const cw = ids.length > 3 ? 82 : 100;
+  return (
+    <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 35, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.75)" }}>
+      <div className="sheet card" role="dialog" aria-label="Draw your cards" style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "92vh", overflowY: "auto" }}>
+        <h2 className="h2">{SI[h] === 1 ? "Hardest" : "Easiest"} hole: the cards are out</h2>
+        <p className="cap" style={{ marginTop: 3 }}>{allUp ? "Banks are locked. Here's what everyone drew." : "Tap a card to flip it, or flip them all."}</p>
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, margin: "16px 0 8px", flexWrap: "wrap" }}>
+          {ids.map((id, i) => (
+            <button key={id} onClick={() => setUp(u => ({ ...u, [id]: true }))} aria-label={`${people[id].name}: ${up[id] ? CARDS[draw[id]].name : "flip card"}`} style={{ display: "grid", justifyItems: "center", gap: 6 }}>
+              <PCard id={draw[id]} cw={cw} down={!up[id]} rot={(i - (ids.length - 1) / 2) * 4} delay={i * 0.35} />
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}><Avatar p={people[id]} size={18} /><span style={{ fontWeight: 700, fontSize: 12 }}>{people[id].name}</span></div>
+            </button>
+          ))}
+        </div>
+        {allUp && (
+          <div style={{ marginTop: 6 }}>
+            {ids.map((id, i) => {
+              const k = CARDS[draw[id]];
+              return (
+                <div key={id} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "5px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                  <span style={{ fontWeight: 700, minWidth: 46 }}>{people[id].name}</span>
+                  <span><b style={{ color: k.kind === "bless" ? "var(--fair)" : "var(--red)" }}>{k.name}.</b> {k.text}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ marginTop: 10 }}>
+          {allUp
+            ? <button className="cta" onClick={onDone}>Let's play</button>
+            : <button className="cta" onClick={() => setUp(Object.fromEntries(ids.map(i => [i, true])))}>Flip all</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniBoard({ title, sub, rows, people }) {
+  return (
+    <div style={{ border: "3px solid var(--night)", padding: "8px 9px", background: "var(--card)" }}>
+      <div style={{ fontWeight: 800, fontSize: 13 }}>{title}</div>
+      <div className="cap" style={{ marginBottom: 5 }}>{sub}</div>
+      {rows.map(([id, text], i) => (
+        <div key={id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 0" }}>
+          <span style={{ width: 14, fontWeight: 800, fontSize: 11, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i + 1}</span>
+          <Avatar p={people[id]} size={20} />
+          <span style={{ flex: 1, fontWeight: 600, fontSize: 12 }}>{people[id].name}</span>
+          <span style={{ fontWeight: 800, fontSize: 12 }}>{text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ───────────── GAME PANELS (live round) ───────────── */
+function GamePanel({ gid, round, people, h, api }) {
+  const [open, setOpen] = useState(null);
+  const [zoom, setZoom] = useState(null);
+  const ids = round.playerIds;
+  const done = holeDone(round, h);
+  const meta = GAMES.find(g => g.id === gid);
+
+  if (gid === "punt") {
+    const pc = puntCalc(round);
+    const avail = Object.keys(EVENTS).filter(k => (EVENTS[k].kind === "bonus" ? round.opts.bonuses : round.opts.penalties));
+    const puntRank = [...ids].sort((a, b) => pc[b].total - pc[a].total).map(id => [id, `${pc[id].total} pts`]);
+    const compRank = [...ids].map(id => ({ id, t: totalsFor(round, id) })).sort((a, b) => (round.useHcp ? a.t.netPar - b.t.netPar : a.t.grossPar - b.t.grossPar))
+      .map(x => [x.id, x.t.thru === 0 ? "–" : fmtPar(round.useHcp ? x.t.netPar : x.t.grossPar)]);
+    return (
+      <div>
+        <p className="cap">Net Stableford points drop into your pot. Bank to lock them in, but banking resets your streak. A net double bogey or worse busts the pot. Three net pars or better in a row doubles your points, five in a row triples them.</p>
+        {round.opts.ntp && PAR[h] === 3 && (
+          <div className="card" style={{ marginTop: 6, padding: "2px 8px 6px", boxShadow: "3px 3px 0 var(--night)" }}>
+            <PickRow label="Nearest the pin" hint="Must be on the green or fringe." ids={ids} people={people} value={round.ntp[h]} onPick={id => api.setNtp(h, id)} />
+            {round.ntp[h] && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button className={`chip ${round.ntpOk[h] ? "on" : ""}`} aria-pressed={!!round.ntpOk[h]} onClick={() => api.setNtpOk(h)} style={{ padding: "1px 6px", fontSize: 12 }}>
+                  {round.ntpOk[h] ? "On the green or fringe" : "Confirm: on the green or fringe"}
+                </button>
+                <span className="cap">{round.ntpOk[h] ? "+3 to their pot" : "No points until confirmed"}</span>
+              </div>
+            )}
+          </div>
+        )}
+        <div>
+          {ids.map((id, i) => {
+            const s = pc[id]; const c = round.opts.cards && round.draws[h] ? round.draws[h][id] : null; const heavy = c === "heavy";
+            const locked = round.opts.cards && round.draws[h + 1] != null && !heavy;
+            const banking = heavy || round.bank[id][h];
+            const bust = s.bustAt[h]; const hot = !bust && s.mult > 1;
+            const evs = (round.events[id] && round.events[id][h]) || {};
+            const active = avail.filter(k => evs[k]);
+            const eff = s.evAt[h];
+            return (
+              <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`}
+                style={{ padding: 8, marginTop: 8, boxShadow: "3px 3px 0 var(--night)", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Avatar p={people[id]} size={26} />
+                  <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
+                  <div style={{ textAlign: "right", minWidth: 62 }}><span className={hot ? "beat" : ""} style={{ fontWeight: 800, fontSize: 17 }}>{s.pot}</span><span className="cap"> in pot</span></div>
+                  <div style={{ textAlign: "right", minWidth: 72 }}><span style={{ fontWeight: 800, fontSize: 17 }}>{s.banked}</span><span className="cap"> banked</span></div>
+                </div>
+                {bust && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                    <Sprite name="skull" size={4} className="flick" />
+                    <div className="px blink" style={{ fontSize: 16 }}>BUST!</div>
+                    <div style={{ marginLeft: "auto", fontWeight: 700 }}>{bust.lost > 0 ? `Lost ${bust.lost}` : "Pot was empty"}</div>
+                  </div>
+                )}
+                {hot && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                    {Array.from({ length: s.mult }).map((_, k) => <Sprite key={k} name="flame" size={4} className="flick" />)}
+                    <div className="px" style={{ fontSize: 15 }}>x{s.mult} streak</div>
+                    <div className="cap" style={{ marginLeft: "auto" }}>{s.streak} in a row</div>
+                  </div>
+                )}
+                {eff && (eff.bonus > 0 || eff.penalty > 0) && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                    {eff.bonus > 0 && <span className="pill beat" style={{ background: "var(--dk)", color: "var(--lime)", borderColor: "var(--dk)", fontSize: 13 }}><Sprite name="star" size={2} />Bonus +{eff.bonus}</span>}
+                    {eff.penalty > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 13 }}>Penalty -{eff.penalty}</span>}
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  {!hot && !bust && <span className="cap">Streak {s.streak}</span>}
+                  {banking && <span className="cap">{s.vaults > 0 ? "Vault keeps your streak" : "Streak resets"}</span>}
+                  {s.shields > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Safety net held</span>}
+                  {s.vaults > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Vault held</span>}
+                  {s.leak > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 11 }}>Leaking {s.leak}</span>}
+                  <button className={`chip ${banking ? "on" : ""}`} disabled={heavy || locked} aria-pressed={banking}
+                    onClick={() => api.setBank(id, h, !round.bank[id][h])} style={{ marginLeft: "auto", padding: "2px 7px", fontSize: 12, opacity: heavy || locked ? 0.7 : 1 }}>
+                    {heavy ? "Forced bank" : locked ? (banking ? "Banked. Locked" : "Bank locked") : banking ? "Banking after hole" : "Bank after hole"}
+                  </button>
+                </div>
+                {avail.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                      {active.map(k => (
+                        <span key={k} className="pill" style={{ background: EVENTS[k].kind === "bonus" ? "var(--lime)" : "var(--red)", color: EVENTS[k].kind === "bonus" ? "var(--dk)" : "#fff", fontSize: 11 }}>{EVENTS[k].name}</span>
+                      ))}
+                      <button className="chip" aria-expanded={open === id} onClick={() => setOpen(open === id ? null : id)} style={{ padding: "1px 6px", fontSize: 12, marginLeft: active.length ? 0 : "auto" }}>
+                        {open === id ? "Done" : "+ Bonus or penalty"}
+                      </button>
+                    </div>
+                    {open === id && (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {avail.map(k => {
+                            const on = !!evs[k]; const pen = EVENTS[k].kind === "penalty";
+                            return (
+                              <button key={k} className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => api.setEvent(id, h, k)}
+                                style={{ padding: "1px 6px", fontSize: 12, ...(on && pen ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : {}) }}>
+                                {EVENTS[k].tag}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {round.opts.bonuses && <p className="cap" style={{ marginTop: 5 }}>Sandy, up and down and barkie only count if you made net par or better.</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {c && (
+                  <div style={{ marginTop: 6, padding: 6, display: "flex", gap: 8, alignItems: "center", border: "2px solid var(--night)", background: CARDS[c].kind === "bless" ? "var(--mint)" : "var(--red)", color: CARDS[c].kind === "bless" ? "var(--dk)" : "#fff" }}>
+                    <button onClick={() => setZoom({ id: c, who: people[id].name })} aria-label={`${CARDS[c].name}. Tap to enlarge`} style={{ flex: "none" }}>
+                      <PCard id={c} cw={46} still rot={-3} />
+                    </button>
+                    <div style={{ fontSize: 13 }}><b>{CARDS[c].name}.</b> {CARDS[c].text}<div style={{ fontSize: 11, opacity: 0.75 }}>Tap the card to enlarge.</div></div>
+                  </div>
+                )}
+                {s.log[h] && <div className="cap" style={{ marginTop: 5 }}>Hole {h + 1}: {s.log[h]}</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 11 }}>
+          <MiniBoard title="The Punt" sub="Banked plus pot" rows={puntRank} people={people} />
+          <MiniBoard title="The Comp" sub={round.useHcp ? "Net to par" : "Gross to par"} rows={compRank} people={people} />
+        </div>
+        {zoom && <CardZoom id={zoom.id} who={zoom.who} onClose={() => setZoom(null)} />}
+      </div>
+    );
+  }
+
+  if (gid === "nassau") {
+    const t = nassauCalc(round);
+    const cols = [["Front 9", id => t[id].front], ["Back 9", id => t[id].back], ["Overall", id => t[id].front + t[id].back]];
+    const maxes = cols.map(([, f]) => Math.max(...ids.map(f)));
+    return (
+      <div>
+        <p className="cap">Holes won. Lowest {round.useHcp ? "net " : ""}score takes the hole.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1.3fr repeat(3,1fr)", gap: "6px 3px", marginTop: 9, alignItems: "center" }}>
+          <div />
+          {cols.map(([l]) => <div key={l} className="cap" style={{ textAlign: "center", fontWeight: 600 }}>{l}</div>)}
+          {ids.map(id => (
+            <div key={id} style={{ display: "contents" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><Avatar p={people[id]} size={22} />{people[id].name}</div>
+              {cols.map(([l, f], i) => (
+                <div key={l} style={{ textAlign: "center" }}>
+                  <span style={{ display: "inline-block", minWidth: 34, padding: "3px 0", borderRadius: 10, fontWeight: 800, fontSize: 14,
+                    background: f(id) === maxes[i] && maxes[i] > 0 ? "var(--mint)" : "transparent", color: f(id) === maxes[i] && maxes[i] > 0 ? "var(--night)" : "var(--ink)" }}>{f(id)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (gid === "bbb") {
+    const e = round.bbb[h] || {};
+    return (
+      <div>
+        <div style={{ borderBottom: "1px solid var(--line)" }}>
+          <PickRow label="Bingo" hint="First on the green" ids={ids} people={people} value={e.bingo} onPick={id => api.setBbb(h, "bingo", id)} />
+        </div>
+        <div style={{ borderBottom: "1px solid var(--line)" }}>
+          <PickRow label="Bango" hint="Closest to the pin" ids={ids} people={people} value={e.bango} onPick={id => api.setBbb(h, "bango", id)} />
+        </div>
+        <PickRow label="Bongo" hint="First in the hole" ids={ids} people={people} value={e.bongo} onPick={id => api.setBbb(h, "bongo", id)} />
+        <PointsList round={round} people={people} pts={bbbCalc(round)} />
+      </div>
+    );
+  }
+
+  if (gid === "wolf") {
+    const wc = wolfCalc(round); const wolfId = ids[h % 4]; const choice = round.wolf[h];
+    const opts = [["lone", "Go alone"], ...ids.filter(i => i !== wolfId).map(i => [i, `Partner: ${people[i].name}`])];
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Avatar p={people[wolfId]} size={29} />
+          <div><b>{people[wolfId].name}</b> is the wolf on hole {h + 1}</div>
+        </div>
+        <div className="scrollx" style={{ marginTop: 9 }}>
+          {opts.map(([v, l]) => (
+            <button key={v} className={`chip ${choice === v ? "on" : ""}`} onClick={() => api.setWolf(h, choice === v ? null : v)}>{l}</button>
+          ))}
+        </div>
+        {wc.hole[h] && <div className="pill" style={{ background: "var(--mint)", color: "var(--dk)", marginTop: 9 }}>{wc.hole[h]}</div>}
+        {!choice && done && <p className="cap" style={{ marginTop: 8 }}>Choose the wolf's partner to score this hole.</p>}
+        <PointsList round={round} people={people} pts={wc.pts} />
+      </div>
+    );
+  }
+
+  if (gid === "sixes") {
+    const segs = sixesCalc(round); const cur = Math.floor(h / 6);
+    const nm = a => a.map(i => people[i].name).join(" & ");
+    return (
+      <div style={{ display: "grid", gap: 8 }}>
+        {segs.map((s, i) => (
+          <div key={i} style={{ padding: 9, borderRadius: 14, border: `1.5px solid ${i === cur ? "var(--fair)" : "var(--line)"}`, background: i === cur ? "var(--sel)" : "var(--card)" }}>
+            <div className="cap" style={{ fontWeight: 600 }}>Holes {i * 6 + 1} to {i * 6 + 6}{i === cur ? " (now)" : ""}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5 }}>
+              <div style={{ flex: 1, fontWeight: 600, fontSize: 13, textAlign: "left" }}>{nm(s.A)}</div>
+              <div style={{ fontWeight: 800, fontSize: 17, whiteSpace: "nowrap" }}>{s.a} <span style={{ color: "var(--muted)" }}>:</span> {s.b}</div>
+              <div style={{ flex: 1, fontWeight: 600, fontSize: 13, textAlign: "right" }}>{nm(s.B)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (gid === "rabbit") {
+    const x = rabbitCalc(round);
+    const Row = ({ l, id }) => (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
+        <span className="cap" style={{ fontSize: 13 }}>{l}</span>
+        {id ? <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}><Avatar p={people[id]} size={20} />{people[id].name}</span> : <span className="cap">Not decided</span>}
+      </div>
+    );
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div className="tile"><Sprite name="rabbit" size={4} /></div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{x.holder ? `${people[x.holder].name} has the rabbit` : "Nobody has the rabbit yet"}</div>
+        </div>
+        <p className="cap" style={{ marginTop: 5 }}>Win a hole outright to take it. Ties leave it where it is.</p>
+        <div style={{ marginTop: 6, borderTop: "1px solid var(--line)" }}>
+          <Row l="Holder after hole 9" id={x.atNine} />
+          <Row l="Holder after hole 18" id={x.atEighteen} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ border: "1.5px dashed var(--muted)", borderRadius: 14, padding: 14, textAlign: "center" }}>
+      <Sparkles size={22} color="var(--fair)" />
+      <div style={{ fontWeight: 800, marginTop: 5 }}>{meta.name}</div>
+      <p className="cap" style={{ marginTop: 3 }}>Your own game plugs in here once the rules are set.</p>
+    </div>
+  );
+}
+
+/* ───────────── SCREENS ───────────── */
+/* Press and hold a row for 0.6s to ask to delete it. A quick tap behaves as normal. */
+function HoldRow({ onHold, children, style, className }) {
+  const [holding, setHolding] = useState(false);
+  const timer = useRef(null); const fired = useRef(false);
+  const start = () => { fired.current = false; setHolding(true); timer.current = setTimeout(() => { fired.current = true; setHolding(false); onHold(); }, 600); };
+  const stop = () => { clearTimeout(timer.current); setHolding(false); };
+  return (
+    <div className={className} onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
+      onContextMenu={e => e.preventDefault()}
+      onClickCapture={e => { if (fired.current) { e.stopPropagation(); e.preventDefault(); fired.current = false; } }}
+      style={{ position: "relative", overflow: "hidden", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", ...style }}>
+      {holding && <div className="holdfill" aria-hidden="true" />}
+      {children}
+    </div>
+  );
+}
+
+function Home({ people, round, recent, board, onStart, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout }) {
+  return (
+    <div style={{ paddingBottom: 19 }}>
+      <div className="stripes" style={{ padding: "17px 14px 47px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}><Sprite name="ball" size={5} />{APP_NAME}<button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
+          <button className="chip" onClick={() => setDark(!dark)} style={{ padding: "1px 6px", fontSize: 11 }}>{dark ? "Light mode" : "Dark mode"}</button>
+        </div>
+        <h1 style={{ fontSize: 32, lineHeight: 1.02, fontWeight: 800, letterSpacing: -1.2, marginTop: 11 }}>Ready to tee off?</h1>
+        <p style={{ marginTop: 8, opacity: 0.8 }}>Handicap index {people.me.hi.toFixed(1)}</p>
+      </div>
+      <div style={{ padding: "0 12px", marginTop: -36, display: "grid", gap: 11 }}>
+        <button onClick={onStart} style={{ background: "var(--flag)", color: "var(--dk)", borderRadius: 24, padding: "16px 16px", textAlign: "left", display: "flex", alignItems: "center", gap: 11, boxShadow: "0 6px 0 var(--night)", border: "3px solid var(--night)" }}>
+          <div className="tile"><Sprite name="flag" size={5} /></div>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.4 }}>Start a round</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>Pick the course, your group and the games.</div>
+          </div>
+        </button>
+
+        <button className="card" onClick={onRules} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", textAlign: "left", width: "100%" }}>
+          <div><div style={{ fontWeight: 700 }}>How The Punt works</div><div className="cap">Scoring, cards, bonuses and the prize pool.</div></div>
+          <ChevronRight size={18} />
+        </button>
+
+        {round && (
+          <HoldRow className="card" onHold={() => askDelete("round")} style={{ padding: 12 }}>
+            <div className="cap" style={{ fontWeight: 600 }}>Round in progress</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 800 }}>{round.course.name}</h3>
+              <span style={{ fontWeight: 700 }}>Hole {round.hole + 1} of 18</span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+              {round.games.map(g => <span key={g} className="pill" style={{ background: "var(--mint)", color: "var(--dk)", padding: "3px 8px", fontSize: 11 }}>{GAMES.find(x => x.id === g).name}</span>)}
+            </div>
+            {round.stake > 0 && <p className="cap" style={{ marginTop: 8 }}>Buy-in {money(round.stake)} each. Pool {money(round.stake * round.playerIds.length)}.</p>}
+            <button className="cta" style={{ marginTop: 11, padding: 11, fontSize: 14 }} onClick={onResume}>Resume scoring</button>
+            <p className="cap" style={{ marginTop: 5, textAlign: "center" }}>Hold to delete this round.</p>
+          </HoldRow>
+        )}
+
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "5px 2px 8px" }}>
+            <h2 className="h2">Leading your friends</h2>
+            <button onClick={goFriends} style={{ color: "var(--fair)", fontWeight: 700 }}>See all</button>
+          </div>
+          <div className="card" style={{ padding: "5px 11px" }}>
+            {board.slice(0, 3).map((r, i) => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                <div style={{ width: 22, fontWeight: 800, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i + 1}</div>
+                <Avatar p={people[r.id]} size={29} />
+                <div style={{ flex: 1, fontWeight: 700 }}>{people[r.id].name}</div>
+                <div style={{ fontWeight: 800 }}>{r.v.toFixed(1)}<span className="cap"> avg net</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recent rounds</h2><p className="cap" style={{ marginTop: 2 }}>Hold a round to delete it.</p></div>
+          <div className="card" style={{ padding: "5px 11px" }}>
+            {recent.length === 0 && <div className="cap" style={{ padding: "9px 0" }}>No rounds yet. Finish one and it shows up here.</div>}
+            {recent.map((r, i) => (
+              <HoldRow key={i} onHold={() => askDelete("recent", i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{r.course}</div>
+                  <div className="cap">{r.when}. {r.note}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, fontSize: 15 }}>{r.net}</div>
+                  <div className="cap">net ({r.gross} gross)</div>
+                </div>
+              </HoldRow>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RuleSection({ title, children, open0 }) {
+  const [open, setOpen] = useState(!!open0);
+  return (
+    <div className="card" style={{ marginTop: 8 }}>
+      <button onClick={() => setOpen(!open)} aria-expanded={open} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 10px", textAlign: "left" }}>
+        <h3>{title}</h3>{open ? <Minus size={16} /> : <Plus size={16} />}
+      </button>
+      {open && <div style={{ padding: "0 10px 10px", display: "grid", gap: 6 }}>{children}</div>}
+    </div>
+  );
+}
+const RuleRow = ({ k, v }) => (
+  <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+    <div style={{ width: 96, flex: "none", fontWeight: 700 }}>{k}</div>
+    <div style={{ flex: 1 }}>{v}</div>
+  </div>
+);
+function Rules({ onBack }) {
+  const bless = BLESSINGS.map(k => CARDS[k]); const curse = CURSES.map(k => CARDS[k]);
+  const ev = kind => Object.values(EVENTS).filter(e => e.kind === kind);
+  return (
+    <div style={{ flex: 1, paddingBottom: 24 }}>
+      <div className="stripes" style={{ padding: "12px 12px 14px" }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 2, fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back</button>
+        <h1 style={{ marginTop: 8 }}>How The Punt works</h1>
+        <p style={{ opacity: 0.85, marginTop: 3 }}>Play your normal round. This game runs on top of it.</p>
+      </div>
+      <div style={{ padding: "4px 14px" }}>
+        <RuleSection title="The idea" open0>
+          <p>Every hole earns points that drop into your pot. Keep them in the pot and they can grow, but one bad hole wipes the lot. Bank them and they're safe. Whoever has the most points at the end wins the pool.</p>
+          <p className="cap">Scores are net, so a 5 handicap and a 25 handicap compete on level ground.</p>
+        </RuleSection>
+        <RuleSection title="Scoring a hole" open0>
+          <RuleRow k="Net eagle or better" v="4 points" />
+          <RuleRow k="Net birdie" v="3 points" />
+          <RuleRow k="Net par" v="2 points" />
+          <RuleRow k="Net bogey" v="1 point" />
+          <RuleRow k="Net double or worse" v="Bust. You lose your whole pot." />
+        </RuleSection>
+        <RuleSection title="Pot, bank and bust">
+          <p>Points sit in your pot until you bank them. You can bank after any hole. Banked points can never be lost.</p>
+          <p>Banking resets your streak multiplier back to x1. Banking an empty pot does nothing.</p>
+          <p>Whatever is still in your pot after the 18th hole banks automatically.</p>
+        </RuleSection>
+        <RuleSection title="Streak multiplier">
+          <p>Net par or better on 3 holes in a row doubles your points on that hole (x2). Five in a row triples them (x3). A bogey, a bust or a bank resets the streak.</p>
+          <p className="cap">Holding your pot keeps the streak alive. That's where the greed comes in.</p>
+        </RuleSection>
+        <RuleSection title="Cards on tough holes">
+          <p>On the hardest hole (stroke index 1) and the easiest (stroke index 18), everyone draws a card from a mixed deck of blessings and curses.</p>
+          <p>The hole before, the app prompts the scorer with a last chance to bank. Once the cards are out, banks lock. Bank early to dodge a curse, or hold your nerve for a blessing.</p>
+          <p>With catch-up odds on, the leader draws mostly curses and last place mostly blessings.</p>
+          <div className="cap" style={{ fontWeight: 700, marginTop: 4 }}>Blessings</div>
+          <div className="scrollx" style={{ paddingTop: 6 }}>{BLESSINGS.map((k, i) => <PCard key={k} id={k} cw={72} still rot={i % 2 ? 1.5 : -1.5} />)}</div>
+          {bless.map(c => <RuleRow key={c.name} k={c.name} v={c.text} />)}
+          <div className="cap" style={{ fontWeight: 700, marginTop: 4 }}>Curses</div>
+          <div className="scrollx" style={{ paddingTop: 6 }}>{CURSES.map((k, i) => <PCard key={k} id={k} cw={72} still rot={i % 2 ? 1.5 : -1.5} />)}</div>
+          {curse.map(c => <RuleRow key={c.name} k={c.name} v={c.text} />)}
+        </RuleSection>
+        <RuleSection title="Bonuses and penalties">
+          <p>Log these from the player's card during the hole.</p>
+          <div className="cap" style={{ fontWeight: 700 }}>Bonuses</div>
+          {ev("bonus").map(e => <RuleRow key={e.name} k={e.tag} v={e.hint} />)}
+          <p className="cap">Sandy, up and down and barkie only count with net par or better. A chip-in counts on anything except a bust.</p>
+          <div className="cap" style={{ fontWeight: 700, marginTop: 4 }}>Penalties</div>
+          {ev("penalty").map(e => <RuleRow key={e.name} k={e.tag} v={e.hint} />)}
+          <p className="cap">Penalties hit before you bank, so you can't bank to dodge one. They never touch banked points.</p>
+        </RuleSection>
+        <RuleSection title="Nearest the pin">
+          <p>On a par 3, the closest ball earns +3 in their pot. The ball must be on the green or fringe, and the scorer confirms that before the points count. If the winner busts the hole, the +3 is lost.</p>
+        </RuleSection>
+        <RuleSection title="Prize pool">
+          <p>Agree a buy-in before you tee off. Payout is winner takes all, 60/30/10, or wooden spoon (last place pays the rest).</p>
+          <p>Nobody can lose more than their buy-in. The app shows who owes who at the end but never moves money.</p>
+        </RuleSection>
+        <RuleSection title="Handicaps">
+          <p>Your handicap index is adjusted for the course's slope and rating to give strokes on the hardest holes. Everything in The Punt uses those net scores. The Comp, your normal scorecard result, runs alongside it.</p>
+        </RuleSection>
+        <p className="cap" style={{ margin: "10px 2px 0" }}>Bonuses, penalties, cards, catch-up odds and nearest the pin can each be switched off when you set up a round.</p>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── COURSE FINDER (OpenStreetMap + scorecard entry) ───────────── */
+const OVERPASS = "https://overpass-api.de/api/interpreter";
+const GA_RATINGS_URL = "https://golf.org.au/courseratings";
+async function overpass(q) {
+  const res = await fetch(OVERPASS, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) });
+  if (!res.ok) throw new Error("overpass " + res.status);
+  return res.json();
+}
+const kmBetween = (a, b, c, d) => {
+  const R = 6371, rad = x => (x * Math.PI) / 180;
+  const dLat = rad(c - a), dLon = rad(d - b);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+async function findCoursesNear(lat, lon) {
+  const j = await overpass(`[out:json][timeout:20];nwr["leisure"="golf_course"](around:30000,${lat},${lon});out tags center 80;`);
+  const seen = new Set();
+  return (j.elements || [])
+    .filter(e => e.tags && e.tags.name)
+    .map(e => {
+      const c = e.center || { lat: e.lat, lon: e.lon };
+      return { osm: `${e.type}-${e.id}`, type: e.type, id: e.id, name: e.tags.name, lat: c.lat, lon: c.lon, dist: kmBetween(lat, lon, c.lat, c.lon) };
+    })
+    .filter(c => (seen.has(c.name) ? false : seen.add(c.name)))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 15);
+}
+async function loadOsmHoles(c) {
+  if (c.type === "node") return null;
+  const area = (c.type === "relation" ? 3600000000 : 2400000000) + c.id;
+  const j = await overpass(`[out:json][timeout:20];area(${area})->.a;way["golf"="hole"](area.a);out tags;`);
+  const holes = Array(18).fill(null);
+  (j.elements || []).forEach(e => {
+    const t = e.tags || {}; const n = parseInt(t.ref, 10); const par = parseInt(t.par, 10);
+    if (n >= 1 && n <= 18 && par >= 3 && par <= 6 && !holes[n - 1]) holes[n - 1] = { par, si: parseInt(t.handicap, 10) };
+  });
+  return holes.every(Boolean) ? holes : null;
+}
+async function geocode(q) {
+  const res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q));
+  if (!res.ok) throw new Error("geocode " + res.status);
+  const j = await res.json();
+  if (!j.length) throw new Error("notfound");
+  return { lat: +j[0].lat, lon: +j[0].lon };
+}
+// Returns "" when the form is good, otherwise the first problem in plain words.
+function validateCourse(f) {
+  if (!f.name.trim()) return "Give the course a name.";
+  if (!f.tees.length) return "Add at least one tee.";
+  for (const t of f.tees) {
+    if (!t.name.trim()) return "Every tee needs a name (White, Blue, Red…).";
+    const s = Number(t.slope), r = Number(t.rating);
+    if (!Number.isInteger(s) || s < 55 || s > 155) return `${t.name}: slope must be a whole number from 55 to 155.`;
+    if (!(r >= 50 && r <= 90)) return `${t.name}: course rating should be between 50 and 90, like 71.4.`;
+  }
+  const sis = f.holes.map(h => Number(h.si));
+  if (sis.some(s => !Number.isInteger(s) || s < 1 || s > 18)) return "Every hole needs a stroke index from 1 to 18.";
+  if (new Set(sis).size !== 18) return "Stroke indexes must be 1 to 18 with no repeats.";
+  return "";
+}
+const toCourse = (f, draft) => {
+  const holes = f.holes.map(h => ({ par: h.par, si: Number(h.si) }));
+  return {
+    id: draft.id || "hand-" + Date.now(), name: f.name.trim(), source: draft.source || "hand", lat: draft.lat, lon: draft.lon,
+    par: holes.reduce((a, h) => a + h.par, 0), holes,
+    tees: f.tees.map(t => ({ name: t.name.trim(), slope: Number(t.slope), rating: Number(t.rating) })),
+  };
+};
+const inp = { background: "var(--chalk)", border: "2px solid var(--night)", color: "var(--ink)", padding: "6px 8px", font: "inherit", width: "100%", minWidth: 0 };
+
+function ScorecardForm({ draft, onCancel, onSave }) {
+  const [f, setF] = useState(() => ({
+    name: draft.name || "",
+    tees: draft.tees && draft.tees.length ? draft.tees.map(t => ({ name: t.name, slope: String(t.slope ?? ""), rating: String(t.rating ?? "") })) : [{ name: "White", slope: "", rating: "" }],
+    holes: draft.holes ? draft.holes.map(h => ({ par: h.par, si: h.si >= 1 && h.si <= 18 ? String(h.si) : "" })) : range18.map(i => ({ par: DEF_PAR[i], si: String(DEF_SI[i]) })),
+  }));
+  const err = validateCourse(f);
+  const par = f.holes.reduce((a, h) => a + h.par, 0);
+  const setTee = (i, k, v) => setF(x => ({ ...x, tees: x.tees.map((t, j) => (j === i ? { ...t, [k]: v } : t)) }));
+  const setHole = (i, k, v) => setF(x => ({ ...x, holes: x.holes.map((h, j) => (j === i ? { ...h, [k]: v } : h)) }));
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div className="stripes" style={{ padding: "14px 12px 14px" }}>
+        <button onClick={onCancel} style={{ display: "flex", alignItems: "center", gap: 2, fontWeight: 600 }}><ChevronLeft size={22} />Back</button>
+        <h1 style={{ marginTop: 6 }}>Course details</h1>
+      </div>
+      <div style={{ padding: "10px 12px 96px", display: "grid", gap: 10 }}>
+        <div className="card" style={{ padding: 10, display: "grid", gap: 6 }}>
+          <div className="cap">{draft.source === "osm" ? (draft.holes ? "Course and holes from OpenStreetMap. Slope and rating aren't on the map, so add them from the scorecard." : "Found on OpenStreetMap, but no hole details are mapped. Add slope, rating, par and stroke index from the scorecard.") : "Type these in from the scorecard."}</div>
+          <a href={GA_RATINGS_URL} target="_blank" rel="noreferrer" style={{ color: "var(--fair)", fontWeight: 600 }}>Look up official ratings on the Golf Australia site ↗</a>
+        </div>
+        <div>
+          <div className="cap" style={{ marginBottom: 3 }}>Course name</div>
+          <input aria-label="Course name" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} style={inp} />
+        </div>
+        <div>
+          <div className="cap" style={{ marginBottom: 3 }}>Tees (name, slope, course rating)</div>
+          <div style={{ display: "grid", gap: 5 }}>
+            {f.tees.map((t, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: 5, alignItems: "center" }}>
+                <input aria-label={`Tee ${i + 1} name`} placeholder="White" value={t.name} onChange={e => setTee(i, "name", e.target.value)} style={inp} />
+                <input aria-label={`Tee ${i + 1} slope`} placeholder="Slope" inputMode="numeric" value={t.slope} onChange={e => setTee(i, "slope", e.target.value)} style={inp} />
+                <input aria-label={`Tee ${i + 1} rating`} placeholder="Rating" inputMode="decimal" value={t.rating} onChange={e => setTee(i, "rating", e.target.value)} style={inp} />
+                <button aria-label={`Remove tee ${i + 1}`} disabled={f.tees.length < 2} onClick={() => setF(x => ({ ...x, tees: x.tees.filter((_, j) => j !== i) }))} style={{ opacity: f.tees.length < 2 ? 0.3 : 1 }}><X size={18} /></button>
+              </div>
+            ))}
+          </div>
+          {f.tees.length < 4 && <button className="chip" style={{ marginTop: 6 }} onClick={() => setF(x => ({ ...x, tees: [...x.tees, { name: "", slope: "", rating: "" }] }))}>+ Add tee</button>}
+        </div>
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><div className="cap">Holes: par and stroke index (SI)</div><div className="cap" style={{ fontWeight: 700 }}>Par {par}</div></div>
+          <div className="card" style={{ padding: "4px 8px", marginTop: 3 }}>
+            {f.holes.map((h, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "26px 1fr 64px", gap: 8, alignItems: "center", padding: "4px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                <div style={{ fontWeight: 700 }}>{i + 1}</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {[3, 4, 5, 6].map(p => <button key={p} aria-label={`Hole ${i + 1} par ${p}`} className={`chip ${h.par === p ? "on" : ""}`} onClick={() => setHole(i, "par", p)} style={{ padding: "1px 10px" }}>{p}</button>)}
+                </div>
+                <input aria-label={`Hole ${i + 1} stroke index`} placeholder="SI" inputMode="numeric" value={h.si} onChange={e => setHole(i, "si", e.target.value)} style={{ ...inp, padding: "3px 6px" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="cap">Your own entries are saved on this device only. They are not official Golf Australia data.</p>
+      </div>
+      <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
+        {err && <p role="alert" style={{ color: "var(--red)", fontWeight: 600, marginBottom: 6 }}>{err}</p>}
+        <button className="cta" disabled={!!err} onClick={() => onSave(toCourse(f, draft))}>Save and use this course</button>
+      </div>
+    </div>
+  );
+}
+
+function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState("");
+  const [results, setResults] = useState(null);
+  const [q, setQ] = useState("");
+  const [draft, setDraft] = useState(null);
+
+  const near = async (lat, lon) => {
+    setBusy("Looking for courses…");
+    try {
+      const r = await findCoursesNear(lat, lon);
+      setResults(r);
+      setMsg(r.length ? "" : "No mapped golf courses within 30 km. Try a town name, or add one by hand.");
+    } catch (e) { setMsg("Couldn't reach the map service. Check your connection, or add the course by hand."); }
+    setBusy("");
+  };
+  const locate = () => {
+    setMsg("");
+    if (!navigator.geolocation) { setMsg("This device can't share its location. Type a town below instead."); return; }
+    setBusy("Getting your location…");
+    navigator.geolocation.getCurrentPosition(p => near(p.coords.latitude, p.coords.longitude), () => { setBusy(""); setMsg("Location is off or blocked. Type a town below instead."); }, { timeout: 10000, maximumAge: 600000 });
+  };
+  const search = async () => {
+    if (!q.trim()) return;
+    setBusy("Searching…"); setMsg("");
+    try { const g = await geocode(q.trim()); await near(g.lat, g.lon); }
+    catch (e) { setBusy(""); setMsg(e.message === "notfound" ? "Couldn't find that place." : "Couldn't reach the map service. Check your connection, or add the course by hand."); }
+  };
+  const choose = async c => {
+    const id = "osm-" + c.osm;
+    const have = saved.find(s => s.id === id);
+    if (have) { onPick(have); return; }
+    setBusy("Loading hole details…");
+    let holes = null;
+    try { holes = await loadOsmHoles(c); } catch (e) { holes = null; }
+    setBusy("");
+    setDraft({ id, name: c.name, source: "osm", lat: c.lat, lon: c.lon, tees: [{ name: "White", slope: "", rating: "" }], holes });
+  };
+
+  if (draft) return <ScorecardForm draft={draft} onCancel={() => setDraft(null)} onSave={c => { onSaveCourse(c); onPick(c); }} />;
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div className="stripes" style={{ padding: "14px 12px 14px" }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 2, fontWeight: 600 }}><ChevronLeft size={22} />Back</button>
+        <h1 style={{ marginTop: 6 }}>Pick a course</h1>
+      </div>
+      <div style={{ padding: "10px 12px 24px", display: "grid", gap: 10 }}>
+        <button className="cta" onClick={locate} disabled={!!busy}><MapPin size={18} />Courses near me</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input aria-label="Search by town" placeholder="Or type a town, e.g. Byron Bay" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} style={inp} />
+          <button className="chip" onClick={search} disabled={!!busy} aria-label="Search"><Search size={18} /></button>
+        </div>
+        {busy && <p className="cap" role="status">{busy}</p>}
+        {msg && <p role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{msg}</p>}
+        {results && results.length > 0 && (
+          <div>
+            <div className="cap" style={{ marginBottom: 4 }}>Nearby (from OpenStreetMap)</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {results.map(c => (
+                <button key={c.osm} className="card" onClick={() => choose(c)} style={{ padding: "9px 11px", textAlign: "left", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontWeight: 700 }}>{c.name}</span><span className="cap">{c.dist < 10 ? c.dist.toFixed(1) : Math.round(c.dist)} km</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {saved.length > 0 && (
+          <div>
+            <div className="cap" style={{ marginBottom: 4 }}>Saved on this device</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {saved.map(c => (
+                <button key={c.id} className="card" onClick={() => onPick(c)} style={{ padding: "9px 11px", textAlign: "left", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontWeight: 700 }}>{c.name}</span><span className="cap">{c.tees.length} tee{c.tees.length > 1 ? "s" : ""}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <button className="chip" style={{ padding: "7px 0", textAlign: "center" }} onClick={() => setDraft({ source: "hand", name: "", tees: [{ name: "White", slope: "", rating: "" }], holes: null })}>+ Add a course by hand</button>
+        <div>
+          <div className="cap" style={{ marginBottom: 4 }}>Sample courses (made up, for trying the app)</div>
+          <div style={{ display: "grid", gap: 6 }}>
+            {COURSES.map(c => (
+              <button key={c.id} className="card" onClick={() => onPick(c)} style={{ padding: "9px 11px", textAlign: "left", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontWeight: 700 }}>{c.name}</span><span className="cap">slope {c.tees[0].slope}, rating {c.tees[0].rating}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="cap">Course names and locations come from OpenStreetMap contributors (© OpenStreetMap, ODbL). Slope and rating are whatever you enter. Check them against the scorecard.</p>
+      </div>
+    </div>
+  );
+}
+
+function AboutSheet({ onClose, onReset }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={onClose}>
+      <div className="sheet card" role="dialog" aria-label={`About ${APP_NAME}`} onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "85vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 className="h2">{APP_NAME} <span className="pill" style={{ background: "var(--flag)" }}>ALPHA {APP_VERSION}</span></h2>
+          <button onClick={onClose} aria-label="Close"><X size={22} /></button>
+        </div>
+        <p style={{ marginTop: 8 }}>A points-only side game that runs alongside your normal comp. The main game is The Punt: bank your points or bust and lose the pot.</p>
+        <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
+          <p><b>Working:</b> The Punt, cards, bonuses and penalties, near the pin, prize pool maths, handicap strokes, course finder.</p>
+          <p><b>Demo only:</b> friends, stats and leaderboards are made-up people and numbers. Nothing syncs between devices yet.</p>
+          <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia.</p>
+          <p><b>Money:</b> the prize pool is a scoreboard only. {APP_NAME} never takes or moves money.</p>
+          <p><b>Saved on this device:</b> courses you add. Nothing is sent to a server.</p>
+        </div>
+        <button className="chip" style={{ marginTop: 12, padding: "7px 0", textAlign: "center", width: "100%" }} onClick={onReset}>Reset demo (clears saved courses)</button>
+      </div>
+    </div>
+  );
+}
+
+function Setup({ people, friendIds, saved, onSaveCourse, onBack, onGo }) {
+  const [course, setCourse] = useState(COURSES[0]);
+  const [teeI, setTeeI] = useState(0);
+  const [finding, setFinding] = useState(false);
+  const [sel, setSel] = useState(["me", "sam", "priya", "jake"]);
+  const [games, setGames] = useState(["punt"]);
+  const [useHcp, setUseHcp] = useState(true);
+  const [stake, setStake] = useState(10);
+  const [split, setSplit] = useState("603010");
+  const [opts, setOpts] = useState({ cards: true, catchup: true, bonuses: true, penalties: true, ntp: true });
+  const tee = course.tees[Math.min(teeI, course.tees.length - 1)];
+  const cpar = course.holes ? course.holes.reduce((a, h) => a + h.par, 0) : course.par;
+  const cinfo = { slope: tee.slope, rating: tee.rating, par: cpar };
+  const pickCourse = c => { setCourse(c); setTeeI(0); setFinding(false); };
+  const pool = ["me", ...friendIds];
+
+  const togglePlayer = id => {
+    if (id === "me") return;
+    const next = sel.includes(id) ? sel.filter(x => x !== id) : sel.length < 4 ? [...sel, id] : sel;
+    setSel(next);
+    if (next.length !== 4) setGames(g => g.filter(x => !GAMES.find(y => y.id === x).four));
+  };
+  const toggleGame = g => {
+    if (g.four && sel.length !== 4) return;
+    setGames(x => (x.includes(g.id) ? x.filter(i => i !== g.id) : [...x, g.id]));
+  };
+  const Label = ({ children, sub }) => (
+    <div style={{ margin: "14px 0 6px" }}><h2 className="h2">{children}</h2>{sub && <p className="cap" style={{ marginTop: 2 }}>{sub}</p>}</div>
+  );
+
+  if (finding) return <CourseFinder saved={saved} onPick={pickCourse} onSaveCourse={onSaveCourse} onBack={() => setFinding(false)} />;
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div className="stripes" style={{ padding: "14px 12px 17px" }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 2, fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back</button>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.8, marginTop: 8 }}>New round</h1>
+      </div>
+      <div style={{ padding: "0 12px 94px", flex: 1 }}>
+        <Label>Course</Label>
+        <div className="card" style={{ padding: "10px 12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>{course.name}</div>
+              <div className="cap">{course.source === "sample" ? "Sample course (made up)" : course.source === "osm" ? "From OpenStreetMap, ratings entered by you" : "Added by hand"}</div>
+            </div>
+            <button className="chip" onClick={() => setFinding(true)}>Change</button>
+          </div>
+          {course.tees.length > 1 && (
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              {course.tees.map((x, i) => <button key={i} className={`chip ${i === teeI ? "on" : ""}`} onClick={() => setTeeI(i)}>{x.name}</button>)}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+            <div><div style={{ fontWeight: 800 }}>{tee.slope}</div><div className="cap">slope</div></div>
+            <div><div style={{ fontWeight: 800 }}>{tee.rating}</div><div className="cap">rating</div></div>
+            <div><div style={{ fontWeight: 800 }}>{cpar}</div><div className="cap">par</div></div>
+          </div>
+        </div>
+
+        <Label sub="Choose 2 to 4 players.">Players</Label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {pool.map(id => (
+            <button key={id} className={`chip ${sel.includes(id) ? "on" : ""}`} onClick={() => togglePlayer(id)} style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 8 }}>
+              <Avatar p={people[id]} size={20} />{people[id].name}
+              {sel.includes(id) && <Check size={16} />}
+            </button>
+          ))}
+        </div>
+
+        <Label sub="Runs on top of your normal scorecard.">Games</Label>
+        <div style={{ display: "grid", gap: 6 }}>
+          {GAMES.map(g => {
+            const locked = g.four && sel.length !== 4; const on = games.includes(g.id);
+            return (
+              <button key={g.id} onClick={() => toggleGame(g)} disabled={locked}
+                style={{ padding: "11px 12px", textAlign: "left", display: "flex", gap: 9, alignItems: "center", borderRadius: 18, opacity: locked ? 0.5 : 1,
+                  background: on ? "var(--sel)" : "var(--card)", border: g.tbc ? `1.5px dashed ${on ? "var(--pine)" : "var(--muted)"}` : `${on ? 2 : 1}px solid ${on ? "var(--pine)" : "var(--line)"}` }}>
+                <div style={{ width: 26, height: 26, borderRadius: 8, flex: "none", display: "grid", placeItems: "center", background: on ? "var(--pine)" : "var(--card)", border: on ? "none" : "1.5px solid var(--muted)" }}>{on && <Check size={17} color="#fff" />}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>{g.name}</div>
+                  <div className="cap">{locked ? "Needs exactly 4 players." : g.blurb}</div>
+                </div>
+                {g.tbc && <span className="pill" style={{ background: "var(--flag)", padding: "3px 8px", fontSize: 11 }}>Coming soon</span>}
+                {g.hero && <span className="pill" style={{ background: "var(--flag)", padding: "3px 8px", fontSize: 11 }}>New</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <Label sub="Switch on what your group wants. All optional.">Extras</Label>
+        <div className="card" style={{ padding: "3px 11px" }}>
+          {[["cards", "Cards on tough holes", "Hardest and easiest holes: everyone draws a blessing or a curse at the tee. Bank before the hole to dodge the curses."],
+            ["catchup", "Catch-up odds", "Last place draws more blessings, the leader more curses."],
+            ["bonuses", "Bonuses", "Sandy x2, up and down +2, chip-in +4, barkie +2."],
+            ["ntp", "Nearest the pin", "Closest to the pin on a par 3 earns +3. Ball must be on the green or fringe."],
+            ["penalties", "Penalties", "Lost ball -3, wet one -2, four putt halves your pot."]].filter(([k]) => k !== "catchup" || opts.cards).map(([k, t, d], i) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+              <div><div style={{ fontWeight: 700, fontSize: 15 }}>{t}</div><div className="cap">{d}</div></div>
+              <Toggle on={opts[k]} onChange={v => setOpts(o => ({ ...o, [k]: v }))} />
+            </div>
+          ))}
+        </div>
+
+        <Label sub="Agree a buy-in before you tee off. The app tracks who owes who and never moves money.">Prize pool</Label>
+        <div className="card" style={{ padding: 12 }}>
+          <div className="cap" style={{ fontWeight: 600 }}>Buy-in per player</div>
+          <div className="scrollx" style={{ marginTop: 6 }}>
+            {STAKES.map(s => <button key={s} className={`chip ${stake === s ? "on" : ""}`} onClick={() => setStake(s)}>{s === 0 ? "Just for shouts" : money(s)}</button>)}
+          </div>
+          {stake > 0 && (
+            <>
+              <div className="cap" style={{ fontWeight: 600, marginTop: 11 }}>How it pays out</div>
+              <div className="scrollx" style={{ marginTop: 6 }}>
+                {SPLITS.map(([k, l]) => <button key={k} className={`chip ${split === k ? "on" : ""}`} onClick={() => setSplit(k)}>{l}</button>)}
+              </div>
+              <div style={{ marginTop: 11, borderTop: "1px solid var(--line)", paddingTop: 9, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <div><div style={{ fontWeight: 800, fontSize: 14 }}>Pool {money(stake * sel.length)}</div><div className="cap">The most anyone can lose is their {money(stake)} buy-in.</div></div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <Label>Handicaps</Label>
+        <div className="card" style={{ padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>Use handicaps</div>
+              <div className="cap">Strokes are given on the hardest holes, based on this course's slope ({tee.slope}) and rating ({tee.rating}).</div>
+            </div>
+            <Toggle on={useHcp} onChange={setUseHcp} />
+          </div>
+          {useHcp && (
+            <div style={{ marginTop: 11, borderTop: "1px solid var(--line)", paddingTop: 5 }}>
+              {sel.map(id => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                  <Avatar p={people[id]} size={24} />
+                  <div style={{ flex: 1, fontWeight: 600 }}>{people[id].name} <span className="cap">index {people[id].hi.toFixed(1)}</span></div>
+                  <div style={{ fontWeight: 800 }}>{courseHcp(people[id].hi, cinfo)} <span className="cap" style={{ fontWeight: 400 }}>strokes</span></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
+        <button className="cta" disabled={sel.length < 2} onClick={() => onGo({ course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts })}>Tee off</button>
+      </div>
+    </div>
+  );
+}
+
+function Round({ round, people, api, onBack, onFinish, onRules }) {
+  const [gtab, setGtab] = useState(round.games[0] || null);
+  const h = round.hole; const ids = round.playerIds;
+  const pc = round.games.includes("punt") ? puntCalc(round) : null;
+  const [lastCall, setLastCall] = useState(false);
+  const [again, setAgain] = useState(false);
+  const cardsHere = !!pc && round.opts.cards && cardHole(h) && !!round.draws[h];
+  const showReveal = cardsHere && (!round.seen[h] || again);
+  const nextIsCard = !!pc && round.opts.cards && h < 17 && cardHole(h + 1) && !round.draws[h + 1];
+  const goNext = () => (nextIsCard ? setLastCall(true) : api.setHole(Math.min(17, h + 1)));
+  /* heads-up strips at the top of the hole, for the scorer to read out */
+  const notices = [];
+  if (pc && round.opts.ntp && PAR[h] === 3) notices.push({ key: "ntp", icon: "flag", isize: 2, title: "Par 3: nearest the pin", text: "Closest ball on the green or fringe earns +3. Pick the winner, then confirm they're on." });
+  if (cardsHere) notices.push({ key: "cards", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards are out`, text: "Everyone drew a blessing or a curse. Banks from the last hole are locked.", action: ["Show cards", () => setAgain(true)] });
+  if (nextIsCard) notices.push({ key: "bank", icon: "c_vault", isize: 2, urgent: true, title: `Next hole is the ${SI[h + 1] === 1 ? "hardest" : "easiest"}: last chance to bank`, text: "Everyone draws a card at the tee, then banks lock. Ask each player now.", action: ["Review banks", () => setLastCall(true)] });
+  const bump = (id, d) => {
+    const cur = round.scores[id][h];
+    api.setScore(id, h, cur == null ? PAR[h] : Math.min(12, Math.max(1, cur + d)));
+  };
+  const StepBtn = ({ onClick, label, children }) => (
+    <button onClick={onClick} aria-label={label} style={{ width: 36, height: 36, borderRadius: "50%", border: "1.5px solid var(--line)", display: "grid", placeItems: "center", background: "var(--card)", flex: "none" }}>{children}</button>
+  );
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div className="stripes" style={{ padding: "9px 12px 11px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />{round.course.name}</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={onRules} style={{ fontWeight: 700, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 11px" }}>Rules</button>
+            <button onClick={onFinish} style={{ fontWeight: 700, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 11px" }}>Finish</button>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
+          <button onClick={() => api.setHole(Math.max(0, h - 1))} aria-label="Previous hole" disabled={h === 0} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,.14)", display: "grid", placeItems: "center", opacity: h === 0 ? 0.35 : 1 }}><ChevronLeft size={26} /></button>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 600 }}>Hole</div>
+            <div className="px" style={{ fontSize: 29, lineHeight: 1, margin: "5px 0" }}>{h + 1}</div>
+            <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 8 }}>
+              <span className="pill" style={{ background: "rgba(255,255,255,.16)", padding: "3px 9px" }}>Par {PAR[h]}</span>
+              <span className="pill" style={{ background: "rgba(255,255,255,.16)", padding: "3px 9px" }}>Stroke index {SI[h]}</span>
+            </div>
+          </div>
+          <button onClick={goNext} aria-label="Next hole" disabled={h === 17} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,.14)", display: "grid", placeItems: "center", opacity: h === 17 ? 0.35 : 1 }}><ChevronRight size={26} /></button>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 11 }}>
+          {range18.map(i => (
+            <button key={i} onClick={() => (i === h + 1 ? goNext() : api.setHole(i))} aria-label={`Go to hole ${i + 1}`} style={{ width: 17, height: 24, display: "grid", placeItems: "center" }}>
+              <span style={{ width: i === h ? 13 : 9, height: i === h ? 13 : 9, borderRadius: "50%", background: holeDone(round, i) ? "var(--flag)" : "rgba(255,255,255,.28)", boxShadow: i === h ? "0 0 0 2px #fff" : "none" }} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: "9px 12px 75px", display: "grid", gap: 6, alignContent: "start" }}>
+        {notices.length > 0 && (
+        <div style={{ position: "sticky", top: 0, zIndex: 6, display: "grid", gap: 6, padding: "6px 0", background: "var(--chalk)", borderBottom: "2px solid var(--night)" }}>
+        {notices.map(n => (
+          <div key={n.key} role="status" style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px", border: "3px solid var(--night)", background: n.urgent ? "var(--red)" : "var(--flag)", color: n.urgent ? "#fff" : "var(--dk)" }}>
+            <div style={{ flex: "none", width: 28, display: "grid", placeItems: "center" }}><Sprite name={n.icon} size={n.isize} className={n.urgent ? "flick" : ""} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.15 }}>{n.title}</div>
+              <div style={{ fontSize: 12, lineHeight: 1.2 }}>{n.text}</div>
+            </div>
+            {n.action && <button className="chip" onClick={n.action[1]} style={{ flex: "none", padding: "1px 7px", fontSize: 12, color: "var(--ink)" }}>{n.action[0]}</button>}
+          </div>
+        ))}
+        </div>
+        )}
+        {ids.map(id => {
+          const v = round.scores[id][h]; const st = round.useHcp ? strokesOn(round.hcp[id], h) : 0;
+          const t = totalsFor(round, id); const n = netOf(round, id, h);
+          const bust = pc && pc[id].bustAt[h]; const hot = pc && !bust && v != null && pc[id].mult > 1;
+          return (
+            <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 6px 6px 9px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
+              <Avatar p={people[id]} size={31} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>{people[id].name}</div>
+                <div className="cap">
+                  {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
+                  {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
+                </div>
+                {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}>{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</span>}
+                {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 14 }}>BUST</span></div>}
+                {hot && <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>{Array.from({ length: pc[id].mult }).map((_, k) => <Sprite key={k} name="flame" size={3} className="flick" />)}<span className="px" style={{ fontSize: 14 }}>x{pc[id].mult}</span></div>}
+              </div>
+              <StepBtn onClick={() => bump(id, -1)} label={`${people[id].name} minus one`}><Minus size={22} /></StepBtn>
+              <ScoreMark v={v} par={PAR[h]} />
+              <StepBtn onClick={() => bump(id, 1)} label={`${people[id].name} plus one`}><Plus size={22} /></StepBtn>
+            </div>
+          );
+        })}
+
+        {round.games.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            {round.games.length > 1 && (
+              <div className="scrollx">
+                {round.games.map(g => (
+                  <button key={g} className={`chip ${gtab === g ? "on" : ""}`} onClick={() => setGtab(g)}>{GAMES.find(x => x.id === g).name}</button>
+                ))}
+              </div>
+            )}
+            <div className="card" style={{ padding: 12, marginTop: 9 }}>
+              <GamePanel key={gtab} gid={gtab} round={round} people={people} h={h} api={api} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ position: "sticky", bottom: 0, marginTop: "auto", padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
+        {h < 17
+          ? <button className="cta" onClick={goNext}>Next hole<ChevronRight size={22} /></button>
+          : <button className="cta" style={{ background: "var(--flag)", color: "var(--dk)" }} onClick={onFinish}>Finish round</button>}
+      </div>
+      {showReveal && <CardReveal key={h} round={round} people={people} h={h} onDone={() => { api.markSeen(h); setAgain(false); }} />}
+      {lastCall && nextIsCard && (
+        <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.65)" }} onClick={() => setLastCall(false)}>
+          <div className="sheet card" role="dialog" aria-label="Last chance to bank" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "88vh", overflowY: "auto" }}>
+            <h2 className="h2">Last chance to bank</h2>
+            <p className="cap" style={{ marginTop: 3 }}>{cardHoleLabel(h + 1)} Everyone draws a blessing or a curse at the tee, and banks lock once the cards are out. Read this out, then decide.</p>
+            <div style={{ marginTop: 6 }}>
+              {ids.map((id, i) => {
+                const s = pc[id]; const potBefore = s.potAt[h] != null ? s.potAt[h] : s.pot; const sa = s.streakAt[h] != null ? s.streakAt[h] : s.streak;
+                const mult = sa >= 5 ? 3 : sa >= 3 ? 2 : 1; const banking = !!round.bank[id][h];
+                return (
+                  <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                    <Avatar p={people[id]} size={26} />
+                    <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
+                    {mult > 1 && <span className="pill" style={{ background: "var(--flag)", color: "var(--dk)" }}>x{mult} streak</span>}
+                    <div style={{ minWidth: 54, textAlign: "right" }}><span style={{ fontWeight: 800, fontSize: 17 }}>{banking ? s.banked : potBefore}</span><span className="cap">{banking ? " banked" : " in pot"}</span></div>
+                    <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={potBefore === 0 && !banking} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
+                      {banking ? "Banking" : potBefore === 0 ? "Empty" : "Bank it"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="cap" style={{ marginTop: 4 }}>Banking resets your streak, unless you hold a Bank vault.</p>
+            <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+              <button className="cta" onClick={() => { setLastCall(false); api.setHole(h + 1); }}>Draw the cards</button>
+              <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => setLastCall(false)}>Not yet</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Summary({ round, people, onSave, onBack }) {
+  const comp = round.playerIds.map(id => ({ id, ...totalsFor(round, id) })).sort((a, b) => (round.useHcp ? a.netPar - b.netPar : a.grossPar - b.grossPar));
+  const hasPunt = round.games.includes("punt");
+  const pc = puntCalc(round);
+  const punt = [...round.playerIds].sort((a, b) => pc[b].total - pc[a].total);
+  const ranked = hasPunt ? punt : comp.map(r => r.id);
+  const pay = payouts(round, ranked);
+  const nets = {}; round.playerIds.forEach(id => (nets[id] = Math.round((pay[id] - round.stake) * 100) / 100));
+  const owes = settle(nets);
+  const sign = v => (v > 0 ? `+${money(v)}` : v < 0 ? `${MINUS}${money(-v)}` : "$0");
+
+  return (
+    <div style={{ flex: 1 }}>
+      <div className="stripes" style={{ padding: "14px 12px 22px" }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back to scoring</button>
+        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -1, marginTop: 9 }}>Round complete</h1>
+        <p style={{ opacity: 0.8, marginTop: 3 }}>{round.course.name}</p>
+      </div>
+      <div style={{ padding: "12px 12px 86px", display: "grid", gap: 11 }}>
+        <div className="card" style={{ padding: "5px 11px" }}>
+          <div style={{ padding: "9px 0 0" }}>
+            <h3 style={{ fontWeight: 800, fontSize: 15 }}>The Comp</h3>
+            <p className="cap">Your official scorecard result.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 56px 56px", gap: 5, padding: "8px 0 3px" }} className="cap">
+            <div /><div /><div style={{ textAlign: "right" }}>Gross</div><div style={{ textAlign: "right" }}>Net</div>
+          </div>
+          {comp.map((r, i) => (
+            <div key={r.id} style={{ display: "grid", gridTemplateColumns: "28px 1fr 56px 56px", gap: 5, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line)" }}>
+              <div style={{ fontWeight: 800, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i === 0 ? <Sprite name="crown" size={4} /> : i + 1}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}><Avatar p={people[r.id]} size={26} />{people[r.id].name}</div>
+              <div style={{ textAlign: "right", fontWeight: 600 }}>{r.gross}</div>
+              <div style={{ textAlign: "right", fontWeight: 800 }}>{round.useHcp ? r.net : r.gross} <span className="cap">{fmtPar(round.useHcp ? r.netPar : r.grossPar)}</span></div>
+            </div>
+          ))}
+        </div>
+
+        {hasPunt && (
+          <div className="card" style={{ padding: "5px 11px" }}>
+            <div style={{ padding: "9px 0 5px" }}>
+              <h3 style={{ fontWeight: 800, fontSize: 15 }}>The Punt</h3>
+              <p className="cap">Everything left in a pot at the 18th is banked automatically.</p>
+            </div>
+            {punt.map((id, i) => (
+              <div key={id} style={{ display: "grid", gridTemplateColumns: "28px 1fr auto", gap: 5, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line)" }}>
+                <div style={{ fontWeight: 800, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i === 0 ? <Sprite name="crown" size={4} /> : i + 1}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                  <Avatar p={people[id]} size={26} />
+                  <div>{people[id].name}<div className="cap" style={{ fontWeight: 400 }}>{tally(pc[id], countEvents(round, id))}</div></div>
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>{pc[id].total}<span className="cap"> pts</span></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {round.stake > 0 && (
+          <div className="card" style={{ padding: 12 }}>
+            <h3 style={{ fontWeight: 800, fontSize: 15 }}>Prize pool</h3>
+            <p className="cap">{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "The Punt" : "The Comp"}. {SPLITS.find(s => s[0] === round.split)[1]}.</p>
+            <div style={{ marginTop: 6 }}>
+              {ranked.map((id, i) => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                  <Avatar p={people[id]} size={22} />
+                  <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
+                  <div style={{ fontWeight: 800, color: nets[id] > 0 ? "var(--fair)" : nets[id] < 0 ? "var(--red)" : "var(--ink)" }}>{sign(nets[id])}</div>
+                </div>
+              ))}
+            </div>
+            {owes.length > 0 && (
+              <div style={{ marginTop: 8, padding: 9, borderRadius: 12, background: "var(--chalk)" }}>
+                <div style={{ fontWeight: 800, marginBottom: 3 }}>Settle up</div>
+                {owes.map(([from, to, amt]) => (
+                  <div key={from + to} style={{ fontSize: 13, padding: "2px 0" }}>{people[from].name} pays {people[to].name} <b>{money(amt)}</b></div>
+                ))}
+                <p className="cap" style={{ marginTop: 5 }}>Sort it out between you. The app doesn't handle money.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {round.games.filter(g => g !== "mystery" && g !== "punt").map(g => (
+          <div key={g} className="card" style={{ padding: 12 }}>
+            <h3 style={{ fontWeight: 800, fontSize: 15 }}>{GAMES.find(x => x.id === g).name}</h3>
+            <div style={{ marginTop: 6 }}>
+              {summarize(round, people, g).map(([l, v], i) => (
+                <div key={l} style={{ display: "flex", justifyContent: "space-between", gap: 9, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                  <span className="cap" style={{ fontSize: 13 }}>{l}</span><span style={{ fontWeight: 700, textAlign: "right" }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
+        <button className="cta" onClick={onSave}>Save round</button>
+      </div>
+    </div>
+  );
+}
+
+function Friends({ people, friendIds, setFriendIds }) {
+  const [metric, setMetric] = useState("avg");
+  const [period, setPeriod] = useState("month");
+  const [sheet, setSheet] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const m = METRICS.find(x => x.id === metric);
+  const rows = ["me", ...friendIds].map(id => ({ id, v: STATS[id][period][metric] })).sort((a, b) => (m.low ? a.v - b.v : b.v - a.v));
+  const vals = rows.map(r => r.v); const mx = Math.max(...vals), mn = Math.min(...vals);
+  const pct = v => (m.low ? 100 - ((v - mn) / (mx - mn || 1)) * 55 : (v / (mx || 1)) * 100);
+  const suggestions = ["dani", "omar"];
+
+  return (
+    <div style={{ paddingBottom: 19 }}>
+      <div className="stripes" style={{ padding: "23px 16px 20px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -1 }}>Friends</h1>
+        <button onClick={() => setSheet(true)} style={{ background: "var(--flag)", color: "var(--dk)", borderRadius: 999, padding: "7px 12px", fontWeight: 800, display: "flex", gap: 5, alignItems: "center" }}><UserPlus size={18} />Add</button>
+      </div>
+      <div style={{ padding: 12 }}>
+        <div style={{ display: "flex", background: "var(--sel)", borderRadius: 14, padding: 3 }}>
+          {[["month", "This month"], ["season", "This season"]].map(([k, l]) => (
+            <button key={k} onClick={() => setPeriod(k)} style={{ flex: 1, padding: "7px 0", borderRadius: 11, fontWeight: 700, background: period === k ? "var(--card)" : "transparent", boxShadow: period === k ? "0 1px 3px rgba(0,0,0,.12)" : "none" }}>{l}</button>
+          ))}
+        </div>
+        <div className="scrollx" style={{ marginTop: 11 }}>
+          {METRICS.map(x => <button key={x.id} className={`chip ${metric === x.id ? "on" : ""}`} onClick={() => setMetric(x.id)}>{x.label}</button>)}
+        </div>
+        <p className="cap" style={{ margin: "9px 2px" }}>Scores are net, so a 5 handicap and a 20 handicap compete on level ground.</p>
+        <div className="card" style={{ padding: "3px 11px" }}>
+          {rows.map((r, i) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none", background: r.id === "me" ? "var(--sel)" : "transparent", margin: r.id === "me" ? "0 -14px" : 0, paddingLeft: r.id === "me" ? 14 : 0, paddingRight: r.id === "me" ? 14 : 0 }}>
+              <div style={{ width: 26, display: "grid", placeItems: "center", fontWeight: 800, color: "var(--muted)" }}>
+                {i === 0 ? <Sprite name="crown" size={4} /> : i + 1}
+              </div>
+              <Avatar p={people[r.id]} size={32} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <div style={{ fontWeight: 800 }}>{people[r.id].name} <span className="cap" style={{ fontWeight: 400 }}>index {people[r.id].hi.toFixed(1)}</span></div>
+                  <div style={{ fontWeight: 800, fontSize: 16 }}>{m.fmt(r.v)}</div>
+                </div>
+                <div style={{ height: 7, background: "var(--track)", borderRadius: 99, marginTop: 5 }}>
+                  <div style={{ height: "100%", width: `${pct(r.v)}%`, borderRadius: 99, background: i === 0 ? "var(--fair)" : "var(--lime)", transition: "width .3s" }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {sheet && (
+        <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 20, display: "flex", alignItems: "flex-end", background: "rgba(10,30,22,.5)" }} onClick={() => setSheet(false)}>
+          <div className="sheet" onClick={e => e.stopPropagation()} style={{ background: "var(--chalk)", width: "100%", borderRadius: "26px 26px 0 0", padding: 16, paddingBottom: 22 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="h2">Add friends</h2>
+              <button onClick={() => setSheet(false)} aria-label="Close"><X size={24} /></button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "9px 11px", marginTop: 11 }}>
+              <Search size={18} color="var(--muted)" /><span style={{ color: "var(--muted)" }}>Search by name or username</span>
+            </div>
+            <button onClick={() => { setCopied(true); setTimeout(() => setCopied(false), 1800); }} className="card" style={{ width: "100%", marginTop: 8, padding: "10px 11px", display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+              <LinkIcon size={18} />{copied ? "Invite link copied" : "Copy your invite link"}
+            </button>
+            <div className="cap" style={{ margin: "14px 0 5px", fontWeight: 600 }}>Golfers you may know</div>
+            {suggestions.map(id => {
+              const added = friendIds.includes(id);
+              return (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
+                  <Avatar p={people[id]} size={34} />
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">Index {people[id].hi.toFixed(1)}</div></div>
+                  <button disabled={added} onClick={() => setFriendIds(f => [...f, id])} className="chip" style={added ? { background: "var(--mint)", borderColor: "var(--mint)", color: "var(--dk)" } : { background: "var(--pine)", borderColor: "var(--pine)", color: "#fff" }}>{added ? "Added" : "Add"}</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Me({ people, setPeople, dark, setDark, saved, onAbout }) {
+  const me = people.me;
+  const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(36, Math.max(-2, v)) * 10) / 10 } }));
+  const s = STATS.me.season;
+  const tiles = [["Rounds", s.rounds], ["Birdies", s.bird], ["Side-game wins", s.wins], ["Avg net", s.avg.toFixed(1)]];
+  return (
+    <div style={{ paddingBottom: 19 }}>
+      <div className="stripes" style={{ padding: "23px 16px 20px", display: "flex", alignItems: "center", gap: 11 }}>
+        <Avatar p={me} size={54} />
+        <div><h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.8 }}>You</h1><p style={{ opacity: 0.8 }}>Season stats</p></div>
+      </div>
+      <div style={{ padding: 12, display: "grid", gap: 11 }}>
+        <div className="card" style={{ padding: "8px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
+          <div><div style={{ fontWeight: 700, fontSize: 13 }}>Dark mode</div><div className="cap">Easier on the eyes on the course at dusk.</div></div>
+          <Toggle on={dark} onChange={setDark} />
+        </div>
+        <div className="card" style={{ padding: 12 }}>
+          <div className="cap" style={{ fontWeight: 600 }}>Handicap index</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 5 }}>
+            <button onClick={() => setHi(me.hi - 0.1)} aria-label="Lower handicap" style={{ width: 40, height: 40, borderRadius: "50%", border: "1.5px solid var(--line)", display: "grid", placeItems: "center" }}><Minus size={22} /></button>
+            <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: -1.5 }}>{me.hi.toFixed(1)}</div>
+            <button onClick={() => setHi(me.hi + 0.1)} aria-label="Raise handicap" style={{ width: 40, height: 40, borderRadius: "50%", border: "1.5px solid var(--line)", display: "grid", placeItems: "center" }}><Plus size={22} /></button>
+          </div>
+        </div>
+        <div className="card" style={{ padding: "11px 12px" }}>
+          <h3 style={{ fontWeight: 800, fontSize: 15 }}>Strokes you get on each course</h3>
+          <p className="cap" style={{ marginTop: 2 }}>Your index adjusted for slope and rating.</p>
+          {[...saved, ...COURSES].flatMap(c => c.tees.map((x, k) => ({ key: c.id + k, name: c.tees.length > 1 ? `${c.name} (${x.name})` : c.name, sample: c.source === "sample", x, par: c.par }))).map((c, i) => (
+            <div key={c.key} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none", marginTop: i ? 0 : 8 }}>
+              <div><div style={{ fontWeight: 700 }}>{c.name}</div><div className="cap">{c.sample ? "Sample. " : ""}Slope {c.x.slope}, rating {c.x.rating}, par {c.par}</div></div>
+              <div style={{ fontWeight: 800, fontSize: 17 }}>{courseHcp(me.hi, { slope: c.x.slope, rating: c.x.rating, par: c.par })}</div>
+            </div>
+          ))}
+        </div>
+        <button className="chip" onClick={onAbout} style={{ padding: "8px 0", textAlign: "center" }}>About this alpha</button>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {tiles.map(([l, v]) => (
+            <div key={l} className="card" style={{ padding: 12 }}>
+              <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -1 }}>{v}</div>
+              <div className="cap">{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── APP ───────────── */
+export default function App() {
+  const [people, setPeople] = useState(PEOPLE);
+  const [dark, setDark] = useState(true);
+  const [friendIds, setFriendIds] = useState(["sam", "priya", "jake", "maya", "leo"]);
+  const [tab, setTab] = useState("home");
+  const [view, setView] = useState("tabs");
+  const [round, setRound] = useState(() => buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
+  const [recent, setRecent] = useState(RECENT);
+  const [del, setDel] = useState(null);
+  const [rulesFrom, setRulesFrom] = useState("tabs");
+  const [saved, setSaved] = useState(loadSaved);
+  const [about, setAbout] = useState(false);
+  const saveCourse = c => setSaved(s => { const n = [c, ...s.filter(x => x.id !== c.id)]; storeSaved(n); return n; });
+  const resetDemo = () => {
+    storeSaved([]); setSaved([]); setPeople(PEOPLE); setRecent(RECENT); setAbout(false);
+    setRound(buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
+    setView("tabs"); setTab("home");
+  };
+  const confirmDelete = () => { if (del.kind === "round") setRound(null); else setRecent(r => r.filter((_, j) => j !== del.i)); setDel(null); };
+
+  const api = {
+    setScore: (id, h, v) => setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })),
+    setBank: (id, h, v) => setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })),
+    setNtp: (h, id) => setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)), ntpOk: r.ntpOk.map((x, i) => (i === h ? false : x)) })),
+    setNtpOk: h => setRound(r => ({ ...r, ntpOk: r.ntpOk.map((x, i) => (i === h ? !x : x)) })),
+    setEvent: (id, h, k) => setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? { ...(x || {}), [k]: !(x && x[k]) } : x)) } })),
+    setWolf: (h, v) => setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })),
+    setBbb: (h, k, id) => setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })),
+    markSeen: h => setRound(r => ({ ...r, seen: r.seen.map((x, i) => (i === h ? true : x)) })),
+    setHole: h => setRound(r => {
+      let draws = r.draws;
+      if (r.opts.cards && cardHole(h) && !draws[h]) { draws = draws.slice(); draws[h] = drawCards(r, h, mulberry32(r.drawSeed + h * 977)); }
+      return { ...r, hole: h, draws };
+    }),
+  };
+
+  const board = ["me", ...friendIds].map(id => ({ id, v: STATS[id].month.avg })).sort((a, b) => a.v - b.v);
+
+  const save = () => {
+    const t = totalsFor(round, "me");
+    setRecent(r => [{ course: round.course.name, when: "Today", gross: t.gross, net: round.useHcp ? t.net : t.gross, note: `${round.games.length} side games` }, ...r]);
+    setRound(null); setView("tabs"); setTab("home");
+  };
+
+  const tabs = [["home", "Home", HomeIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon]];
+
+  return (
+    <div className={`sg${dark ? " dark" : ""}`}>
+      <style>{CSS}</style>
+      {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
+      {del && (
+        <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={() => setDel(null)}>
+          <div className="sheet card" role="dialog" aria-label="Delete round" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
+            <h2 className="h2">Delete this round?</h2>
+            <p className="cap" style={{ marginTop: 3 }}>{del.kind === "round" ? `${round.course.name}, in progress` : `${recent[del.i].course}, ${recent[del.i].when}`}. This can't be undone.</p>
+            <div style={{ display: "grid", gap: 6, marginTop: 9 }}>
+              <button className="cta" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={confirmDelete}>Delete round</button>
+              <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => setDel(null)}>Keep it</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onBack={() => setView("tabs")} onGo={cfg => { setRound(buildRound(cfg, people, false)); setView("round"); }} />}
+      {view === "round" && round && <Round round={round} people={people} api={api} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => setView("summary")} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
+      {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
+      {view === "summary" && round && <Summary round={round} people={people} onSave={save} onBack={() => setView("round")} />}
+      {view === "tabs" && (
+        <>
+          <div style={{ flex: 1 }}>
+            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => setDel({ kind, i })} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => setView("setup")} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "friends" && <Friends people={people} friendIds={friendIds} setFriendIds={setFriendIds} />}
+            {tab === "me" && <Me people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
+          </div>
+          <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>
+            {tabs.map(([k, l, I]) => (
+              <button key={k} onClick={() => setTab(k)} aria-current={tab === k} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0", borderRadius: 16, background: tab === k ? "var(--sel)" : "transparent", color: tab === k ? "var(--ink)" : "var(--muted)", fontWeight: 700, fontSize: 11 }}>
+                <I size={22} />{l}
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
+    </div>
+  );
+}
