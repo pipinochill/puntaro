@@ -557,7 +557,7 @@ const tally = (st, c) => [
   c.p ? `${c.p} penalt${c.p > 1 ? "ies" : "y"}` : null,
 ].filter(Boolean).join(", ");
 
-/* ranked is best first. score (optional) maps id to points: tied players split the money for the places they cover. */
+/* ranked is best first. score (optional) maps id to points: tied players split the money for the places they cover. Whole dollars only. */
 function payouts(r, ranked, score) {
   const n = ranked.length; const pool = r.stake * n; const pay = {};
   ranked.forEach(id => (pay[id] = 0));
@@ -575,10 +575,11 @@ function payouts(r, ranked, score) {
       i = j + 1;
     }
   }
-  ranked.forEach((id, i) => (pay[id] = Math.floor(by[i] * 100 + 1e-6) / 100));
-  /* any stray cents from rounding go to first place, so the pool always adds up */
-  const paid = ranked.reduce((a, id) => a + pay[id], 0);
-  pay[ranked[0]] = Math.round((pay[ranked[0]] + (pool - paid)) * 100) / 100;
+  /* whole dollars only: round every share down, then hand the leftover dollars to first place (and anyone tied with them) one at a time */
+  ranked.forEach((id, i) => (pay[id] = Math.floor(by[i] + 1e-6)));
+  let left = pool - ranked.reduce((a, id) => a + pay[id], 0);
+  const top = score ? ranked.filter(id => score[id] === score[ranked[0]]) : [ranked[0]];
+  for (let k = 0; left > 0; k++, left--) pay[top[k % top.length]] += 1;
   return pay;
 }
 // Bank hints. A guide built from simulating thousands of rounds: holding a big pot pays off until about 20 points.
