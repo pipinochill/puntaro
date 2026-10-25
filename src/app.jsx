@@ -34,6 +34,8 @@ const COURSES = [
   { id: "cedar", name: "Cedar Ridge", source: "sample", par: 72, holes: null, tees: [{ name: "White", slope: 140, rating: 73.4 }] },
 ];
 const TRASH_MS = 5 * 60 * 1000;
+const STATE_KEY = "puntaro.state.v1";
+const loadAppState = () => { try { const s = JSON.parse(localStorage.getItem(STATE_KEY)); return s && typeof s === "object" ? s : null; } catch (e) { return null; } };
 const SAVED_KEY = "puntaro.courses.v1";
 const loadSaved = () => { try { const v = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
 const storeSaved = v => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(v)); } catch (e) { /* private mode: fine */ } };
@@ -1991,8 +1993,12 @@ export default function App() {
   const [friendIds, setFriendIds] = useState(["sam", "priya", "jake", "maya", "leo"]);
   const [tab, setTab] = useState("home");
   const [view, setView] = useState("tabs");
-  const [round, setRound] = useState(() => buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
-  const [recent, setRecent] = useState(RECENT);
+  const [round, setRound] = useState(() => {
+    const s = loadAppState();
+    if (s && "round" in s) { if (s.round) applyHoles(s.round.holes || null); return s.round; }
+    return buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true);
+  });
+  const [recent, setRecent] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.recent) ? s.recent : RECENT; });
   const [del, setDel] = useState(null);
   const [rulesFrom, setRulesFrom] = useState("tabs");
   const [saved, setSaved] = useState(loadSaved);
@@ -2003,7 +2009,8 @@ export default function App() {
     setRound(buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
     setView("tabs"); setTab("home");
   };
-  const [trash, setTrash] = useState([]);
+  const [trash, setTrash] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.trash) ? s.trash.filter(x => Date.now() - x.at < TRASH_MS) : []; });
+  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash]);
   const [now, setNow] = useState(Date.now());
   const armed = useRef(false);
   const ready = () => armed.current; // a click only counts after a fresh press on the sheet, so the finger lifting after a hold is ignored
