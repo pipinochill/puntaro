@@ -51,20 +51,20 @@ const PEOPLE = {
   omar:  { id: "omar", name: "Omar", hi: 21.8, color: "#7A7A72" },
 };
 const STATS = {
-  me:    { month: { avg: 73.4, bird: 3, wins: 5, rounds: 6 }, season: { avg: 74.1, bird: 19, wins: 31, rounds: 38 } },
-  sam:   { month: { avg: 71.9, bird: 5, wins: 4, rounds: 5 }, season: { avg: 72.6, bird: 27, wins: 29, rounds: 34 } },
-  priya: { month: { avg: 74.8, bird: 2, wins: 6, rounds: 7 }, season: { avg: 75.2, bird: 11, wins: 38, rounds: 41 } },
-  jake:  { month: { avg: 73.9, bird: 4, wins: 3, rounds: 4 }, season: { avg: 74.0, bird: 16, wins: 22, rounds: 27 } },
-  maya:  { month: { avg: 70.6, bird: 8, wins: 5, rounds: 6 }, season: { avg: 71.2, bird: 34, wins: 30, rounds: 36 } },
-  leo:   { month: { avg: 76.2, bird: 1, wins: 2, rounds: 3 }, season: { avg: 76.8, bird: 9, wins: 15, rounds: 19 } },
-  dani:  { month: { avg: 72.7, bird: 4, wins: 4, rounds: 5 }, season: { avg: 73.1, bird: 21, wins: 24, rounds: 28 } },
-  omar:  { month: { avg: 75.5, bird: 2, wins: 1, rounds: 4 }, season: { avg: 75.9, bird: 12, wins: 12, rounds: 22 } },
+  me:    { month: { pts: 24.6, ntp: 1, wins: 5, rounds: 6 }, season: { pts: 23.1, ntp: 6, wins: 31, rounds: 38 } },
+  sam:   { month: { pts: 27.3, ntp: 2, wins: 4, rounds: 5 }, season: { pts: 26.0, ntp: 9, wins: 29, rounds: 34 } },
+  priya: { month: { pts: 21.8, ntp: 0, wins: 6, rounds: 7 }, season: { pts: 22.4, ntp: 4, wins: 38, rounds: 41 } },
+  jake:  { month: { pts: 23.9, ntp: 1, wins: 3, rounds: 4 }, season: { pts: 24.2, ntp: 5, wins: 22, rounds: 27 } },
+  maya:  { month: { pts: 29.1, ntp: 3, wins: 5, rounds: 6 }, season: { pts: 28.0, ntp: 12, wins: 30, rounds: 36 } },
+  leo:   { month: { pts: 19.4, ntp: 0, wins: 2, rounds: 3 }, season: { pts: 20.6, ntp: 2, wins: 15, rounds: 19 } },
+  dani:  { month: { pts: 25.2, ntp: 1, wins: 4, rounds: 5 }, season: { pts: 24.8, ntp: 6, wins: 24, rounds: 28 } },
+  omar:  { month: { pts: 20.7, ntp: 1, wins: 1, rounds: 4 }, season: { pts: 21.3, ntp: 3, wins: 12, rounds: 22 } },
 };
 const METRICS = [
-  { id: "avg", label: "Avg net score", low: true, fmt: v => v.toFixed(1) },
-  { id: "bird", label: "Birdies", fmt: v => v },
-  { id: "wins", label: "Puntaro wins", fmt: v => v },
   { id: "rounds", label: "Rounds", fmt: v => v },
+  { id: "wins", label: "Wins", fmt: v => v },
+  { id: "ntp", label: "NTPs", fmt: v => v },
+  { id: "pts", label: "Avg pts", fmt: v => v.toFixed(1) },
 ];
 const GAMES = [
   { id: "punt", name: "Puntaro", blurb: "Bank it or bust it. Net scores, so every handicap has a shot.", hero: true },
@@ -229,6 +229,7 @@ const SFX = (() => {
     bank: mk(a => { tone(a, 988, 0, 0.07); tone(a, 1175, 0.07, 0.36, { vol: 0.05 }); tone(a, 988, 0.09, 0.26, { vol: 0.03, type: "triangle" }); }),
     bust: mk(a => { noise(a, 0, 0.38, { vol: 0.13, from: 1200, to: 120 }); tone(a, 220, 0, 0.55, { type: "sawtooth", vol: 0.07, to: 45 }); tone(a, 330, 0, 0.28, { vol: 0.04, to: 80 }); }),
     mult: mk(a => run(a, [523, 659, 784, 1047, 1319], 0.045, { vol: 0.06 })),
+    ntp: mk(a => { noise(a, 0, 0.1, { vol: 0.08, from: 600, to: 3000 }); [392, 523, 659, 784, 1047].forEach((f, i) => tone(a, f, 0.08 + i * 0.07, 0.14, { vol: 0.06 })); tone(a, 523, 0.5, 0.4, { type: "triangle", vol: 0.08 }); tone(a, 784, 0.5, 0.4, { type: "triangle", vol: 0.06 }); }),
     flip: mk(a => { noise(a, 0, 0.07, { vol: 0.1, from: 5000, to: 1500 }); tone(a, 280, 0, 0.09, { to: 900, vol: 0.04 }); }),
     bless: mk(a => { run(a, [523, 659, 784, 1047], 0.07, { type: "triangle", vol: 0.1 }); tone(a, 1047, 0.3, 0.3, { type: "triangle", vol: 0.04 }); }),
     curse: mk(a => { run(a, [392, 370, 349, 311], 0.1, { type: "sawtooth", vol: 0.05 }); tone(a, 98, 0.1, 0.6, { vol: 0.05, to: 60 }); }),
@@ -319,7 +320,6 @@ function Splash({ onDone }) {
       <SwirlBg />
       <div className="scan" aria-hidden="true" />
       <div className="stack">
-        <div className="mark"><Sprite name="logo" size={9} /></div>
         <Wordmark size={56} />
         <div className="tag"><i /><span>BANK IT. OR BUST.</span><i /></div>
       </div>
@@ -808,6 +808,32 @@ const CSS = `
 @keyframes shine{0%{background-position:150% 0}45%,100%{background-position:-60% 0}}
 .pcard.curse .pc-fx{background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);animation:glitch 3.4s steps(1) infinite;animation-delay:var(--d,0s);}
 @keyframes glitch{0%,88%,100%{transform:translateX(0);opacity:1}90%{transform:translateX(-2px);opacity:.6}93%{transform:translateX(2px);opacity:1}}
+.pcard::before{content:"";position:absolute;inset:calc(var(--cw)*.04);z-index:-1;pointer-events:none;}
+.pcard.bless::before{box-shadow:0 0 calc(var(--cw)*.22) calc(var(--cw)*.03) rgba(233,196,120,.55);animation:glowb 2.4s steps(6) infinite;}
+.pcard.curse::before{box-shadow:0 0 calc(var(--cw)*.22) calc(var(--cw)*.03) rgba(184,74,50,.5);animation:glowc 1.8s steps(5) infinite;}
+.pcard.down::before{box-shadow:none;animation:none;}
+@keyframes glowb{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes glowc{0%,100%{opacity:1}50%{opacity:.4}}
+.pcard.bless .pc-fx{background-image:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.38) 50%,transparent 58%),linear-gradient(135deg,rgba(255,120,160,.14),rgba(255,220,100,.14) 33%,rgba(120,230,170,.14) 66%,rgba(120,170,255,.14));}
+.pc-fx::after{content:"";position:absolute;left:0;top:0;width:calc(var(--cw)*.035);height:calc(var(--cw)*.035);}
+.pcard.bless .pc-fx::after{background:#FFF3C9;box-shadow:calc(var(--cw)*.2) calc(var(--cw)*.35) #FFF3C9,calc(var(--cw)*.62) calc(var(--cw)*.28) #FFE08A,calc(var(--cw)*.48) calc(var(--cw)*.7) #FFF3C9,calc(var(--cw)*.76) calc(var(--cw)*.82) #FFE08A,calc(var(--cw)*.3) calc(var(--cw)*.95) #FFF3C9;animation:twinkle 1.6s steps(2) infinite;animation-delay:var(--d,0s);}
+@keyframes twinkle{0%{opacity:1}50%{opacity:.15}100%{opacity:1}}
+.pcard.curse .pc-fx::after{top:auto;bottom:0;background:#E26A3B;box-shadow:calc(var(--cw)*.25) 0 #B84A32,calc(var(--cw)*.5) 0 #E26A3B,calc(var(--cw)*.75) 0 #B84A32;animation:ember 2.2s steps(8) infinite;animation-delay:var(--d,0s);}
+@keyframes ember{0%{transform:translateY(0);opacity:1}100%{transform:translateY(calc(var(--cw)*-1));opacity:0}}
+.pcard.hit-c{animation:shake .45s steps(6) 1;}
+.pcard.hit-b{animation:popb .5s steps(5) 1;}
+@keyframes popb{0%{transform:rotate(var(--rot,0deg)) scale(1)}50%{transform:rotate(var(--rot,0deg)) scale(1.14)}100%{transform:rotate(var(--rot,0deg)) scale(1)}}
+.dealin{animation:dealin .5s steps(6) backwards;animation-delay:var(--dd,0s);}
+@keyframes dealin{from{transform:translate(0,60vh) rotate(25deg) scale(.5);opacity:0}to{transform:none;opacity:1}}
+.burst{position:absolute;left:50%;top:42%;width:0;height:0;pointer-events:none;z-index:6;}
+.burst i{position:absolute;left:-3px;top:-3px;width:6px;height:6px;background:var(--bc);animation:burst .75s steps(8) forwards;}
+@keyframes burst{0%{transform:translate(0,0) scale(1.2);opacity:1}100%{transform:translate(var(--bx),var(--by)) scale(.3);opacity:0}}
+.ntpwin{position:relative;display:flex;align-items:center;gap:10px;padding:8px 10px;margin-top:6px;background:var(--pine);color:#F4F0E6;overflow:visible;animation:ntpin .5s steps(6) both;}
+.ntpwin .flagp{animation:plant .6s steps(6) both;transform-origin:bottom;}
+.ntpwin .plus{font-weight:700;font-size:26px;color:#FFE08A;text-shadow:2px 2px 0 #14150F;animation:plusup 1.1s steps(8) both;}
+@keyframes ntpin{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes plant{0%{transform:translateY(-40px) rotate(-30deg);opacity:0}70%{transform:translateY(4px) rotate(4deg);opacity:1}100%{transform:none}}
+@keyframes plusup{0%{transform:translateY(14px) scale(.4);opacity:0}40%{transform:translateY(-4px) scale(1.3);opacity:1}100%{transform:none;opacity:1}}
 .pc-back .pc-in{background-color:#2A4535;background-image:repeating-linear-gradient(45deg,#2F4A3A 0 4px,#294133 4px 8px);align-items:center;justify-content:center;box-shadow:inset 0 0 0 calc(var(--cw)*.03) #14150F;}
 @media (prefers-reduced-motion:reduce){.pc-flip,.pc-tilt{transition:none !important;}}
 @media (prefers-reduced-motion:reduce){.sg *{animation:none !important;}}
@@ -888,7 +914,7 @@ function PickRow({ label, hint, ids, people, value, onPick }) {
 const CARD_ART = { dd: "c_dd", safe: "c_safe", vault: "c_vault", hot: "c_hot", life: "c_life", tax: "c_tax", heavy: "c_heavy", leaky: "c_leaky", shout: "c_shout", mine: "c_mine" };
 
 /* A Balatro-style card: notched pixel edges, tilts toward your finger, flips over, shimmers (blessings) or flickers (curses). */
-function PCard({ id, cw = 76, down = false, still = false, rot = 0, delay = 0 }) {
+function PCard({ id, cw = 76, down = false, still = false, rot = 0, delay = 0, hit = "" }) {
   const ref = useRef(null);
   const c = CARDS[id];
   const ps = Math.max(2, Math.floor(cw * 0.07));
@@ -900,7 +926,7 @@ function PCard({ id, cw = 76, down = false, still = false, rot = 0, delay = 0 })
   };
   const rest = () => { const el = ref.current; if (el) { el.style.setProperty("--rx", "0deg"); el.style.setProperty("--ry", "0deg"); } };
   return (
-    <div ref={ref} className={`pcard ${c.kind} ${cw < 56 ? "mini" : ""} ${still ? "still" : ""} ${down ? "down" : ""}`}
+    <div ref={ref} className={`pcard ${c.kind} ${cw < 56 ? "mini" : ""} ${still ? "still" : ""} ${down ? "down" : ""} ${hit ? "hit-" + hit : ""}`}
       onPointerMove={tilt} onPointerLeave={rest} onPointerUp={rest} role="img"
       aria-label={down ? "Face-down card" : `${c.name}, ${c.kind === "bless" ? "blessing" : "curse"}. ${c.text}`}
       style={{ "--cw": `${cw}px`, "--rot": `${rot}deg`, "--d": `${delay}s` }}>
@@ -916,6 +942,19 @@ function PCard({ id, cw = 76, down = false, still = false, rot = 0, delay = 0 })
     </div>
   );
 }
+
+function Burst({ colors, n = 16, reach = 70 }) {
+  return (
+    <div className="burst" aria-hidden="true">
+      {Array.from({ length: n }, (_, i) => {
+        const a = (i / n) * Math.PI * 2, d = reach * (0.6 + (i % 3) * 0.25);
+        return <i key={i} style={{ "--bx": `${Math.round(Math.cos(a) * d)}px`, "--by": `${Math.round(Math.sin(a) * d)}px`, "--bc": colors[i % colors.length] }} />;
+      })}
+    </div>
+  );
+}
+const BURST_B = ["#FFE08A", "#FFF3C9", "#A9BFA3", "#E0C799"];
+const BURST_C = ["#B84A32", "#E26A3B", "#3A302B", "#7A7A72"];
 
 function CardZoom({ id, who, onClose }) {
   const c = CARDS[id];
@@ -949,7 +988,10 @@ function CardReveal({ round, people, h, onDone }) {
         <div style={{ display: "flex", justifyContent: "center", gap: 8, margin: "16px 0 8px", flexWrap: "wrap" }}>
           {ids.map((id, i) => (
             <button key={id} onClick={() => { if (!up[id]) flipSfx(id); setUp(u => ({ ...u, [id]: true })); }} aria-label={`${people[id].name}: ${up[id] ? CARDS[draw[id]].name : "flip card"}`} style={{ display: "grid", justifyItems: "center", gap: 6 }}>
-              <PCard id={draw[id]} cw={cw} down={!up[id]} rot={(i - (ids.length - 1) / 2) * 4} delay={i * 0.35} />
+              <div className="dealin" style={{ "--dd": `${i * 0.12}s`, position: "relative" }}>
+                <PCard id={draw[id]} cw={cw} down={!up[id]} rot={(i - (ids.length - 1) / 2) * 4} delay={i * 0.35} hit={up[id] ? (CARDS[draw[id]].kind === "bless" ? "b" : "c") : ""} />
+                {up[id] && <Burst colors={CARDS[draw[id]].kind === "bless" ? BURST_B : BURST_C} />}
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}><Avatar p={people[id]} size={18} /><span style={{ fontWeight: 700, fontSize: 12 }}>{people[id].name}</span></div>
             </button>
           ))}
@@ -1016,10 +1058,21 @@ function GamePanel({ gid, round, people, h, api }) {
             <PickRow label="Nearest the pin" hint="Must be on the green or fringe." ids={ids} people={people} value={round.ntp[h]} onPick={id => api.setNtp(h, id)} />
             {round.ntp[h] && (
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button className={`chip ${round.ntpOk[h] ? "on" : ""}`} aria-pressed={!!round.ntpOk[h]} onClick={() => api.setNtpOk(h)} style={{ padding: "1px 6px", fontSize: 12 }}>
+                <button className={`chip ${round.ntpOk[h] ? "on" : ""}`} aria-pressed={!!round.ntpOk[h]} onClick={() => { if (!round.ntpOk[h]) SFX.ntp(); api.setNtpOk(h); }} style={{ padding: "1px 6px", fontSize: 12 }}>
                   {round.ntpOk[h] ? "On the green or fringe" : "Confirm: on the green or fringe"}
                 </button>
                 <span className="cap">{round.ntpOk[h] ? "+3 to their pot" : "No points until confirmed"}</span>
+              </div>
+            )}
+            {round.ntp[h] && round.ntpOk[h] && (
+              <div className="ntpwin" key={`${h}-${round.ntp[h]}`} role="status">
+                <div className="flagp"><Sprite name="flag" size={4} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="cap" style={{ color: "#C7D6BF" }}>Nearest the pin</div>
+                  <div style={{ fontWeight: 700, fontSize: 16 }}>{people[round.ntp[h]].name} {round.ntp[h] === "me" ? "stick" : "sticks"} it close</div>
+                </div>
+                <div className="plus">+3</div>
+                <Burst colors={BURST_B} n={14} reach={60} />
               </div>
             )}
           </div>
@@ -1317,7 +1370,7 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
                 <div style={{ width: 22, fontWeight: 800, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i + 1}</div>
                 <Avatar p={people[r.id]} size={29} />
                 <div style={{ flex: 1, fontWeight: 700 }}>{people[r.id].name}</div>
-                <div style={{ fontWeight: 800 }}>{r.v.toFixed(1)}<span className="cap"> avg net</span></div>
+                <div style={{ fontWeight: 800 }}>{r.v.toFixed(1)}<span className="cap"> avg pts</span></div>
               </div>
             ))}
           </div>
@@ -2252,15 +2305,12 @@ function PersonForm({ cta, onSubmit }) {
 }
 
 function Friends({ people, friendIds, onAddFriend, setFriendIds }) {
-  const [metric, setMetric] = useState("avg");
+  const [metric, setMetric] = useState("pts");
   const [period, setPeriod] = useState("month");
   const [sheet, setSheet] = useState(false);
   const [copied, setCopied] = useState("");
-  const m = METRICS.find(x => x.id === metric);
-  const val = id => (STATS[id] ? STATS[id][period][metric] : null);
-  const rows = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: val(id) })).sort((a, b) => (a.v == null) - (b.v == null) || (m.low ? a.v - b.v : b.v - a.v));
-  const vals = rows.filter(r => r.v != null).map(r => r.v); const mx = Math.max(...vals), mn = Math.min(...vals);
-  const pct = v => (v == null ? 0 : m.low ? 100 - ((v - mn) / (mx - mn || 1)) * 55 : (v / (mx || 1)) * 100);
+  const val = (id, k) => (STATS[id] ? STATS[id][period][k] : null);
+  const rows = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: val(id, metric) })).sort((a, b) => (a.v == null) - (b.v == null) || b.v - a.v);
   const sample = ["dani", "omar"].filter(id => people[id] && !friendIds.includes(id));
   const copyLink = async () => {
     const url = typeof location !== "undefined" ? location.href.split("#")[0] : "";
@@ -2280,26 +2330,30 @@ function Friends({ people, friendIds, onAddFriend, setFriendIds }) {
             <button key={k} className={`chip ${period === k ? "on" : ""}`} onClick={() => setPeriod(k)} style={{ flex: 1, padding: "5px 0", textAlign: "center" }}>{l}</button>
           ))}
         </div>
-        <div className="scrollx" style={{ marginTop: 11 }}>
-          {METRICS.map(x => <button key={x.id} className={`chip ${metric === x.id ? "on" : ""}`} onClick={() => setMetric(x.id)}>{x.label}</button>)}
-        </div>
-        <p className="cap" style={{ margin: "9px 2px" }}>Scores are net, so a 5 handicap and a 20 handicap compete on level ground. These numbers are demo data for now. Friends you add yourself show a dash.</p>
+        <p className="cap" style={{ margin: "9px 2px" }}>Tap a column to sort. Points are Puntaro points per round, scored net so every handicap competes level. Demo numbers for now. Friends you add yourself show a dash.</p>
         <div className="card" style={{ padding: "3px 11px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) repeat(4, 46px)", gap: 4, alignItems: "center", padding: "8px 0", borderBottom: "2px solid var(--night)" }}>
+            <span /><span className="cap">Player</span>
+            {METRICS.map(x => (
+              <button key={x.id} onClick={() => setMetric(x.id)} aria-pressed={metric === x.id} className="cap" style={{ textAlign: "right", fontWeight: 700, color: metric === x.id ? "var(--fair)" : "var(--muted)", textDecoration: metric === x.id ? "underline" : "none" }}>{x.label}{metric === x.id ? " ▾" : ""}</button>
+            ))}
+          </div>
           {rows.map((r, i) => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
-              <div style={{ width: 26, display: "grid", placeItems: "center", fontWeight: 800, color: "var(--muted)" }}>
-                {i === 0 && r.v != null ? <Sprite name="crown" size={4} /> : i + 1}
+            <div key={r.id} style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) repeat(4, 46px)", gap: 4, alignItems: "center", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+              <div style={{ display: "grid", placeItems: "center", fontWeight: 800, color: "var(--muted)" }}>
+                {i === 0 && r.v != null ? <Sprite name="crown" size={2} /> : i + 1}
               </div>
-              <Avatar p={people[r.id]} size={32} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                  <div style={{ fontWeight: 800, minWidth: 0 }}>{people[r.id].name} <span className="cap" style={{ fontWeight: 400 }}>index {people[r.id].hi.toFixed(1)}</span></div>
-                  <div style={{ fontWeight: 800, fontSize: 16 }}>{r.v == null ? "–" : m.fmt(r.v)}</div>
-                </div>
-                <div style={{ height: 7, background: "var(--track)", marginTop: 5 }}>
-                  <div style={{ height: "100%", width: `${pct(r.v)}%`, background: i === 0 ? "var(--fair)" : "var(--lime)" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                <Avatar p={people[r.id]} size={28} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[r.id].name}</div>
+                  <div className="cap" style={{ fontSize: 10 }}>idx {people[r.id].hi.toFixed(1)}</div>
                 </div>
               </div>
+              {METRICS.map(x => {
+                const v = val(r.id, x.id);
+                return <div key={x.id} style={{ textAlign: "right", fontWeight: metric === x.id ? 800 : 600, color: metric === x.id ? "var(--ink)" : "var(--muted)" }}>{v == null ? "–" : x.fmt(v)}</div>;
+              })}
             </div>
           ))}
         </div>
@@ -2334,7 +2388,7 @@ function Me({ people, setPeople, dark, setDark, saved, onAbout }) {
   const me = people.me;
   const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(36, Math.max(-2, v)) * 10) / 10 } }));
   const s = STATS.me.season;
-  const tiles = [["Rounds", s.rounds], ["Birdies", s.bird], ["Puntaro wins", s.wins], ["Avg net", s.avg.toFixed(1)]];
+  const tiles = [["Rounds", s.rounds], ["Puntaro wins", s.wins], ["NTPs", s.ntp], ["Avg points", s.pts.toFixed(1)]];
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "23px 16px 20px", display: "flex", alignItems: "center", gap: 11 }}>
@@ -2451,7 +2505,7 @@ export default function App() {
     }),
   };
 
-  const board = ["me", ...friendIds].filter(id => STATS[id] && people[id]).map(id => ({ id, v: STATS[id].month.avg })).sort((a, b) => a.v - b.v);
+  const board = ["me", ...friendIds].filter(id => STATS[id] && people[id]).map(id => ({ id, v: STATS[id].month.pts })).sort((a, b) => b.v - a.v);
 
   const save = () => {
     const t = totalsFor(round, "me");
