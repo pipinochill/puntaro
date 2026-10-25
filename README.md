@@ -16,3 +16,5 @@ One-time Firebase console setup (project `puntaro`):
 2. Authentication → Settings → Authorized domains → add `pipinochill.github.io`.
 3. Firestore Database → Create database → location `australia-southeast1` (Sydney), production mode.
 4. Firestore → Rules → paste `firestore.rules` → Publish.
+
+Re-publish the rules whenever `firestore.rules` changes. Bank calls in "everyone scores" live in `rounds/{code}/banks/{pid_h}` and stay unreadable until every joined player has moved past that hole.

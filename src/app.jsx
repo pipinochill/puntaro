@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, createContext, useContext } from "react";
-import { backend, newCode, cleanCode, joinLink, roundToDoc, docToRound, rights } from "./live.js";
+import { backend, newCode, cleanCode, joinLink, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE } from "./live.js";
+import { qrPath } from "./qr.js";
 
 /* ───────────── ICONS (inline, no library) ───────────── */
 function Ico({ size = 24, color = "currentColor", children }) {
@@ -22,7 +23,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.40";
+const APP_VERSION = "0.41";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -1267,6 +1268,7 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
             )}
           </div>
         )}
+        {can.live && can.scoring === "each" && <p className="cap" style={{ marginTop: 6 }}><b>Bank calls are secret.</b> Yours locks when you move to the next hole. Everyone's is revealed once the whole group has moved on.</p>}
         <div>
           {ids.map((id, i) => {
             const s = pc[id]; const c = round.opts.cards && round.draws[h] ? round.draws[h][id] : null; const heavy = c === "heavy";
@@ -1312,10 +1314,16 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
                   {s.vaults > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Vault held</span>}
                   {s.leak > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 11 }}>Leaking {s.leak}</span>}
                   {(() => { const ad = !banking && !heavy && !locked && bankAdvice(round, id, h, s); return ad ? <span className="cap" title="A rough guide, not a rule" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Tip k="risk">Bust risk next hole {Math.round(ad.risk * 100)}%</Tip><Tip k="advice"><span className="pill" style={{ background: ad.level === "bank" ? "var(--red)" : ad.level === "think" ? "var(--flag)" : "var(--mint)", color: ad.level === "bank" ? "#fff" : "var(--dk)", fontSize: 11 }}>{ad.level === "bank" ? "Bank it" : ad.level === "think" ? "Think about it" : "Hold"}</span></Tip>{ad.cardNext && ad.level !== "hold" ? <span className="cap">cards next</span> : null}</span> : null; })()}
-                  <button className={`chip ${banking ? "on" : ""}`} disabled={heavy || locked || !can.bank(id)} aria-pressed={banking}
-                    onClick={() => api.setBank(id, h, !round.bank[id][h])} style={{ marginLeft: "auto", padding: "2px 7px", fontSize: 12, opacity: heavy || locked ? 0.7 : 1 }}>
-                    {heavy ? "Forced bank" : locked ? (banking ? "Banked. Locked" : "Bank locked") : banking ? "Banking after hole" : "Bank after hole"}
-                  </button>
+                  {(() => {
+                    const hid = !heavy && can.hidden && can.hidden(id, h);
+                    const mineLocked = !heavy && !locked && !hid && can.live && !can.bank(id, h);
+                    return (
+                      <button className={`chip ${banking && !hid ? "on" : ""}`} disabled={heavy || locked || hid || !can.bank(id, h)} aria-pressed={banking && !hid}
+                        onClick={() => api.setBank(id, h, !round.bank[id][h])} style={{ marginLeft: "auto", padding: "2px 7px", fontSize: 12, opacity: heavy || locked ? 0.7 : 1 }}>
+                        {heavy ? "Forced bank" : hid ? "Call hidden" : locked || mineLocked ? (banking ? "Banked. Locked" : "Bank locked") : banking ? "Banking after hole" : "Bank after hole"}
+                      </button>
+                    );
+                  })()}
                 </div>
                 {avail.length > 0 && (
                   <div style={{ marginTop: 6 }}>
@@ -2244,6 +2252,7 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
   /* heads-up strips at the top of the hole, for the scorer to read out */
   const notices = [];
   if (pc && round.opts.ntp && PAR[h] === 3) notices.push({ key: "ntp", icon: "flag", isize: 2, title: "Par 3: nearest the pin", text: "Closest ball earns +3. Pick the winner, or Nobody, before you move on." });
+  if (pc && round.opts.cards && cardHole(h) && !round.draws[h] && can.live && !can.canDeal(h)) notices.push({ key: "wait", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards coming`, text: "Cards are dealt once everyone has moved on to this hole and the last bank calls are revealed." });
   if (cardsHere) notices.push({ key: "cards", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards are out`, text: "Everyone drew a blessing or a curse. Banks from the last hole are locked.", action: ["Show cards", () => setAgain(true)] });
   if (nextIsCard) notices.push({ key: "bank", icon: "c_vault", isize: 2, urgent: true, title: `Next hole is the ${SI[h + 1] === 1 ? "hardest" : "easiest"}: last chance to bank`, text: "Everyone draws a card at the tee, then banks lock. Ask each player now.", action: ["Review banks", () => setLastCall(true)] });
   const bump = (id, d) => {
@@ -2325,6 +2334,7 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
                   {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
                   {can.enteredBy && v != null && can.enteredBy(id, h) && <span>{` · by ${can.enteredBy(id, h)}`}</span>}
+                  {can.edited && v != null && can.edited(id, h) && <span>{" · edited"}</span>}
                 </div>
                 {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</Tip></span>}
                 {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 14 }}>BUST</span></div>}
@@ -2375,8 +2385,8 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
                     <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
                     {mult > 1 && <span className="pill" style={{ background: "var(--flag)", color: "var(--dk)" }}>x{mult} streak</span>}
                     <div style={{ minWidth: 54, textAlign: "right" }}><span style={{ fontWeight: 800, fontSize: 17 }}>{banking ? s.banked : potBefore}</span><span className="cap">{banking ? " banked" : " in pot"}</span></div>
-                    <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={(potBefore === 0 && !banking) || !can.bank(id)} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
-                      {banking ? "Banking" : potBefore === 0 ? "Empty" : "Bank it"}
+                    <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={(potBefore === 0 && !banking) || !can.bank(id, h)} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
+                      {can.hidden && can.hidden(id, h) ? "Hidden" : banking ? "Banking" : potBefore === 0 ? "Empty" : "Bank it"}
                     </button>
                   </div>
                 );
@@ -2712,7 +2722,7 @@ function JoinSheet({ initial, onClose, onJoined }) {
     try {
       const b = await backend();
       const pairs = [[["members", found.uid], true]];
-      if (pid) pairs.push([["claims", pid], found.uid]);
+      if (pid && !(found.doc.claims && found.doc.claims[pid] === found.uid)) pairs.push([["claims", pid], found.uid], [["who"], pid]);
       await b.update(found.code, pairs);
       onJoined(found.code, pid, found.doc);
     } catch (e) { setErr("Couldn't join. Try again."); setBusy(false); }
@@ -2727,7 +2737,7 @@ function JoinSheet({ initial, onClose, onJoined }) {
         </div>
         {!d && (
           <>
-            <p className="cap" style={{ marginTop: 4 }}>Ask whoever started the round for the code on their screen.</p>
+            <p className="cap" style={{ marginTop: 4 }}>Easiest: point your phone camera at the QR code on the host's screen. Or type the code below.</p>
             <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
               <input aria-label="Join code" placeholder="PUNT-7KQ4M" autoCapitalize="characters" autoCorrect="off" value={text} onChange={e => setText(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === "Enter") find(); }} style={{ ...inp, flex: 1, fontSize: 18, letterSpacing: 2 }} />
               <button className="cta" style={{ width: "auto", padding: "8px 14px" }} disabled={busy} onClick={find}>{busy ? "…" : "Find"}</button>
@@ -2758,7 +2768,8 @@ function JoinSheet({ initial, onClose, onJoined }) {
   );
 }
 
-function LiveSheet({ code, doc, uid, onClose, onScoring, onLeave }) {
+function LiveSheet({ code, doc, uid, onClose, onScoring, onRelease, onLeave }) {
+  const qr = qrPath(joinLink(code));
   const [copied, setCopied] = useState(false);
   const host = doc && doc.host === uid;
   const share = async () => {
@@ -2773,8 +2784,13 @@ function LiveSheet({ code, doc, uid, onClose, onScoring, onLeave }) {
           <h2 className="h2">Live round</h2>
           <button onClick={onClose} aria-label="Close"><X size={22} /></button>
         </div>
-        <p className="cap" style={{ marginTop: 4 }}>Mates open Puntaro, tap Join a live round, and enter this code.</p>
-        <div className="px" style={{ marginTop: 10, padding: "12px 0", textAlign: "center", fontSize: 30, letterSpacing: 3, background: "var(--chalk)", border: "3px solid var(--night)" }}>{code}</div>
+        <p className="cap" style={{ marginTop: 4 }}>Mates scan this with their phone camera, or tap Join a live round and type the code.</p>
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "12px 0", background: "var(--chalk)", border: "3px solid var(--night)" }}>
+          <svg viewBox={`0 0 ${qr.n} ${qr.n}`} width="196" height="196" role="img" aria-label={`QR code to join ${code}`} shapeRendering="crispEdges" style={{ background: "#fff", display: "block" }}>
+            <path d={qr.d} fill="#14150F" />
+          </svg>
+          <div className="px" style={{ fontSize: 26, letterSpacing: 3 }}>{code}</div>
+        </div>
         <button className="cta" style={{ marginTop: 9 }} onClick={share}>{copied ? "Link copied" : "Share invite link"}</button>
         {doc && (
           <>
@@ -2785,6 +2801,7 @@ function LiveSheet({ code, doc, uid, onClose, onScoring, onLeave }) {
                   <Avatar p={{ id, ...doc.people[id] }} size={24} />
                   <div style={{ flex: 1, fontWeight: 700 }}>{doc.people[id].name}</div>
                   <span className="cap" style={{ color: doc.claims && doc.claims[id] ? "var(--fair)" : "var(--muted)", fontWeight: 600 }}>{doc.claims && doc.claims[id] ? (doc.claims[id] === uid ? "You" : "Joined") : "Not joined"}</span>
+                  {host && doc.claims && doc.claims[id] && doc.claims[id] !== uid && <button className="chip" style={{ padding: "1px 6px", fontSize: 11 }} onClick={() => onRelease(id)}>Free seat</button>}
                 </div>
               ))}
             </div>
@@ -2795,6 +2812,7 @@ function LiveSheet({ code, doc, uid, onClose, onScoring, onLeave }) {
                 <button className={`chip ${doc.scoring === "one" ? "on" : ""}`} onClick={() => onScoring("one")}>One scorer</button>
               </div>
             ) : <p style={{ marginTop: 3 }}>{doc.scoring === "one" ? `${doc.people.me ? doc.people.me.name : "The host"} keeps score.` : "Everyone enters their own score."}</p>}
+            {host && <p className="cap" style={{ marginTop: 6 }}>Phone died? Free that player's seat so the round isn't held up. Anyone can then score for them, or they can rejoin.</p>}
           </>
         )}
         <button className="chip" style={{ marginTop: 13, padding: "7px 0", textAlign: "center", width: "100%" }} onClick={onLeave}>Stop following live (keep a copy here)</button>
@@ -2831,7 +2849,7 @@ export default function App() {
   const [liveErr, setLiveErr] = useState("");
   const [liveSheet, setLiveSheet] = useState(false);
   const [joinCode, setJoinCode] = useState(() => {
-    try { const q = new URLSearchParams(location.search).get("join"); if (q == null) return null; history.replaceState(null, "", location.pathname); return cleanCode(q) || ""; } catch (e) { return null; }
+    try { const q = new URLSearchParams(location.search).get("join"); if (q == null) return null; try { window.history.replaceState(null, "", location.pathname); } catch (e) { /* fine */ } return cleanCode(q) || ""; } catch (e) { return null; }
   });
   const GUEST_COLORS = ["#9A7B3F", "#5E6E55", "#8B6B4A", "#6F7F73", "#A5543A"];
   const newPerson = ({ name, last, hi }, guest) => {
@@ -2871,8 +2889,14 @@ export default function App() {
     } else setRecent(r => { const n = r.slice(); n.splice(Math.min(x.idx, n.length), 0, x.item); return n; });
   };
 
-  // Follow the live round: every change on any phone arrives here and rebuilds the round.
+  // Follow the live round: every change on any phone arrives in liveDoc.
+  const [shown, setShown] = useState({}); // revealed bank calls, "pid_h" -> true / false / null (no call)
+  const fetched = useRef(new Set());      // holes whose calls this phone has fetched
+  const prevDoc = useRef(null);
+  const [liveNotes, setLiveNotes] = useState([]); // short messages that stack, newest last
+  const note = t => { const id = Date.now() + Math.random(); setLiveNotes(n => [...n.filter(x => x.t !== t), { id, t }].slice(-3)); setTimeout(() => setLiveNotes(n => n.filter(x => x.id !== id)), 5000); };
   useEffect(() => {
+    fetched.current = new Set(); prevDoc.current = null; setShown({});
     if (!live) { setLiveDoc(null); setLiveErr(""); return undefined; }
     let off = () => {}; let dead = false;
     backend().then(b => {
@@ -2880,13 +2904,71 @@ export default function App() {
       setLiveUid(b.uid);
       off = b.watch(live.code, d => {
         if (!d) return; // not created yet, or removed: keep the local copy
-        setLiveErr(""); setLiveDoc(d); applyHoles(d.base.holes || null);
-        setRound(prev => docToRound(d, { hole: prev ? prev.hole : firstOpenHole(d), seen: prev ? prev.seen : undefined }));
+        setLiveErr(""); applyHoles(d.base.holes || null);
+        const was = prevDoc.current; prevDoc.current = d;
+        if (was && was.scoring !== d.scoring) note(`${d.people.me ? d.people.me.name : "The host"} switched to ${d.scoring === "one" ? "one scorer" : "everyone scores"}.`);
+        setLiveDoc(d);
       }, () => setLiveErr("Offline. Scores you enter are saved and will sync when you're back."));
     }).catch(() => setLiveErr("Couldn't connect to live rounds. Scores are saved on this phone."));
     return () => { dead = true; off(); };
   }, [live && live.code]); // eslint-disable-line react-hooks/exhaustive-deps
-  const push = pairs => { if (!live) return; backend().then(b => b.update(live.code, pairs)).catch(() => setLiveErr("Offline. Scores you enter are saved and will sync when you're back.")); };
+
+  // Reveal: once everyone has moved past a hole, fetch that hole's bank calls (now readable by all).
+  useEffect(() => {
+    if (!live || !liveDoc) return;
+    const up = revealUpTo(liveDoc); const ids = liveDoc.base.playerIds;
+    const firstLook = fetched.current.size === 0 && !fetched.current.started; fetched.current.started = true;
+    for (let h = 0; h < up; h++) {
+      if (fetched.current.has(h)) continue;
+      fetched.current.add(h);
+      const fresh = !firstLook && h === up - 1;
+      backend().then(b => Promise.all(ids.map(id => b.getBank(live.code, id, h).catch(() => null)))).then(vals => {
+        setShown(sh => { const n = { ...sh }; ids.forEach((id, k) => { n[bankKey(id, h)] = vals[k]; }); return n; });
+        if (fresh && liveDoc.scoring === "each") {
+          const who = ids.filter((id, k) => vals[k] && id !== live.myId).map(id => (liveDoc.people[id] || {}).name);
+          if (who.length) celebrate("bank", "BANK CALLS", `Hole ${h + 1}: ${who.join(", ")} banked`); else note(`Hole ${h + 1}: nobody else banked. Pots ride on.`);
+        }
+      });
+    }
+  }, [liveDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rebuild the round whenever the shared round, the revealed calls or my own calls change.
+  const mine = (live && live.mine) || {};
+  const dealt = useRef({}); // card hole -> the deal this phone checked and accepted
+  useEffect(() => { dealt.current = {}; }, [live && live.code]);
+  useEffect(() => {
+    if (!live || !liveDoc) return;
+    const r = docToRound(liveDoc, { bank: bankMap(liveDoc, shown, mine) });
+    // Every deal is re-checked against the shared shuffle (drawSeed). The deal is a pure function of the
+    // seed and the scores so far, so an honest deal always matches; a hand-picked one is ignored.
+    const warn = [];
+    if (r.opts.cards) range18.forEach(h => {
+      if (!cardHole(h)) return;
+      if (!canDeal(h, liveDoc)) { r.draws[h] = null; return; }
+      if (dealt.current[h]) { r.draws[h] = dealt.current[h]; return; }
+      if (!r.draws[h]) return;
+      const fair = drawCards(r, h, mulberry32(r.drawSeed + h * 977));
+      if (JSON.stringify(fair) !== JSON.stringify(Object.fromEntries(r.playerIds.map(id => [id, r.draws[h][id]])))) warn.push(h);
+      dealt.current[h] = fair; r.draws[h] = fair;
+    });
+    warn.forEach(h => note(`The cards on hole ${h + 1} didn't match the shuffle, so this phone dealt them fairly itself.`));
+    setRound(prev => ({ ...r, hole: prev ? prev.hole : firstOpenHole(liveDoc), seen: prev ? prev.seen : r.seen }));
+  }, [liveDoc, shown, live && live.mine]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Card holes: in "everyone scores", deal only once the last hole's calls are revealed, so the catch-up odds see true totals.
+  const canDeal = (h, d = liveDoc) => !live || !d || d.scoring !== "each" || revealUpTo(d) >= h;
+  useEffect(() => {
+    if (!live || !liveDoc || !round || !round.opts.cards) return;
+    const h = round.hole;
+    if (cardHole(h) && !round.draws[h] && canDeal(h)) {
+      const d = drawCards(round, h, mulberry32(round.drawSeed + h * 977));
+      backend().then(b => b.setIfAbsent(live.code, ["draws", h], d, [[["deal"], h]])).catch(() => {});
+    }
+  }, [liveDoc, shown, round && round.hole]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const push = (pairs, quiet) => { if (!live) return Promise.resolve(); return backend().then(b => b.update(live.code, pairs)).catch(() => { if (!quiet) setLiveErr("Offline. Scores you enter are saved and will sync when you're back."); }); };
+  // Moving on locks your bank call for the hole you left. Never goes backwards.
+  const moveOn = h => { if (live && live.myId && liveDoc && h > ((liveDoc.at || {})[live.myId] || 0)) push([[["at", live.myId], Math.min(18, h)], [["who"], live.myId]]); };
   const nextEvent = (x, k) => ({ ...Object.fromEntries(Object.entries(x || {}).filter(([e]) => (x && x[k]) || !(CLASH[k] || []).includes(e))), [k]: !(x && x[k]) });
   const startLive = (r, cfg) => {
     const code = newCode();
@@ -2894,33 +2976,46 @@ export default function App() {
       const name = cfg.live.name || people.me.first || "Host";
       if (cfg.live.name && !people.me.first) setPeople(p => ({ ...p, me: { ...p.me, first: cfg.live.name } }));
       b.create(code, roundToDoc(r, people, { code, uid: b.uid, scoring: cfg.live.scoring, myName: name })).catch(() => setLiveErr("Live round not saved online yet. It will sync when you're back."));
-      setLive({ code, myId: "me" }); setLiveSheet(true);
+      setLive({ code, myId: "me", mine: {} }); setLiveSheet(true);
     }).catch(() => setLiveErr("Couldn't start a live round. This round is on this phone only."));
   };
   const joined = (code, pid, d) => {
     if (round && !live) { const at = Date.now(); setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); }
     applyHoles(d.base.holes || null);
-    setRound(docToRound(d, { hole: firstOpenHole(d) }));
-    setLiveDoc(d); setLive({ code, myId: pid }); setJoinCode(null); setView("round");
+    setRound(docToRound(d, { hole: Math.max(firstOpenHole(d), pid && d.at ? d.at[pid] || 0 : 0) }));
+    setLiveDoc(d); setLive({ code, myId: pid, mine: {} }); setJoinCode(null); setView("round");
   };
   const leaveLive = () => { setLive(null); setLiveSheet(false); };
 
   const api = {
     celebrate,
-    setScore: (id, h, v) => { push([[["s", id, h], v], [["by", `${id}_${h}`], (live && live.myId) || "watch"]]); setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })); },
-    setBank: (id, h, v) => { if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } } push([[["bk", id, h], v]]); return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })); },
+    setScore: (id, h, v) => {
+      const prev = round.scores[id][h]; const who = (live && live.myId) || "watch";
+      const pairs = [[["s", id, h], v], [["by", bankKey(id, h)], who]];
+      if (live && prev != null && prev !== v && liveDoc && liveDoc.s && liveDoc.s[id] && liveDoc.s[id][h] != null) pairs.push([["ed", bankKey(id, h)], who]);
+      push(pairs); setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } }));
+    },
+    setBank: (id, h, v) => {
+      if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } }
+      if (live && liveDoc && liveDoc.scoring === "each") {
+        // Secret call: stored where only this phone can read it until the reveal.
+        setLive(l => ({ ...l, mine: { ...(l.mine || {}), [bankKey(id, h)]: v } }));
+        backend().then(b => b.putBank(live.code, id, h, v)).catch(() => setLiveErr("That bank call didn't save. It may be locked, or you're offline."));
+      } else push([[["bk", id, h], v]]);
+      return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } }));
+    },
     setNtp: (h, id) => { push([[["ntp", h], round.ntp[h] === id ? null : id]]); setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)) })); },
     setEvent: (id, h, k) => { push([[["ev", id, h], nextEvent(round.events[id][h], k)]]); setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? nextEvent(x, k) : x)) } })); },
     setWolf: (h, v) => { push([[["wolf", h], v]]); setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })); },
     setBbb: (h, k, id) => { const x = round.bbb[h]; push([[["bbb", h], { ...(x || {}), [k]: x && x[k] === id ? null : id }]]); setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })); },
     markSeen: h => setRound(r => ({ ...r, seen: r.seen.map((x, i) => (i === h ? true : x)) })),
     setHole: h => {
-      // The first phone to reach a card hole deals the cards; everyone else adopts them.
-      if (live && round.opts.cards && cardHole(h) && !round.draws[h]) { const d = drawCards(round, h, mulberry32(round.drawSeed + h * 977)); backend().then(b => b.setIfAbsent(live.code, ["draws", h], d)).catch(() => {}); }
+      moveOn(h);
       setRound(r => {
-      let draws = r.draws;
-      if (r.opts.cards && cardHole(h) && !draws[h]) { draws = draws.slice(); draws[h] = drawCards(r, h, mulberry32(r.drawSeed + h * 977)); }
-      return { ...r, hole: h, draws };
+        let draws = r.draws;
+        // Live rounds deal through the shared round (see above); a solo round deals here.
+        if (!live && r.opts.cards && cardHole(h) && !draws[h]) { draws = draws.slice(); draws[h] = drawCards(r, h, mulberry32(r.drawSeed + h * 977)); }
+        return { ...r, hole: h, draws };
       });
     },
   };
@@ -2950,10 +3045,13 @@ export default function App() {
 
   const roundPeople = live && liveDoc ? { ...people, ...Object.fromEntries(Object.entries(liveDoc.people).map(([k, v]) => [k, { id: k, ...v }])) } : people;
   const can = live && liveDoc ? {
-    ...rights(liveDoc, liveUid),
-    live: { code: live.code, hostName: liveDoc.people.me ? liveDoc.people.me.name : "The host" },
-    enteredBy: (id, h) => { const by = liveDoc.by && liveDoc.by[`${id}_${h}`]; return by && by !== id ? (by === "watch" ? "a watcher" : (liveDoc.people[by] || {}).name || "someone") : null; },
-  } : live ? { score: () => true, bank: () => true, host: true, live: { code: live.code, hostName: "The host" } } : { score: () => true, bank: () => true, host: true, live: null };
+    ...rights(liveDoc, liveUid, mine),
+    live: { code: live.code, hostName: liveDoc.people.me ? liveDoc.people.me.name : "The host", myId: live.myId },
+    canDeal,
+    enteredBy: (id, h) => { const by = liveDoc.by && liveDoc.by[bankKey(id, h)]; return by && by !== id ? (by === "watch" ? "a watcher" : (liveDoc.people[by] || {}).name || "someone") : null; },
+    edited: (id, h) => !!(liveDoc.ed && liveDoc.ed[bankKey(id, h)]),
+  } : live ? { score: () => true, bank: () => true, hidden: () => false, host: true, canDeal: () => true, live: { code: live.code, hostName: "The host", myId: live.myId } }
+    : { score: () => true, bank: () => true, hidden: () => false, host: true, canDeal: () => true, live: null };
 
   return (
     <LiveCtx.Provider value={can}>
@@ -2965,7 +3063,8 @@ export default function App() {
       {splash && <Splash onDone={() => setSplash(false)} />}
       {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
       {joinCode != null && !splash && <JoinSheet initial={joinCode} onClose={() => setJoinCode(null)} onJoined={joined} />}
-      {liveSheet && live && <LiveSheet code={live.code} doc={liveDoc} uid={liveUid} onClose={() => setLiveSheet(false)} onScoring={v => push([[["scoring"], v]])} onLeave={leaveLive} />}
+      {liveSheet && live && <LiveSheet code={live.code} doc={liveDoc} uid={liveUid} onClose={() => setLiveSheet(false)} onScoring={v => push([[["scoring"], v]])} onRelease={pid => push([[["claims", pid], DELETE]])} onLeave={leaveLive} />}
+      {liveNotes.length > 0 && <div role="status" style={{ position: "fixed", left: 0, right: 0, top: 10, maxWidth: 430, margin: "0 auto", zIndex: 45, padding: "0 12px", pointerEvents: "none", display: "grid", gap: 6 }}>{liveNotes.map(n => <div key={n.id} style={{ background: "var(--flag)", color: "var(--dk)", fontWeight: 700, fontSize: 13, padding: "7px 10px", border: "3px solid var(--night)" }}>{n.t}</div>)}</div>}
       {liveErr && view === "round" && <div role="status" style={{ position: "fixed", left: 0, right: 0, bottom: 74, maxWidth: 430, margin: "0 auto", zIndex: 25, padding: "0 12px", pointerEvents: "none" }}><div className="cap" style={{ background: "var(--dk)", color: "#EDE8DD", padding: "6px 9px", border: "2px solid var(--night)" }}>{liveErr}</div></div>}
       {del && (
         <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onPointerDown={() => { armed.current = true; }} onClick={() => ready() && setDel(null)}>
@@ -2980,7 +3079,7 @@ export default function App() {
         </div>
       )}
       {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
-      {view === "round" && round && <Round round={round} people={roundPeople} api={api} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => setView("summary")} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
+      {view === "round" && round && <Round round={round} people={roundPeople} api={api} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
       {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} />}
       {view === "tabs" && (

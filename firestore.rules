@@ -1,31 +1,126 @@
 rules_version = '2';
-// Puntaro live rounds. One document per round: rounds/{PUNT-XXXXX}.
+// Puntaro live rounds.
+//   rounds/{PUNT-XXXXX}                 the shared round
+//   rounds/{PUNT-XXXXX}/banks/{pid_h}   one secret bank call per player per hole
+// Bank calls stay secret until every joined player has moved past that hole (at[pid] > h),
+// and a player's own call locks the moment they move on.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Revealed = every joined (claimed) player has moved past hole h. Up to 8 players.
+    function movedOn(r, i, h) {
+      return r.base.playerIds.size() <= i
+        || r.claims.get(r.base.playerIds[i], null) == null
+        || r.get('at', {}).get(r.base.playerIds[i], 0) > h;
+    }
+    function revealed(r, h) {
+      return movedOn(r, 0, h) && movedOn(r, 1, h) && movedOn(r, 2, h) && movedOn(r, 3, h)
+        && movedOn(r, 4, h) && movedOn(r, 5, h) && movedOn(r, 6, h) && movedOn(r, 7, h);
+    }
+
     match /rounds/{code} {
       function signedIn() { return request.auth != null; }
-      function isHost() { return resource.data.host == request.auth.uid; }
-      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
-      // Nobody can change who hosts the round, its code, or its setup (course, players, games, stakes).
-      function keepsSetup() {
-        return request.resource.data.host == resource.data.host
-          && request.resource.data.code == resource.data.code
-          && request.resource.data.base == resource.data.base;
-      }
-      function playKeys() { return ['s', 'bk', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'by', 'ed', 'members', 'claims', 'updatedAt']; }
+      function before() { return resource.data; }
+      function after() { return request.resource.data; }
+      function me() { return request.auth.uid; }
+      function isHost() { return before().host == me(); }
+      function isMember() { return before().get('members', {}).get(me(), false) == true; }
+      function changed() { return after().diff(before()).affectedKeys(); }
+      function touches(k) { return k in changed(); }
 
-      // Anyone signed in who knows the code can follow the round.
-      allow read: if signedIn();
+      // Nobody can change the host, the code, the setup or the player list.
+      function keepsSetup() {
+        return after().host == before().host && after().code == before().code
+          && after().base == before().base && after().people == before().people;
+      }
+      function joinKeys() { return ['members', 'claims', 'who', 'updatedAt']; }
+      function watchKeys() { return ['members', 'claims', 'at', 'who', 'updatedAt']; }
+      function playKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt']; }
+      function hostKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'bk', 'scoring']; }
+
+      // Only ever add yourself to members.
+      function joinsSelf() {
+        return after().members.diff(before().get('members', {})).affectedKeys().hasOnly([me()])
+          && after().members[me()] == true;
+      }
+      // Take one free seat (the one named in `who`), and only if you don't hold a seat already.
+      function takesSeat() {
+        let d = after().claims.diff(before().claims);
+        return d.affectedKeys().hasOnly([after().who]) && d.addedKeys().hasOnly([after().who])
+          && after().who in before().base.playerIds
+          && after().claims[after().who] == me()
+          && !(me() in before().claims.values());
+      }
+      // The host can free up a seat (a dead phone) so the round isn't stuck waiting.
+      function releasesSeat() {
+        let d = after().claims.diff(before().claims);
+        return isHost() && d.affectedKeys().size() == 1 && d.removedKeys().size() == 1;
+      }
+      // Move your own player forward. Never backwards, never someone else.
+      function movesOn() {
+        let d = after().at.diff(before().get('at', {}));
+        let w = after().who;
+        return d.affectedKeys().hasOnly([w]) && before().claims.get(w, null) == me()
+          && after().at[w] is int && after().at[w] > before().get('at', {}).get(w, 0) && after().at[w] <= 18;
+      }
+      // "edited" marks can be added but never removed.
+      function keepsEdits() { return after().get('ed', {}).keys().hasAll(before().get('ed', {}).keys()); }
+      // Cards: one card hole at a time (named in `deal`), never changed once dealt, and in
+      // "everyone scores" only after the previous hole's bank calls are revealed.
+      // Phones also re-check every deal against the shared shuffle and ignore any that don't match.
+      function addsDraws() {
+        let d = after().draws.diff(before().get('draws', {}));
+        return d.changedKeys().size() == 0 && d.removedKeys().size() == 0
+          && after().deal is int && d.addedKeys().hasOnly([string(after().deal)])
+          && (before().scoring != 'each' || revealed(before(), after().deal - 1));
+      }
+
+      allow get: if signedIn();
+      allow list: if false; // no browsing other people's rounds
       allow create: if signedIn()
         && code.matches('PUNT-[A-Z0-9]{5}')
-        && request.resource.data.host == request.auth.uid
-        && request.resource.data.scoring in ['each', 'one'];
-      allow update: if signedIn() && keepsSetup() && (
-        isHost()                                                        // host can do anything, incl. switching scoring mode
-        || (resource.data.scoring == 'each' && changed().hasOnly(playKeys())) // everyone scores
-        || changed().hasOnly(['members', 'claims', 'updatedAt'])       // joining works in either mode
-      );
+        && after().code == code
+        && after().host == me()
+        && after().scoring in ['each', 'one']
+        && after().claims == {'me': me()}
+        && after().members.keys().hasOnly([me()]) && after().members[me()] == true
+        && after().get('at', {}).size() == 0;
+      allow update: if signedIn() && keepsSetup()
+        && (isMember() || changed().hasOnly(joinKeys()))
+        && (isHost() ? changed().hasOnly(hostKeys())
+            : before().scoring == 'each' ? changed().hasOnly(playKeys())
+            : changed().hasOnly(watchKeys()))
+        && (!touches('members') || joinsSelf())
+        && (!touches('claims') || takesSeat() || releasesSeat())
+        && (!touches('at') || movesOn())
+        && (!touches('ed') || keepsEdits())
+        && (!touches('draws') || addsDraws())
+        && (!touches('bk') || (before().scoring == 'one' && after().scoring == 'one'))
+        && (!touches('scoring') || after().scoring in ['each', 'one']);
       allow delete: if signedIn() && isHost();
+
+      match /banks/{key} {
+        function round() { return get(/databases/$(database)/documents/rounds/$(code)).data; }
+        function pid() { return key.split('_')[0]; }
+        function hole() { return int(key.split('_')[1]); }
+
+        // Your own call, or anyone's once the hole is revealed.
+        allow get: if signedIn() && (revealed(round(), hole()) || (resource != null && resource.data.uid == request.auth.uid));
+        allow list: if false;
+        allow create, update: if signedIn()
+          && request.resource.data.keys().hasOnly(['pid', 'h', 'v', 'uid'])
+          && request.resource.data.pid == pid() && request.resource.data.h == hole()
+          && hole() >= 0 && hole() < 18
+          && request.resource.data.v is bool
+          && request.resource.data.uid == request.auth.uid
+          && round().scoring == 'each'
+          && pid() in round().base.playerIds
+          && round().get('members', {}).get(request.auth.uid, false) == true
+          && (round().claims.get(pid(), null) == request.auth.uid
+                ? round().get('at', {}).get(pid(), 0) <= hole()            // your call, until you move on
+                : (round().claims.get(pid(), null) == null && !revealed(round(), hole()))); // a player with no phone
+        allow delete: if false;
+      }
     }
   }
 }

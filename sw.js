@@ -1,4 +1,4 @@
-const V = "puntaro-0.40";
+const V = "puntaro-0.41";
 const FILES = ["./", "index.html", "app.js", "manifest.webmanifest", "icons/tile-192.png", "icons/tile-512.png"];
 const SDK = "https://www.gstatic.com/firebasejs/";
 // cache: "reload" / "no-cache" skip the browser's HTTP cache (GitHub Pages allows 10 minutes),

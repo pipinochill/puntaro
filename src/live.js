@@ -22,6 +22,8 @@ export const cleanCode = raw => {
   const t = String(raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^PUNT/, "");
   return t.length === 5 ? `PUNT-${t}` : null;
 };
+// Sentinel for "remove this field" in update pairs.
+export const DELETE = { __delete: true };
 export const joinLink = code => `${location.origin}${location.pathname}?join=${encodeURIComponent(code)}`;
 
 /* ---------- round <-> document ---------- */
@@ -40,8 +42,8 @@ export function roundToDoc(r, people, { code, uid, scoring, myName }) {
   return {
     v: 1, code, host: uid, scoring, createdAt: Date.now(),
     base, people: ppl,
-    claims: { me: uid }, members: { [uid]: true },
-    s: perPlayer(r, "scores"), bk: perPlayer(r, "bank"), ev: perPlayer(r, "events"),
+    claims: { me: uid }, members: { [uid]: true }, at: {},
+    s: perPlayer(r, "scores"), bk: {}, ev: perPlayer(r, "events"),
     ntp: perHole(r.ntp), wolf: perHole(r.wolf), bbb: perHole(r.bbb), draws: perHole(r.draws),
     by: {}, ed: {},
   };
@@ -52,21 +54,49 @@ export function docToRound(d, local = {}) {
   const per = (m, fill) => Object.fromEntries(b.playerIds.map(id => [id, arr18(m && m[id], fill)]));
   return {
     ...b,
-    scores: per(d.s, null), bank: per(d.bk, false), events: per(d.ev, null),
+    scores: per(d.s, null), bank: local.bank || per(d.bk, false), events: per(d.ev, null),
     ntp: arr18(d.ntp, null), ntpOk: Array(18).fill(false), wolf: arr18(d.wolf, null), bbb: arr18(d.bbb, null), draws: arr18(d.draws, null),
     hole: local.hole ?? 0, seen: local.seen || Array(18).fill(false),
   };
 }
 
+/* ---------- secret bank calls ---------- */
+// Holes below this number are revealed: every joined player has moved past them.
+export function revealUpTo(d) {
+  if (!d) return 0;
+  const ids = d.base.playerIds.filter(id => d.claims && d.claims[id]);
+  if (!ids.length) return 0;
+  return Math.min(...ids.map(id => (d.at && d.at[id]) || 0));
+}
+export const bankKey = (id, h) => `${id}_${h}`;
+// shown: revealed calls fetched from the server (null = no call made). mine: calls this phone made.
+export function bankMap(d, shown, mine) {
+  const up = revealUpTo(d);
+  return Object.fromEntries(d.base.playerIds.map(id => [id, Array.from({ length: 18 }, (_, h) => {
+    const k = bankKey(id, h); const bk = d.bk && d.bk[id] && d.bk[id][h] != null ? d.bk[id][h] : null;
+    if (h < up && k in shown) return shown[k] ?? bk ?? false;
+    return bk ?? (mine[k] ?? false);
+  })]));
+}
+
 /* ---------- who may change what ---------- */
-export function rights(meta, uid) {
-  if (!meta) return { score: () => true, bank: () => true, host: true };
+export function rights(meta, uid, mine = {}) {
+  if (!meta) return { score: () => true, bank: () => true, hidden: () => false, host: true };
   const host = meta.host === uid;
-  const mine = id => meta.claims && meta.claims[id] === uid;
-  const free = id => !(meta.claims && meta.claims[id]);
-  if (meta.scoring === "one") return { score: () => host, bank: () => host, host };
-  // Everyone scores: anyone fills gaps, but a bank call is yours alone (or the host's for players nobody has claimed).
-  return { score: () => true, bank: id => mine(id) || free(id), host };
+  const claims = meta.claims || {}; const at = meta.at || {};
+  if (meta.scoring === "one") return { score: () => host, bank: () => host, hidden: () => false, host, scoring: "one" };
+  const up = revealUpTo(meta);
+  const own = id => claims[id] === uid;
+  const free = id => !claims[id];
+  return {
+    // Everyone scores: anyone can fill a gap in the scores.
+    score: () => true,
+    // Your call until you move on; a player with no phone, until the hole is revealed.
+    bank: (id, h) => (own(id) && (at[id] || 0) <= h) || (free(id) && h >= up),
+    // Another joined player's call that hasn't been revealed yet. (A player with no phone stays open to everyone.)
+    hidden: (id, h) => h >= up && !own(id) && !free(id) && !(bankKey(id, h) in mine),
+    host, scoring: "each",
+  };
 }
 
 /* ---------- backends ---------- */
@@ -92,19 +122,24 @@ async function firebaseBackend() {
   });
   const ref = code => F.doc(db, "rounds", code);
   const fp = path => new F.FieldPath(...path.map(String));
+  const val = v => (v && v.__delete ? F.deleteField() : v);
+  const bankRef = (code, id, h) => F.doc(db, "rounds", code, "banks", `${id}_${h}`);
   return {
     uid,
     create: (code, data) => F.setDoc(ref(code), { ...data, updatedAt: F.serverTimestamp() }),
     get: async code => { const s = await F.getDoc(ref(code)); return s.exists() ? s.data() : null; },
     update: (code, pairs) => {
-      const args = []; pairs.forEach(([p, v]) => args.push(fp(p), v)); args.push(fp(["updatedAt"]), F.serverTimestamp());
+      const args = []; pairs.forEach(([p, v]) => args.push(fp(p), val(v))); args.push(fp(["updatedAt"]), F.serverTimestamp());
       return F.updateDoc(ref(code), ...args);
     },
-    setIfAbsent: (code, path, value) => F.runTransaction(db, async tx => {
+    setIfAbsent: (code, path, value, extra = []) => F.runTransaction(db, async tx => {
       const s = await tx.get(ref(code)); if (!s.exists()) return;
       let cur = s.data(); for (const k of path) cur = cur == null ? undefined : cur[String(k)];
-      if (cur == null) tx.update(ref(code), fp(path), value);
+      if (cur == null) { const args = [fp(path), value]; extra.forEach(([p, v]) => args.push(fp(p), val(v))); args.push(fp(["updatedAt"]), F.serverTimestamp()); tx.update(ref(code), ...args); }
     }),
+    putBank: (code, id, h, v) => F.setDoc(bankRef(code, id, h), { pid: id, h, v, uid }),
+    // true / false = the call; null = no call made. Throws if it's still secret.
+    getBank: async (code, id, h) => { const s = await F.getDoc(bankRef(code, id, h)); return s.exists() ? !!s.data().v : null; },
     watch: (code, cb, onErr) => F.onSnapshot(ref(code), s => cb(s.exists() ? s.data() : null), onErr),
   };
 }
