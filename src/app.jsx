@@ -89,10 +89,12 @@ const CARDS = {
   mine:  { name: "Landmine",    kind: "curse", text: "On this hole, a net bogey busts you." },
 };
 /* Optional bonuses and penalties, logged per player per hole. They only ever move game points. */
+// A sandy is already an up and down from the sand, and a chip-in has no putt, so these can't stack.
+const CLASH = { sandy: ["updown"], updown: ["sandy", "chipin"], chipin: ["updown"] };
 const EV_ART = { sandy: "e_sandy", updown: "e_updown", chipin: "e_chipin", barkie: "e_barkie", lost: "e_lost", water: "e_water", fourputt: "e_four" };
 const EV_FX = { sandy: "hole points double", updown: "+2 to the pot", chipin: "+4 to the pot", barkie: "+2 to the pot", lost: "−3 from the pot", water: "−2 from the pot", fourputt: "pot cut in half" };
 const EVENTS = {
-  sandy:    { kind: "bonus",   name: "Sandy",       tag: "Sandy x2",        hint: "Up and down from a bunker. This hole's points count double." },
+  sandy:    { kind: "bonus",   name: "Sandy",       tag: "Sandy x2",        hint: "Up and down from a bunker. This hole's points count double. Replaces up and down." },
   updown:   { kind: "bonus",   name: "Up and down", tag: "Up and down +2",  hint: "Chip or pitch, then one putt." },
   chipin:   { kind: "bonus",   name: "Chip-in",     tag: "Chip-in +4",      hint: "Holed it from off the green." },
   barkie:   { kind: "bonus",   name: "Barkie",      tag: "Barkie +2",       hint: "Hit a tree and still made par." },
@@ -517,7 +519,7 @@ function puntCalc(r, upTo = 18) {
         const pts = core * sandy;
         let flat = 0;
         if (r.opts.bonuses) {
-          if (evs.updown && diff <= 0) flat += 2;
+          if (evs.updown && !evs.sandy && !evs.chipin && diff <= 0) flat += 2;
           if (evs.barkie && diff <= 0) flat += 2;
           if (evs.chipin) flat += 4;
         }
@@ -978,8 +980,8 @@ function TipSheet({ k, onClose }) {
 }
 
 Object.assign(TIPS, {
-  sandy: ["Sandy", "Up and down from a bunker. This hole's points count double. Needs net par or better."],
-  updown: ["Up and down", "Missed the green, chipped or pitched on, then one putt. +2 to your pot. Needs net par or better."],
+  sandy: ["Sandy", "Up and down from a bunker. This hole's points count double. Needs net par or better. It replaces Up and down, so you can't claim both."],
+  updown: ["Up and down", "Missed the green, chipped or pitched on, then one putt. +2 to your pot. Needs net par or better. Not from a bunker (that's a Sandy) and not with a chip-in."],
   chipin: ["Chip-in", "Holed it from off the green. +4 to your pot, on any hole except a bust."],
   barkie: ["Barkie", "Hit a tree and still made par. +2 to your pot. Needs net par or better."],
   lost: ["Lost ball", "Lost it off the tee. Takes 3 points out of your pot (it can't go below zero)."],
@@ -1603,7 +1605,7 @@ function Rules({ onBack }) {
           <p>Log these from the player's card during the hole.</p>
           <div className="cap" style={{ fontWeight: 700 }}>Bonuses</div>
           {ev("bonus").map(e => <RuleRow key={e.name} k={e.tag} v={e.hint} />)}
-          <p className="cap">Sandy, up and down and barkie only count with net par or better. A chip-in is the best shot in golf, so it counts on any hole except a bust. Nearest the pin is won off the tee, so it also counts whatever you score, except on a bust.</p>
+          <p className="cap">Sandy, up and down and barkie only count with net par or better. A chip-in is the best shot in golf, so it counts on any hole except a bust. Sandy, up and down and chip-in can't stack: a sandy is already an up and down from the sand, and a chip-in has no putt. Nearest the pin is won off the tee, so it also counts whatever you score, except on a bust.</p>
           <div className="cap" style={{ fontWeight: 700, marginTop: 4 }}>Penalties</div>
           {ev("penalty").map(e => <RuleRow key={e.name} k={e.tag} v={e.hint} />)}
           <p className="cap">Penalties hit before you bank, so you can't bank to dodge one. They never touch banked points.</p>
@@ -2631,7 +2633,7 @@ export default function App() {
     setScore: (id, h, v) => setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })),
     setBank: (id, h, v) => { if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } } return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })); },
     setNtp: (h, id) => setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)) })),
-    setEvent: (id, h, k) => setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? { ...(x || {}), [k]: !(x && x[k]) } : x)) } })),
+    setEvent: (id, h, k) => setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? { ...Object.fromEntries(Object.entries(x || {}).filter(([e]) => (x && x[k]) || !(CLASH[k] || []).includes(e))), [k]: !(x && x[k]) } : x)) } })),
     setWolf: (h, v) => setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })),
     setBbb: (h, k, id) => setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })),
     markSeen: h => setRound(r => ({ ...r, seen: r.seen.map((x, i) => (i === h ? true : x)) })),
