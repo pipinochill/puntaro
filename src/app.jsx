@@ -13,6 +13,7 @@ function Check(p) { return <Ico {...p}><path d="M20 6 9 17l-5-5" /></Ico>; }
 function ChevronLeft(p) { return <Ico {...p}><path d="m15 18-6-6 6-6" /></Ico>; }
 function ChevronRight(p) { return <Ico {...p}><path d="m9 18 6-6-6-6" /></Ico>; }
 function Search(p) { return <Ico {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></Ico>; }
+function UserPlus(p) { return <Ico {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 8v6" /><path d="M22 11h-6" /></Ico>; }
 function X(p) { return <Ico {...p}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></Ico>; }
 function LinkIcon(p) { return <Ico {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></Ico>; }
 function Sparkles(p) { return <Ico {...p}><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" /></Ico>; }
@@ -62,7 +63,7 @@ const STATS = {
 const METRICS = [
   { id: "avg", label: "Avg net score", low: true, fmt: v => v.toFixed(1) },
   { id: "bird", label: "Birdies", fmt: v => v },
-  { id: "wins", label: "Side-game wins", fmt: v => v },
+  { id: "wins", label: "Puntaro wins", fmt: v => v },
   { id: "rounds", label: "Rounds", fmt: v => v },
 ];
 const GAMES = [
@@ -135,6 +136,24 @@ function Sprite({ name, size = 4, className, style }) {
 }
 
 /* ───────────── SOUND (8-bit synth, no audio files) ───────────── */
+// Original stately march in C major, written for Puntaro. Not a copy of any existing tune.
+const THEME = (() => {
+  const B = 0.55; // seconds per beat
+  const mid = n => 440 * Math.pow(2, (n - 69) / 12);
+  // [bass root, arpeggio triad, melody as [midi, startBeat, beats]]
+  const bars = [
+    [36, [48, 52, 55], [[64, 0, 1], [67, 1, 1], [72, 2, 2]]],
+    [45, [48, 52, 57], [[72, 0, 1], [71, 1, 1], [69, 2, 2]]],
+    [41, [48, 53, 57], [[69, 0, 1], [72, 1, 1], [77, 2, 2]]],
+    [43, [50, 55, 59], [[76, 0, 1.5], [74, 1.5, 0.5], [71, 2, 2]]],
+    [36, [48, 52, 55], [[64, 0, 1], [67, 1, 1], [72, 2, 1], [76, 3, 1]]],
+    [41, [48, 53, 57], [[77, 0, 1], [76, 1, 1], [72, 2, 2]]],
+    [43, [50, 55, 59], [[74, 0, 1], [76, 1, 1], [77, 2, 1], [74, 3, 1]]],
+    [36, [48, 52, 55], [[72, 0, 4]]],
+  ];
+  return { B, mid, bars, len: bars.length * 4 * B };
+})();
+
 const SFX = (() => {
   let ctx = null; let on = true; let last = 0;
   try { on = localStorage.getItem("puntaro.sound") !== "off"; } catch (e) { /* default on */ }
@@ -148,30 +167,56 @@ const SFX = (() => {
   };
   // Two slightly detuned voices make the chunky, wobbly chip sound.
   const tone = (a, f, t, d, o = {}) => {
-    const { type = "square", vol = 0.07, to = null, det = 7 } = o;
-    [0, det].forEach((c, k) => {
+    const { type = "square", vol = 0.07, to = null, det = 7, out = a.destination } = o;
+    (det ? [0, det] : [0]).forEach((c, k) => {
       const osc = a.createOscillator(), g = a.createGain(), t0 = a.currentTime + t;
       osc.type = type; osc.detune.value = c; osc.frequency.setValueAtTime(f, t0);
       if (to) osc.frequency.exponentialRampToValueAtTime(to, t0 + d);
       g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol * (k ? 0.5 : 1), t0 + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
-      osc.connect(g); g.connect(a.destination); osc.start(t0); osc.stop(t0 + d + 0.03);
+      osc.connect(g); g.connect(out); osc.start(t0); osc.stop(t0 + d + 0.03);
     });
   };
   const noise = (a, t, d, o = {}) => {
-    const { vol = 0.08, from = 3000, to = 800 } = o;
+    const { vol = 0.08, from = 3000, to = 800, out = a.destination } = o;
     const n = Math.max(1, Math.floor(a.sampleRate * d)); const buf = a.createBuffer(1, n, a.sampleRate); const dat = buf.getChannelData(0);
     for (let i = 0; i < n; i++) dat[i] = (Math.random() * 2 - 1) * (1 - i / n);
     const src = a.createBufferSource(); src.buffer = buf;
     const f = a.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 0.9;
     f.frequency.setValueAtTime(from, a.currentTime + t); f.frequency.exponentialRampToValueAtTime(to, a.currentTime + t + d);
-    const g = a.createGain(); g.gain.value = vol; src.connect(f); f.connect(g); g.connect(a.destination); src.start(a.currentTime + t);
+    const g = a.createGain(); g.gain.value = vol; src.connect(f); f.connect(g); g.connect(out); src.start(a.currentTime + t);
   };
   const run = (a, notes, step, o) => notes.forEach((f, i) => tone(a, f, i * step, step * 1.7, o));
+  let song = null;
+  const playBar = (a, out, bar, at) => {
+    const [root, tri, mel] = THEME.bars[bar]; const B = THEME.B; const t = k => at + k * B - a.currentTime;
+    [0, 2].forEach(k => tone(a, THEME.mid(root), t(k), B * 1.7, { vol: 0.07, det: 0, out }));
+    [0, 1, 2, 1, 0, 1, 2, 1].forEach((i, k) => tone(a, THEME.mid(tri[i]), t(k / 2), B * 0.5, { type: "triangle", vol: 0.07, det: 0, out }));
+    mel.forEach(([n, s, d]) => { tone(a, THEME.mid(n), t(s), d * B * 0.95, { vol: 0.06, out }); });
+    [0, 2].forEach(k => tone(a, 150, t(k), 0.12, { type: "sine", vol: 0.16, to: 45, det: 0, out }));
+    [1, 3].forEach(k => noise(a, t(k), 0.09, { vol: 0.07, from: 3200, to: 1600, out }));
+    [0.5, 1.5, 2.5, 3.5].forEach(k => noise(a, t(k), 0.03, { vol: 0.025, from: 8000, to: 7000, out }));
+  };
+  const schedule = a => {
+    if (!song) return;
+    const at0 = song.next;
+    for (let b = 0; b < THEME.bars.length; b++) playBar(a, song.out, b, at0 + b * 4 * THEME.B);
+    song.next = at0 + THEME.len;
+    song.timer = setTimeout(() => schedule(a), Math.max(200, (song.next - a.currentTime - 1) * 1000));
+  };
+  const startSong = a => {
+    if (song) return;
+    const out = a.createGain(); out.gain.value = 0.9; out.connect(a.destination);
+    song = { out, next: a.currentTime + 0.1, timer: 0 }; schedule(a);
+  };
   const mk = fn => () => { const a = ac(); if (!a) return; last = Date.now(); fn(a); };
   return {
     isOn: () => on,
-    set: v => { on = v; try { localStorage.setItem("puntaro.sound", v ? "on" : "off"); } catch (e) { /* fine */ } if (v) { const a = ac(); if (a) tone(a, 880, 0, 0.08, { type: "triangle" }); } },
+    set: v => { on = v; if (!v) { try { if (song) { clearTimeout(song.timer); song.out.gain.value = 0; song = null; } } catch (e) { /* fine */ } } try { localStorage.setItem("puntaro.sound", v ? "on" : "off"); } catch (e) { /* fine */ } if (v) { const a = ac(); if (a) tone(a, 880, 0, 0.08, { type: "triangle" }); } },
     sinceSpecial: () => Date.now() - last,
+    themePlaying: () => !!song,
+    theme: () => { const a = ac(); if (a) { last = Date.now(); startSong(a); } },
+    themeIfAllowed: () => { if (on && ctx && ctx.state === "running") startSong(ctx); else if (on && !ctx) { const a = ac(); if (a && a.state === "running") startSong(a); } },
+    stopTheme: () => { if (!song) return; clearTimeout(song.timer); const s = song; song = null; try { s.out.gain.setTargetAtTime(0, ctx.currentTime, 0.04); } catch (e) { /* fine */ } },
     tap: () => { const a = ac(); if (a) tone(a, 740, 0, 0.05, { type: "triangle", vol: 0.05 }); },
     up: mk(a => { tone(a, 523, 0, 0.07); tone(a, 784, 0.06, 0.1); }),
     down: mk(a => { tone(a, 392, 0, 0.07); tone(a, 262, 0.06, 0.13, { type: "triangle", vol: 0.1 }); }),
@@ -252,7 +297,13 @@ function SwirlBg() {
 
 function Splash({ onDone }) {
   const [leaving, setLeaving] = useState(false);
-  const go = () => { if (leaving) return; setLeaving(true); SFX.start(); setTimeout(onDone, 300); };
+  const [music, setMusic] = useState(false);
+  useEffect(() => { SFX.themeIfAllowed(); setMusic(SFX.themePlaying()); }, []);
+  const go = () => {
+    if (leaving) return;
+    if (SFX.isOn() && !SFX.themePlaying() && !music) { SFX.theme(); setMusic(true); return; }
+    setLeaving(true); SFX.stopTheme(); SFX.start(); setTimeout(onDone, 300);
+  };
   useEffect(() => {
     const k = e => { if (e.key === "Enter" || e.key === " ") go(); };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
@@ -266,7 +317,7 @@ function Splash({ onDone }) {
         <Wordmark size={56} />
         <div className="tag"><i /><span>BANK IT. OR BUST.</span><i /></div>
       </div>
-      <div className="tapgo">TAP TO TEE OFF</div>
+      <div className="tapgo">{music || !SFX.isOn() ? "TAP TO TEE OFF" : "TAP TO START"}</div>
       <div className="ver">ALPHA {APP_VERSION}</div>
     </div>
   );
@@ -516,6 +567,17 @@ function payouts(r, ranked) {
   pay[ranked[0]] = Math.round((pay[ranked[0]] + (pool - paid)) * 100) / 100;
   return pay;
 }
+const teamRows = (r, pc) => [0, 1].map(k => { const ids = r.playerIds.filter(id => r.teams[id] === k); return { k, ids, total: ids.reduce((a, id) => a + pc[id].total, 0) }; });
+// 2v2: winning team splits the pool. A tie hands every buy-in back.
+function teamPayouts(r, pc) {
+  const pay = {}; r.playerIds.forEach(id => (pay[id] = 0));
+  if (r.stake === 0) return pay;
+  const [a, b] = teamRows(r, pc);
+  if (a.total === b.total) { r.playerIds.forEach(id => (pay[id] = r.stake)); return pay; }
+  const w = a.total > b.total ? a : b; const pool = r.stake * r.playerIds.length;
+  w.ids.forEach(id => (pay[id] = Math.round((pool / w.ids.length) * 100) / 100));
+  return pay;
+}
 function settle(nets) {
   const d = [], c = [];
   Object.entries(nets).forEach(([id, v]) => {
@@ -578,7 +640,7 @@ function buildRound(cfg, people, seed) {
     events[id] = Array(18).fill(null);
   });
   const r = {
-    course, holes, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
+    course, holes, mode: cfg.mode || "ffa", teams: cfg.teams || null, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
     opts: cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true },
     draws: Array(18).fill(null), seen: Array(18).fill(false), drawSeed: seed ? 20241024 : Math.floor(Math.random() * 1e9),
     ntp: Array(18).fill(null),
@@ -1007,6 +1069,16 @@ function GamePanel({ gid, round, people, h, api }) {
             );
           })}
         </div>
+        {round.mode === "2v2" && round.teams && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 11 }}>
+            {teamRows(round, pc).map(x => (
+              <div key={x.k} style={{ border: "3px solid var(--night)", padding: "7px 9px", background: "var(--card)", borderLeft: `8px solid ${x.k ? "var(--mint)" : "var(--flag)"}` }}>
+                <div className="cap">Team {x.k + 1}: {x.ids.map(id => people[id].name).join(" and ")}</div>
+                <div style={{ fontWeight: 800, fontSize: 20 }}>{x.total}<span className="cap"> pts</span></div>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 11 }}>
           <MiniBoard title="Puntaro" sub="Banked plus pot" rows={puntRank} people={people} />
           <MiniBoard title="The Comp" sub={round.useHcp ? "Net to par" : "Gross to par"} rows={compRank} people={people} />
@@ -1624,7 +1696,8 @@ function AboutSheet({ onClose, onReset }) {
   );
 }
 
-function Setup({ people, friendIds, saved, onSaveCourse, onBack, onGo }) {
+const MAXP = 8;
+function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onGo }) {
   const [course, setCourse] = useState(COURSES[0]);
   const [teeI, setTeeI] = useState(0);
   const [finding, setFinding] = useState(false);
@@ -1638,18 +1711,18 @@ function Setup({ people, friendIds, saved, onSaveCourse, onBack, onGo }) {
   const cpar = course.holes ? course.holes.reduce((a, h) => a + h.par, 0) : course.par;
   const cinfo = { slope: tee.slope, rating: tee.rating, par: cpar };
   const pickCourse = c => { setCourse(c); setTeeI(0); setFinding(false); };
-  const pool = ["me", ...friendIds];
-
-  const togglePlayer = id => {
-    if (id === "me") return;
-    const next = sel.includes(id) ? sel.filter(x => x !== id) : sel.length < 4 ? [...sel, id] : sel;
-    setSel(next);
-    if (next.length !== 4) setGames(g => g.filter(x => !GAMES.find(y => y.id === x).four));
-  };
-  const toggleGame = g => {
-    if (g.four && sel.length !== 4) return;
-    setGames(x => (x.includes(g.id) ? x.filter(i => i !== g.id) : [...x, g.id]));
-  };
+  const [sheet, setSheet] = useState(null);
+  const [q, setQ] = useState("");
+  const [mode, setMode] = useState("ffa");
+  const [teams, setTeams] = useState({});
+  const effMode = sel.length === 4 ? mode : "ffa";
+  const teamOf = id => (teams[id] != null ? teams[id] : sel.indexOf(id) < 2 ? 0 : 1);
+  const teamCount = sel.filter(id => teamOf(id) === 0).length;
+  const setTeam = (id, k) => setTeams(x => ({ ...x, ...Object.fromEntries(sel.map(i => [i, teamOf(i)])), [id]: k }));
+  const autoBalance = () => { const s = [...sel].sort((x, y) => people[x].hi - people[y].hi); setTeams({ [s[0]]: 0, [s[3]]: 0, [s[1]]: 1, [s[2]]: 1 }); };
+  const addPlayer = id => setSel(s => (s.includes(id) || s.length >= MAXP ? s : [...s, id]));
+  const removePlayer = id => { if (id !== "me") setSel(s => s.filter(x => x !== id)); };
+  const pickList = [...friendIds, ...Object.keys(people).filter(id => people[id].guest)].filter(id => people[id] && people[id].name.toLowerCase().includes(q.trim().toLowerCase()));
   const Label = ({ children, sub }) => (
     <div style={{ margin: "14px 0 6px" }}><h2 className="h2">{children}</h2>{sub && <p className="cap" style={{ marginTop: 2 }}>{sub}</p>}</div>
   );
@@ -1683,15 +1756,56 @@ function Setup({ people, friendIds, saved, onSaveCourse, onBack, onGo }) {
           </div>
         </div>
 
-        <Label sub="Choose 2 to 4 players.">Players</Label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {pool.map(id => (
-            <button key={id} className={`chip ${sel.includes(id) ? "on" : ""}`} onClick={() => togglePlayer(id)} style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 8 }}>
-              <Avatar p={people[id]} size={20} />{people[id].name}
-              {sel.includes(id) && <Check size={16} />}
-            </button>
+        <Label sub={`Up to ${MAXP}. Add friends from your list, or guests by name and handicap.`}>Players</Label>
+        <div className="card" style={{ padding: "3px 11px" }}>
+          {sel.map((id, i) => (
+            <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+              <Avatar p={people[id]} size={26} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700 }}>{people[id].name}</div>
+                <div className="cap">Index {people[id].hi.toFixed(1)}{people[id].guest ? " · guest" : ""}</div>
+              </div>
+              {effMode === "2v2" && (
+                <button className="pill" aria-label={`${people[id].name} team ${teamOf(id) + 1}, tap to switch`} onClick={() => setTeam(id, 1 - teamOf(id))} style={{ background: teamOf(id) ? "var(--mint)" : "var(--flag)", color: "var(--dk)" }}>Team {teamOf(id) + 1}</button>
+              )}
+              {id !== "me" && <button aria-label={`Remove ${people[id].name}`} onClick={() => removePlayer(id)}><X size={18} /></button>}
+            </div>
           ))}
         </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          <button className="chip" disabled={sel.length >= MAXP} onClick={() => setSheet("friend")}>+ Friend</button>
+          <button className="chip" disabled={sel.length >= MAXP} onClick={() => setSheet("guest")}>+ Guest</button>
+        </div>
+
+        <Label sub={sel.length === 4 ? "Everyone plays their own Puntaro. In 2v2 the team totals decide it." : "2v2 needs exactly four players."}>Format</Label>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button className={`chip ${effMode === "ffa" ? "on" : ""}`} onClick={() => setMode("ffa")}>Free for all</button>
+          <button className={`chip ${effMode === "2v2" ? "on" : ""}`} disabled={sel.length !== 4} onClick={() => { setMode("2v2"); setTeams(Object.fromEntries(sel.map((id, i) => [id, i < 2 ? 0 : 1]))); }} style={{ opacity: sel.length === 4 ? 1 : 0.5 }}>2v2</button>
+          {effMode === "2v2" && <button className="chip" onClick={autoBalance}>Auto-balance by handicap</button>}
+        </div>
+        {effMode === "2v2" && teamCount !== 2 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, marginTop: 5 }}>Two players per team. Tap a Team pill to switch someone.</p>}
+
+        {sheet === "friend" && (
+          <Sheet title="Add a friend" onClose={() => { setSheet(null); setQ(""); }}>
+            <input aria-label="Search friends" placeholder="Search your friends and past guests" value={q} onChange={e => setQ(e.target.value)} style={inp} />
+            <div style={{ marginTop: 8 }}>
+              {pickList.length === 0 && <p className="cap">No one matches. Try a guest instead.</p>}
+              {pickList.map((id, i) => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                  <Avatar p={people[id]} size={28} />
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">Index {people[id].hi.toFixed(1)}{people[id].guest ? " · guest" : ""}</div></div>
+                  <button className="chip" disabled={sel.includes(id) || sel.length >= MAXP} onClick={() => addPlayer(id)}>{sel.includes(id) ? "Added" : "Add"}</button>
+                </div>
+              ))}
+            </div>
+          </Sheet>
+        )}
+        {sheet === "guest" && (
+          <Sheet title="Add a guest" onClose={() => setSheet(null)}>
+            <p className="cap" style={{ marginBottom: 8 }}>For mates who aren't on the app. You score for them.</p>
+            <PersonForm cta="Add to round" onSubmit={g => { addPlayer(onAddGuest(g)); setSheet(null); }} />
+          </Sheet>
+        )}
 
         <Label sub="Switch on what your group wants. All optional.">Extras</Label>
         <div className="card" style={{ padding: "3px 11px" }}>
@@ -1715,10 +1829,14 @@ function Setup({ people, friendIds, saved, onSaveCourse, onBack, onGo }) {
           </div>
           {stake > 0 && (
             <>
-              <div className="cap" style={{ fontWeight: 600, marginTop: 11 }}>How it pays out</div>
-              <div className="scrollx" style={{ marginTop: 6 }}>
-                {SPLITS.map(([k, l]) => <button key={k} className={`chip ${split === k ? "on" : ""}`} onClick={() => setSplit(k)}>{l}</button>)}
-              </div>
+              {effMode === "2v2"
+                ? <p className="cap" style={{ marginTop: 11 }}>Winning team splits the pool. A tie hands every buy-in back.</p>
+                : <>
+                  <div className="cap" style={{ fontWeight: 600, marginTop: 11 }}>How it pays out</div>
+                  <div className="scrollx" style={{ marginTop: 6 }}>
+                    {SPLITS.map(([k, l]) => <button key={k} className={`chip ${split === k ? "on" : ""}`} onClick={() => setSplit(k)}>{l}</button>)}
+                  </div>
+                </>}
               <div style={{ marginTop: 11, borderTop: "1px solid var(--line)", paddingTop: 9, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <div><div style={{ fontWeight: 800, fontSize: 14 }}>Pool {money(stake * sel.length)}</div><div className="cap">The most anyone can lose is their {money(stake)} buy-in.</div></div>
               </div>
@@ -1749,7 +1867,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onBack, onGo }) {
         </div>
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
-        <button className="cta" disabled={sel.length < 2} onClick={() => onGo({ course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts })}>Tee off</button>
+        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts })}>Tee off</button>
       </div>
     </div>
   );
@@ -1839,7 +1957,7 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
             <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 6px 6px 9px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
               <Avatar p={people[id]} size={31} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 15 }}>{people[id].name}</div>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 10, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
                 <div className="cap">
                   {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
@@ -1916,8 +2034,11 @@ function Summary({ round, people, onSave, onBack }) {
   const hasPunt = round.games.includes("punt");
   const pc = puntCalc(round);
   const punt = [...round.playerIds].sort((a, b) => pc[b].total - pc[a].total);
-  const ranked = hasPunt ? punt : comp.map(r => r.id);
-  const pay = payouts(round, ranked);
+  const isTeam = round.mode === "2v2" && !!round.teams;
+  const tr = isTeam ? teamRows(round, pc).sort((x, y) => y.total - x.total) : null;
+  const tied = isTeam && tr[0].total === tr[1].total;
+  const ranked = isTeam ? [...round.playerIds].sort((x, y) => (round.teams[x] === tr[0].k ? 0 : 1) - (round.teams[y] === tr[0].k ? 0 : 1) || pc[y].total - pc[x].total) : hasPunt ? punt : comp.map(r => r.id);
+  const pay = isTeam ? teamPayouts(round, pc) : payouts(round, ranked);
   const nets = {}; round.playerIds.forEach(id => (nets[id] = Math.round((pay[id] - round.stake) * 100) / 100));
   const owes = settle(nets);
   const sign = v => (v > 0 ? `+${money(v)}` : v < 0 ? `${MINUS}${money(-v)}` : "$0");
@@ -1954,6 +2075,18 @@ function Summary({ round, people, onSave, onBack }) {
               <h3 style={{ fontWeight: 800, fontSize: 15 }}>Puntaro</h3>
               <p className="cap">Everything left in a pot at the 18th is banked automatically.</p>
             </div>
+            {isTeam && (
+              <div style={{ display: "grid", gap: 6, padding: "4px 0 10px" }}>
+                {tr.map((x, i) => (
+                  <div key={x.k} className="card" style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, background: i === 0 && !tied ? "var(--sel)" : "var(--card)", boxShadow: "none" }}>
+                    {i === 0 && !tied ? <Sprite name="crown" size={4} /> : <span style={{ width: 28 }} />}
+                    <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 800 }}>Team {x.k + 1}</div><div className="cap">{x.ids.map(id => people[id].name).join(" and ")}</div></div>
+                    <div style={{ fontWeight: 800, fontSize: 17 }}>{x.total}<span className="cap"> pts</span></div>
+                  </div>
+                ))}
+                {tied && <p className="cap">Dead heat. Every buy-in goes back.</p>}
+              </div>
+            )}
             {punt.map((id, i) => (
               <div key={id} style={{ display: "grid", gridTemplateColumns: "28px 1fr auto", gap: 5, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line)" }}>
                 <div style={{ fontWeight: 800, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i === 0 ? <Sprite name="crown" size={4} /> : i + 1}</div>
@@ -1970,7 +2103,7 @@ function Summary({ round, people, onSave, onBack }) {
         {round.stake > 0 && (
           <div className="card" style={{ padding: 12 }}>
             <h3 style={{ fontWeight: 800, fontSize: 15 }}>Prize pool</h3>
-            <p className="cap">{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}. {SPLITS.find(s => s[0] === round.split)[1]}.</p>
+            <p className="cap">{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}. {isTeam ? "Winning team splits the pool." : SPLITS.find(s => s[0] === round.split)[1] + "."}</p>
             <div style={{ marginTop: 6 }}>
               {ranked.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
@@ -2012,16 +2145,52 @@ function Summary({ round, people, onSave, onBack }) {
   );
 }
 
-function Friends({ people, friendIds, setFriendIds }) {
+function Sheet({ title, onClose, children }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={onClose}>
+      <div className="sheet card" role="dialog" aria-label={title} onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <h2 className="h2">{title}</h2>
+          <button onClick={onClose} aria-label="Close"><X size={22} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Name plus handicap index. Used for guests in a round and for adding a friend by hand.
+function PersonForm({ cta, onSubmit }) {
+  const [name, setName] = useState("");
+  const [hi, setHi] = useState("18.0");
+  const h = Number(hi);
+  const err = !name.trim() ? "Enter a name." : hi.trim() === "" || Number.isNaN(h) || h < -10 || h > 54 ? "Handicap index should be between -10 and 54." : "";
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div><div className="cap" style={{ marginBottom: 3 }}>Name</div><input aria-label="Name" value={name} onChange={e => setName(e.target.value)} maxLength={20} style={inp} /></div>
+      <div><div className="cap" style={{ marginBottom: 3 }}>Handicap index</div><input aria-label="Handicap index" inputMode="decimal" value={hi} onChange={e => setHi(e.target.value)} style={inp} /></div>
+      {err && name.length + hi.length > 0 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
+      <button className="cta" disabled={!!err} onClick={() => onSubmit({ name: name.trim(), hi: Math.round(h * 10) / 10 })}>{cta}</button>
+    </div>
+  );
+}
+
+function Friends({ people, friendIds, onAddFriend, setFriendIds }) {
   const [metric, setMetric] = useState("avg");
   const [period, setPeriod] = useState("month");
   const [sheet, setSheet] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState("");
   const m = METRICS.find(x => x.id === metric);
-  const rows = ["me", ...friendIds].map(id => ({ id, v: STATS[id][period][metric] })).sort((a, b) => (m.low ? a.v - b.v : b.v - a.v));
-  const vals = rows.map(r => r.v); const mx = Math.max(...vals), mn = Math.min(...vals);
-  const pct = v => (m.low ? 100 - ((v - mn) / (mx - mn || 1)) * 55 : (v / (mx || 1)) * 100);
-  const suggestions = ["dani", "omar"];
+  const val = id => (STATS[id] ? STATS[id][period][metric] : null);
+  const rows = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: val(id) })).sort((a, b) => (a.v == null) - (b.v == null) || (m.low ? a.v - b.v : b.v - a.v));
+  const vals = rows.filter(r => r.v != null).map(r => r.v); const mx = Math.max(...vals), mn = Math.min(...vals);
+  const pct = v => (v == null ? 0 : m.low ? 100 - ((v - mn) / (mx - mn || 1)) * 55 : (v / (mx || 1)) * 100);
+  const sample = ["dani", "omar"].filter(id => people[id] && !friendIds.includes(id));
+  const copyLink = async () => {
+    const url = typeof location !== "undefined" ? location.href.split("#")[0] : "";
+    try { await navigator.clipboard.writeText(url); setCopied("Link copied"); } catch (e) { setCopied(url || "Couldn't copy"); }
+    setTimeout(() => setCopied(""), 2500);
+  };
 
   return (
     <div style={{ paddingBottom: 19 }}>
@@ -2030,29 +2199,29 @@ function Friends({ people, friendIds, setFriendIds }) {
         <button onClick={() => setSheet(true)} style={{ background: "var(--flag)", color: "var(--dk)", borderRadius: 999, padding: "7px 12px", fontWeight: 800, display: "flex", gap: 5, alignItems: "center" }}><UserPlus size={18} />Add</button>
       </div>
       <div style={{ padding: 12 }}>
-        <div style={{ display: "flex", background: "var(--sel)", borderRadius: 14, padding: 3 }}>
+        <div style={{ display: "flex", gap: 6 }}>
           {[["month", "This month"], ["season", "This season"]].map(([k, l]) => (
-            <button key={k} onClick={() => setPeriod(k)} style={{ flex: 1, padding: "7px 0", borderRadius: 11, fontWeight: 700, background: period === k ? "var(--card)" : "transparent", boxShadow: period === k ? "0 1px 3px rgba(0,0,0,.12)" : "none" }}>{l}</button>
+            <button key={k} className={`chip ${period === k ? "on" : ""}`} onClick={() => setPeriod(k)} style={{ flex: 1, padding: "5px 0", textAlign: "center" }}>{l}</button>
           ))}
         </div>
         <div className="scrollx" style={{ marginTop: 11 }}>
           {METRICS.map(x => <button key={x.id} className={`chip ${metric === x.id ? "on" : ""}`} onClick={() => setMetric(x.id)}>{x.label}</button>)}
         </div>
-        <p className="cap" style={{ margin: "9px 2px" }}>Scores are net, so a 5 handicap and a 20 handicap compete on level ground.</p>
+        <p className="cap" style={{ margin: "9px 2px" }}>Scores are net, so a 5 handicap and a 20 handicap compete on level ground. These numbers are demo data for now. Friends you add yourself show a dash.</p>
         <div className="card" style={{ padding: "3px 11px" }}>
           {rows.map((r, i) => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none", background: r.id === "me" ? "var(--sel)" : "transparent", margin: r.id === "me" ? "0 -14px" : 0, paddingLeft: r.id === "me" ? 14 : 0, paddingRight: r.id === "me" ? 14 : 0 }}>
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
               <div style={{ width: 26, display: "grid", placeItems: "center", fontWeight: 800, color: "var(--muted)" }}>
-                {i === 0 ? <Sprite name="crown" size={4} /> : i + 1}
+                {i === 0 && r.v != null ? <Sprite name="crown" size={4} /> : i + 1}
               </div>
               <Avatar p={people[r.id]} size={32} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <div style={{ fontWeight: 800 }}>{people[r.id].name} <span className="cap" style={{ fontWeight: 400 }}>index {people[r.id].hi.toFixed(1)}</span></div>
-                  <div style={{ fontWeight: 800, fontSize: 16 }}>{m.fmt(r.v)}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                  <div style={{ fontWeight: 800, minWidth: 0 }}>{people[r.id].name} <span className="cap" style={{ fontWeight: 400 }}>index {people[r.id].hi.toFixed(1)}</span></div>
+                  <div style={{ fontWeight: 800, fontSize: 16 }}>{r.v == null ? "–" : m.fmt(r.v)}</div>
                 </div>
-                <div style={{ height: 7, background: "var(--track)", borderRadius: 99, marginTop: 5 }}>
-                  <div style={{ height: "100%", width: `${pct(r.v)}%`, borderRadius: 99, background: i === 0 ? "var(--fair)" : "var(--lime)", transition: "width .3s" }} />
+                <div style={{ height: 7, background: "var(--track)", marginTop: 5 }}>
+                  <div style={{ height: "100%", width: `${pct(r.v)}%`, background: i === 0 ? "var(--fair)" : "var(--lime)" }} />
                 </div>
               </div>
             </div>
@@ -2061,31 +2230,25 @@ function Friends({ people, friendIds, setFriendIds }) {
       </div>
 
       {sheet && (
-        <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 20, display: "flex", alignItems: "flex-end", background: "rgba(10,30,22,.5)" }} onClick={() => setSheet(false)}>
-          <div className="sheet" onClick={e => e.stopPropagation()} style={{ background: "var(--chalk)", width: "100%", borderRadius: "26px 26px 0 0", padding: 16, paddingBottom: 22 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 className="h2">Add friends</h2>
-              <button onClick={() => setSheet(false)} aria-label="Close"><X size={24} /></button>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "9px 11px", marginTop: 11 }}>
-              <Search size={18} color="var(--muted)" /><span style={{ color: "var(--muted)" }}>Search by name or username</span>
-            </div>
-            <button onClick={() => { setCopied(true); setTimeout(() => setCopied(false), 1800); }} className="card" style={{ width: "100%", marginTop: 8, padding: "10px 11px", display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-              <LinkIcon size={18} />{copied ? "Invite link copied" : "Copy your invite link"}
-            </button>
-            <div className="cap" style={{ margin: "14px 0 5px", fontWeight: 600 }}>Golfers you may know</div>
-            {suggestions.map(id => {
-              const added = friendIds.includes(id);
-              return (
+        <Sheet title="Add a friend" onClose={() => setSheet(false)}>
+          <PersonForm cta="Add friend" onSubmit={p => { onAddFriend(p); setSheet(false); }} />
+          <button onClick={copyLink} className="chip" style={{ width: "100%", marginTop: 10, padding: "8px 0", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}>
+            <LinkIcon size={16} />{copied || "Copy a link to this app to send a mate"}
+          </button>
+          {sample.length > 0 && (
+            <>
+              <div className="cap" style={{ margin: "14px 0 5px", fontWeight: 600 }}>Sample golfers (demo)</div>
+              {sample.map(id => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
-                  <Avatar p={people[id]} size={34} />
+                  <Avatar p={people[id]} size={30} />
                   <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">Index {people[id].hi.toFixed(1)}</div></div>
-                  <button disabled={added} onClick={() => setFriendIds(f => [...f, id])} className="chip" style={added ? { background: "var(--mint)", borderColor: "var(--mint)", color: "var(--dk)" } : { background: "var(--pine)", borderColor: "var(--pine)", color: "#fff" }}>{added ? "Added" : "Add"}</button>
+                  <button onClick={() => setFriendIds(f => [...f, id])} className="chip">Add</button>
                 </div>
-              );
-            })}
-          </div>
-        </div>
+              ))}
+            </>
+          )}
+          <p className="cap" style={{ marginTop: 12 }}>Searching for real golfers and syncing scores between phones needs sign-in. That comes later.</p>
+        </Sheet>
       )}
     </div>
   );
@@ -2095,7 +2258,7 @@ function Me({ people, setPeople, dark, setDark, saved, onAbout }) {
   const me = people.me;
   const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(36, Math.max(-2, v)) * 10) / 10 } }));
   const s = STATS.me.season;
-  const tiles = [["Rounds", s.rounds], ["Birdies", s.bird], ["Side-game wins", s.wins], ["Avg net", s.avg.toFixed(1)]];
+  const tiles = [["Rounds", s.rounds], ["Birdies", s.bird], ["Puntaro wins", s.wins], ["Avg net", s.avg.toFixed(1)]];
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "23px 16px 20px", display: "flex", alignItems: "center", gap: 11 }}>
@@ -2142,9 +2305,9 @@ function Me({ people, setPeople, dark, setDark, saved, onAbout }) {
 
 /* ───────────── APP ───────────── */
 export default function App() {
-  const [people, setPeople] = useState(PEOPLE);
+  const [people, setPeople] = useState(() => { const s = loadAppState(); return s && s.people ? { ...PEOPLE, ...s.people } : PEOPLE; });
   const [dark, setDark] = useState(true);
-  const [friendIds, setFriendIds] = useState(["sam", "priya", "jake", "maya", "leo"]);
+  const [friendIds, setFriendIds] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.friendIds) ? s.friendIds : ["sam", "priya", "jake", "maya", "leo"]; });
   const [tab, setTab] = useState("home");
   const [view, setView] = useState("tabs");
   const [round, setRound] = useState(() => {
@@ -2158,14 +2321,22 @@ export default function App() {
   const [saved, setSaved] = useState(loadSaved);
   const [splash, setSplash] = useState(true);
   const [about, setAbout] = useState(false);
+  const GUEST_COLORS = ["#9A7B3F", "#5E6E55", "#8B6B4A", "#6F7F73", "#A5543A"];
+  const newPerson = ({ name, hi }, guest) => {
+    const id = (guest ? "g" : "f") + Date.now() + Math.floor(Math.random() * 99);
+    setPeople(p => ({ ...p, [id]: { id, name, hi, guest, color: GUEST_COLORS[Object.keys(p).length % GUEST_COLORS.length] } }));
+    return id;
+  };
+  const addGuest = g => newPerson(g, true);
+  const addFriend = f => { const id = newPerson(f, false); setFriendIds(x => [...x, id]); };
   const saveCourse = c => setSaved(s => { const n = [c, ...s.filter(x => x.id !== c.id)]; storeSaved(n); return n; });
   const resetDemo = () => {
-    storeSaved([]); setSaved([]); setPeople(PEOPLE); setRecent(RECENT); setAbout(false);
+    storeSaved([]); setSaved([]); setPeople(PEOPLE); setFriendIds(["sam", "priya", "jake", "maya", "leo"]); setRecent(RECENT); setAbout(false);
     setRound(buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
     setView("tabs"); setTab("home");
   };
   const [trash, setTrash] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.trash) ? s.trash.filter(x => Date.now() - x.at < TRASH_MS) : []; });
-  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash]);
+  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds]);
   const [now, setNow] = useState(Date.now());
   const armed = useRef(false);
   const ready = () => armed.current; // a click only counts after a fresh press on the sheet, so the finger lifting after a hold is ignored
@@ -2204,7 +2375,7 @@ export default function App() {
     }),
   };
 
-  const board = ["me", ...friendIds].map(id => ({ id, v: STATS[id].month.avg })).sort((a, b) => a.v - b.v);
+  const board = ["me", ...friendIds].filter(id => STATS[id] && people[id]).map(id => ({ id, v: STATS[id].month.avg })).sort((a, b) => a.v - b.v);
 
   const save = () => {
     const t = totalsFor(round, "me");
@@ -2231,7 +2402,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); setRound(buildRound(cfg, people, false)); setView("round"); }} />}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); setRound(buildRound(cfg, people, false)); setView("round"); }} />}
       {view === "round" && round && <Round round={round} people={people} api={api} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => setView("summary")} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
       {view === "summary" && round && <Summary round={round} people={people} onSave={save} onBack={() => setView("round")} />}
@@ -2239,7 +2410,7 @@ export default function App() {
         <>
           <div style={{ flex: 1 }}>
             {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => setView("setup")} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
-            {tab === "friends" && <Friends people={people} friendIds={friendIds} setFriendIds={setFriendIds} />}
+            {tab === "friends" && <Friends people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
             {tab === "me" && <Me people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
           </div>
           <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>
