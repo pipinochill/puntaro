@@ -1461,9 +1461,9 @@ const CACHE_KEY = "puntaro.cache.v1";
 const cacheGet = k => { try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}")[k]; return c && Date.now() - c.t < 7 * 864e5 ? c.v : null; } catch (e) { return null; } };
 const cacheSet = (k, v) => { try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); c[k] = { t: Date.now(), v }; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch (e) { /* fine */ } };
 // Ask every server at once and take the first good answer. Gives up after 15 seconds.
-async function overpass(q) {
+async function overpass(q, ms = 15000) {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 15000);
+  const timer = setTimeout(() => ctl.abort(), ms);
   try {
     return await Promise.any(OVERPASS_HOSTS.map(async h => {
       const res = await fetch(h, { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) });
@@ -1529,7 +1529,7 @@ async function loadOsmHoles(c) {
   if (c.type === "node") return null;
   const area = (c.type === "relation" ? 3600000000 : 2400000000) + c.id;
   const hk = "holes:" + c.osm; const hh = cacheGet(hk);
-  const j = hh ? { elements: hh } : await overpass(`[out:json][timeout:12];area(${area})->.a;way["golf"="hole"](area.a);out tags;`);
+  const j = hh ? { elements: hh } : await overpass(`[out:json][timeout:12];area(${area})->.a;way["golf"="hole"](area.a);out tags;`, 5000);
   if (!hh) cacheSet(hk, j.elements || []);
   const holes = Array(18).fill(null);
   (j.elements || []).forEach(e => {
@@ -1662,7 +1662,7 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
     const id = "osm-" + c.osm;
     const have = saved.find(s => s.id === id);
     if (have) { onPick(have); return; }
-    setBusy("Loading hole details…");
+    setBusy("Checking the map for hole details (up to 5 seconds)…");
     let holes = null;
     try { holes = await loadOsmHoles(c); } catch (e) { holes = null; }
     setBusy("");
