@@ -23,7 +23,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.41";
+const APP_VERSION = "0.42";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -37,6 +37,7 @@ const COURSES = [
   { id: "cedar", name: "Cedar Ridge", source: "sample", par: 72, holes: null, tees: [{ name: "White", slope: 140, rating: 73.4 }] },
 ];
 const TRASH_MS = 5 * 60 * 1000;
+const PARK_MS = 24 * 60 * 60 * 1000; // paused rounds are kept for a day
 const STATE_KEY = "puntaro.state.v1";
 const loadAppState = () => { try { const s = JSON.parse(localStorage.getItem(STATE_KEY)); return s && typeof s === "object" ? s : null; } catch (e) { return null; } };
 const SAVED_KEY = "puntaro.courses.v1";
@@ -1520,7 +1521,7 @@ function HoldRow({ onHold, children, style, className }) {
   );
 }
 
-function Home({ people, round, recent, board, onStart, onJoin, liveCode, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
+function Home({ people, round, recent, board, onStart, onJoin, liveCode, parked = [], onResumeParked, onDropParked, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
@@ -1582,6 +1583,27 @@ function Home({ people, round, recent, board, onStart, onJoin, liveCode, onResum
             ))}
           </div>
         </div>
+
+        {parked.length > 0 && (
+          <div>
+            <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Paused rounds</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 24 hours after you started another round.</p></div>
+            <div className="card" style={{ padding: "5px 11px" }}>
+              {parked.map((x, i) => {
+                const left = Math.max(0, PARK_MS - (Date.now() - x.at)); const hrs = Math.floor(left / 3600000); const mins = Math.floor((left % 3600000) / 60000);
+                return (
+                  <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>{x.round.course.name}{x.live && <span className="pill" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", fontSize: 10 }}>LIVE</span>}</div>
+                      <div className="cap">Hole {x.round.hole + 1} of 18 · {hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`} left</div>
+                    </div>
+                    <button className="chip" onClick={() => onResumeParked(x)}>Resume</button>
+                    <button onClick={() => onDropParked(x)} aria-label={`Delete paused round at ${x.round.course.name}`} style={{ padding: 4, color: "var(--muted)" }}><X size={18} /></button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {trash.length > 0 && (
           <div>
@@ -2861,12 +2883,29 @@ export default function App() {
   const addFriend = f => { const id = newPerson(f, false); setFriendIds(x => [...x, id]); };
   const saveCourse = c => setSaved(s => { const n = [c, ...s.filter(x => x.id !== c.id)]; storeSaved(n); return n; });
   const resetDemo = () => {
-    storeSaved([]); setSaved([]); setPeople(PEOPLE); setFriendIds(["sam", "priya", "jake", "maya", "leo"]); setRecent(RECENT); setHistory([]); setAbout(false);
+    storeSaved([]); setSaved([]); setPeople(PEOPLE); setFriendIds(["sam", "priya", "jake", "maya", "leo"]); setRecent(RECENT); setHistory([]); setAbout(false); setParked([]); setLive(null);
     setRound(buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
     setView("tabs"); setTab("home");
   };
   const [trash, setTrash] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.trash) ? s.trash.filter(x => Date.now() - x.at < TRASH_MS) : []; });
-  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds, history, live })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds, history, live]);
+  // Paused rounds: a round that a new one replaced. { id, at, round, live } kept for PARK_MS.
+  const [parked, setParked] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.parked) ? s.parked.filter(x => Date.now() - x.at < PARK_MS) : []; });
+  const [askNew, setAskNew] = useState(false);
+  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds, history, live, parked })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds, history, live, parked]);
+  useEffect(() => {
+    if (!parked.length) return undefined;
+    const id = setInterval(() => setParked(p => { const k = p.filter(x => Date.now() - x.at < PARK_MS); return k.length === p.length ? p : k; }), 60000);
+    return () => clearInterval(id);
+  }, [parked.length]);
+  // Put the round in progress (if any) to one side so it can be picked up again.
+  const park = () => { if (!round) return; const at = Date.now(); setParked(p => [{ id: at, at, round, live }, ...p].slice(0, 5)); };
+  const resumeParked = x => {
+    park();
+    setParked(p => p.filter(y => y.id !== x.id));
+    applyHoles(x.round.holes || null); setRound(x.round); setLive(x.live || null);
+    setView("round");
+  };
+  const dropParked = x => { const at = Date.now(); setParked(p => p.filter(y => y.id !== x.id)); setTrash(t => [{ id: at, kind: "round", item: x.round, live: x.live || null, at }, ...t]); setNow(at); };
   const [now, setNow] = useState(Date.now());
   const armed = useRef(false);
   const ready = () => armed.current; // a click only counts after a fresh press on the sheet, so the finger lifting after a hold is ignored
@@ -2877,15 +2916,15 @@ export default function App() {
   }, [trash.length]);
   const confirmDelete = () => {
     const at = Date.now();
-    if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); setRound(null); setLive(null); }
+    if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, live, at }, ...t]); setRound(null); setLive(null); }
     else { const item = recent[del.i]; setTrash(t => [{ id: at, kind: "recent", item, idx: del.i, at }, ...t]); setRecent(r => r.filter((_, j) => j !== del.i)); }
     setNow(at); setDel(null);
   };
   const restore = x => {
     setTrash(t => t.filter(y => y.id !== x.id));
     if (x.kind === "round") {
-      if (round) { const at = Date.now(); setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); }
-      applyHoles(x.item.holes || null); setRound(x.item);
+      park(); // the round in progress is paused, not deleted
+      applyHoles(x.item.holes || null); setRound(x.item); setLive(x.live || null);
     } else setRecent(r => { const n = r.slice(); n.splice(Math.min(x.idx, n.length), 0, x.item); return n; });
   };
 
@@ -2980,7 +3019,7 @@ export default function App() {
     }).catch(() => setLiveErr("Couldn't start a live round. This round is on this phone only."));
   };
   const joined = (code, pid, d) => {
-    if (round && !live) { const at = Date.now(); setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); }
+    if (round && !(live && live.code === code)) park();
     applyHoles(d.base.holes || null);
     setRound(docToRound(d, { hole: Math.max(firstOpenHole(d), pid && d.at ? d.at[pid] || 0 : 0) }));
     setLiveDoc(d); setLive({ code, myId: pid, mine: {} }); setJoinCode(null); setView("round");
@@ -3062,6 +3101,19 @@ export default function App() {
       <TipSheet k={tipK} onClose={() => setTipK(null)} />
       {splash && <Splash onDone={() => setSplash(false)} />}
       {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
+      {askNew && round && (
+        <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={() => setAskNew(false)}>
+          <div className="sheet card" role="dialog" aria-label="Round in progress" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
+            <h2 className="h2">You've got a round going</h2>
+            <p className="cap" style={{ marginTop: 3 }}>{round.course.name}, hole {round.hole + 1} of 18{live ? `, live ${live.code}` : ""}.</p>
+            <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+              <button className="cta" onClick={() => { setAskNew(false); setView("round"); }}>Resume {round.course.name}</button>
+              <button className="chip" style={{ padding: "8px 0", textAlign: "center" }} onClick={() => { setAskNew(false); setView("setup"); }}>Start a new round</button>
+            </div>
+            <p className="cap" style={{ marginTop: 7, textAlign: "center" }}>Start a new one and {round.course.name} moves to Paused rounds on Home for 24 hours, so you can pick it up again.{live && live.myId ? " While it's paused, your group's bank calls can't be revealed until you're back or the host frees your seat." : ""}</p>
+          </div>
+        </div>
+      )}
       {joinCode != null && !splash && <JoinSheet initial={joinCode} onClose={() => setJoinCode(null)} onJoined={joined} />}
       {liveSheet && live && <LiveSheet code={live.code} doc={liveDoc} uid={liveUid} onClose={() => setLiveSheet(false)} onScoring={v => push([[["scoring"], v]])} onRelease={pid => push([[["claims", pid], DELETE]])} onLeave={leaveLive} />}
       {liveNotes.length > 0 && <div role="status" style={{ position: "fixed", left: 0, right: 0, top: 10, maxWidth: 430, margin: "0 auto", zIndex: 45, padding: "0 12px", pointerEvents: "none", display: "grid", gap: 6 }}>{liveNotes.map(n => <div key={n.id} style={{ background: "var(--flag)", color: "var(--dk)", fontWeight: 700, fontSize: 13, padding: "7px 10px", border: "3px solid var(--night)" }}>{n.t}</div>)}</div>}
@@ -3078,14 +3130,14 @@ export default function App() {
           </div>
         </div>
       )}
-      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
       {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} />}
       {view === "tabs" && (
         <>
           <div style={{ flex: 1 }}>
-            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => setView("setup")} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => (round ? setAskNew(true) : setView("setup"))} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
             {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
           </div>

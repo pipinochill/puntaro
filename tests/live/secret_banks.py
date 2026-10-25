@@ -89,6 +89,7 @@ async def main():
 
         # ---- host starts a live round
         await A.get_by_role('button', name='Start a round').click(); await A.wait_for_timeout(300)
+        if await A.get_by_role('button', name='Start a new round').count(): await A.get_by_role('button', name='Start a new round').click(); await A.wait_for_timeout(300)
         await A.get_by_role('switch').last.click(); await A.get_by_label('Your name for the group').fill('Pierre')
         await A.get_by_role('button', name='Tee off live').click(); await A.wait_for_timeout(900)
         code = list(DB)[0]

@@ -8,3 +8,7 @@ It also attacks the database directly, the way someone with developer tools coul
     python tests/live/secret_banks.py "$PWD/index.html" /tmp tests/live
 
 Keep `rules.py` in step with `firestore.rules` whenever the rules change.
+
+`parked.py` covers the round-in-progress warning and Paused rounds (24-hour keep, resume, expiry, delete and restore, live rounds).
+
+    python tests/live/parked.py "$PWD/index.html" /tmp tests/live
