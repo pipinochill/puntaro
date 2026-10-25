@@ -99,6 +99,17 @@ export function rights(meta, uid, mine = {}) {
   };
 }
 
+/* ---------- plain-words reasons for setup problems ---------- */
+export function explain(e) {
+  const c = (e && (e.code || e.name)) || ""; const m = (e && e.message) || "";
+  if (/admin-restricted-operation|operation-not-allowed/.test(c)) return "Live rounds aren't switched on yet: turn on Anonymous sign-in in the Firebase console (Authentication, Sign-in method).";
+  if (/unauthorized-domain/.test(c)) return "This site isn't allowed yet: add pipinochill.github.io under Firebase Authentication, Settings, Authorized domains.";
+  if (/permission-denied/.test(c)) return "Firebase turned the round down. Publish the latest firestore.rules in the Firebase console (Firestore, Rules).";
+  if (/not-found|failed-precondition/.test(c) || /does not exist/.test(m)) return "The live rounds database isn't set up yet: create the Firestore database in the Firebase console.";
+  if (/network|unavailable|Failed to fetch|dynamically imported/i.test(c + m)) return "Couldn't reach live rounds. Check your connection and try again.";
+  return "Couldn't start a live round" + (c ? ` (${c})` : "") + ".";
+}
+
 /* ---------- backends ---------- */
 // The test harness can swap in an in-memory store via window.__puntaroLiveBackend.
 let backendP = null;

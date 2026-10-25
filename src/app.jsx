@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, createContext, useContext } from "react";
-import { backend, newCode, cleanCode, joinLink, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE } from "./live.js";
+import { backend, newCode, cleanCode, joinLink, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain } from "./live.js";
+import { makeDecoder, cameraProblem } from "./scan.js";
 import { qrPath } from "./qr.js";
 
 /* ───────────── ICONS (inline, no library) ───────────── */
@@ -23,7 +24,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.42";
+const APP_VERSION = "0.43";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -1521,7 +1522,7 @@ function HoldRow({ onHold, children, style, className }) {
   );
 }
 
-function Home({ people, round, recent, board, onStart, onJoin, liveCode, parked = [], onResumeParked, onDropParked, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
+function Home({ people, round, recent, board, onStart, onJoin, liveCode, onLiveDetails, parked = [], onResumeParked, onDropParked, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
@@ -1555,7 +1556,7 @@ function Home({ people, round, recent, board, onStart, onJoin, liveCode, parked 
 
         {round && (
           <HoldRow className="card" onHold={() => askDelete("round")} style={{ padding: 12 }}>
-            <div className="cap" style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>Round in progress{liveCode && <span className="pill" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", fontSize: 10 }}>LIVE {liveCode}</span>}</div>
+            <div className="cap" style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>Round in progress{liveCode && <button className="pill" onClick={onLiveDetails} aria-label="Show join code" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", fontSize: 10 }}>LIVE {liveCode} · SHOW CODE</button>}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
               <h3 style={{ fontSize: 15, fontWeight: 800 }}>{round.course.name}</h3>
               <span style={{ fontWeight: 700 }}>Hole {round.hole + 1} of 18</span>
@@ -2723,11 +2724,12 @@ const firstOpenHole = d => { const ids = d.base.playerIds; for (let h = 0; h < 1
 
 function JoinSheet({ initial, onClose, onJoined }) {
   const [text, setText] = useState(initial || "");
+  const [scanning, setScanning] = useState(false);
   const [found, setFound] = useState(null); // { code, doc, uid }
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const find = async () => {
-    const code = cleanCode(text);
+  const find = async (raw = text) => {
+    const code = cleanCode(raw);
     if (!code) { setErr("Codes look like PUNT-7KQ4M."); return; }
     setBusy(true); setErr("");
     try {
@@ -2759,10 +2761,11 @@ function JoinSheet({ initial, onClose, onJoined }) {
         </div>
         {!d && (
           <>
-            <p className="cap" style={{ marginTop: 4 }}>Easiest: point your phone camera at the QR code on the host's screen. Or type the code below.</p>
-            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <button className="cta" style={{ marginTop: 10 }} disabled={busy} onClick={() => { setErr(""); setScanning(true); }}>Scan QR code</button>
+            <p className="cap" style={{ marginTop: 8 }}>Point it at the QR code on the host's screen. Or type their code:</p>
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
               <input aria-label="Join code" placeholder="PUNT-7KQ4M" autoCapitalize="characters" autoCorrect="off" value={text} onChange={e => setText(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === "Enter") find(); }} style={{ ...inp, flex: 1, fontSize: 18, letterSpacing: 2 }} />
-              <button className="cta" style={{ width: "auto", padding: "8px 14px" }} disabled={busy} onClick={find}>{busy ? "…" : "Find"}</button>
+              <button className="cta" style={{ width: "auto", padding: "8px 14px" }} disabled={busy} onClick={() => find()}>{busy ? "…" : "Find"}</button>
             </div>
           </>
         )}
@@ -2785,6 +2788,70 @@ function JoinSheet({ initial, onClose, onJoined }) {
           </>
         )}
         {err && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, marginTop: 8 }}>{err}</p>}
+      </div>
+      {scanning && <ScanSheet onClose={() => setScanning(false)} onCode={code => { setScanning(false); setText(code); find(code); }} onFail={m => { setScanning(false); setErr(m); }} />}
+    </div>
+  );
+}
+
+// Full-screen camera that looks for a Puntaro join QR code.
+function ScanSheet({ onClose, onCode, onFail }) {
+  const video = useRef(null);
+  const [hint, setHint] = useState("Starting the camera…");
+  useEffect(() => {
+    let stream = null; let stop = false; let timer = 0;
+    const canvas = document.createElement("canvas");
+    (async () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error("no camera api"), { name: "NotFoundError" });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+        if (stop) return;
+        const v = video.current; v.srcObject = stream; v.setAttribute("playsinline", ""); await v.play().catch(() => {});
+        const decode = await makeDecoder();
+        setHint("Point at the QR code on the host's screen.");
+        let wrong = 0;
+        const tick = async () => {
+          if (stop) return;
+          try {
+            const text = await decode(v, canvas);
+            if (text) {
+              let code = null;
+              try { code = cleanCode(new URL(text).searchParams.get("join")); } catch (e) { code = cleanCode(text); }
+              if (code) { SFX.tap(); onCode(code); return; }
+              if (++wrong > 3) setHint("That QR code isn't a Puntaro round. Scan the code on the host's LIVE screen.");
+            }
+          } catch (e) { /* try the next frame */ }
+          timer = setTimeout(tick, 120);
+        };
+        tick();
+      } catch (e) { if (!stop) onFail(cameraProblem(e)); }
+    })();
+    return () => { stop = true; clearTimeout(timer); if (stream) stream.getTracks().forEach(t => t.stop()); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div role="dialog" aria-label="Scan QR code" style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 60, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+        <video ref={video} muted playsInline autoPlay style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        <div aria-hidden="true" style={{ position: "absolute", left: "50%", top: "45%", width: 230, height: 230, transform: "translate(-50%,-50%)", boxShadow: "0 0 0 9999px rgba(0,0,0,.45)", border: "4px solid #EDE8DD" }} />
+        <p role="status" style={{ position: "absolute", left: 16, right: 16, bottom: 20, textAlign: "center", color: "#EDE8DD", fontWeight: 700, textShadow: "2px 2px 0 #000" }}>{hint}</p>
+      </div>
+      <div style={{ padding: "12px 12px 18px", background: "#14150F" }}>
+        <button className="cta" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// Shown while a live round is being created, or if Firebase turned it down.
+function LiveStartSheet({ state, onClose }) {
+  return (
+    <div style={sheetWrap} onClick={state.busy ? undefined : onClose}>
+      <div className="sheet card" role="dialog" aria-label="Live round" onClick={e => e.stopPropagation()} style={sheetBox}>
+        <h2 className="h2">{state.busy ? "Setting up your live round…" : "Live round didn't start"}</h2>
+        {state.busy
+          ? <p className="cap" style={{ marginTop: 4 }}>Getting a join code. This takes a second.</p>
+          : <><p style={{ marginTop: 6 }}>{state.err}</p><p className="cap" style={{ marginTop: 6 }}>You can still score this round on your phone. It just won't be shared.</p>
+            <button className="cta" style={{ marginTop: 10 }} onClick={onClose}>OK</button></>}
       </div>
     </div>
   );
@@ -2814,6 +2881,7 @@ function LiveSheet({ code, doc, uid, onClose, onScoring, onRelease, onLeave }) {
           <div className="px" style={{ fontSize: 26, letterSpacing: 3 }}>{code}</div>
         </div>
         <button className="cta" style={{ marginTop: 9 }} onClick={share}>{copied ? "Link copied" : "Share invite link"}</button>
+        <p className="cap" style={{ marginTop: 6, textAlign: "center" }}>Need it again later? Tap the red LIVE button on the scoring screen, or on Home.</p>
         {doc && (
           <>
             <div className="cap" style={{ fontWeight: 600, marginTop: 13 }}>Players</div>
@@ -3009,14 +3077,20 @@ export default function App() {
   // Moving on locks your bank call for the hole you left. Never goes backwards.
   const moveOn = h => { if (live && live.myId && liveDoc && h > ((liveDoc.at || {})[live.myId] || 0)) push([[["at", live.myId], Math.min(18, h)], [["who"], live.myId]]); };
   const nextEvent = (x, k) => ({ ...Object.fromEntries(Object.entries(x || {}).filter(([e]) => (x && x[k]) || !(CLASH[k] || []).includes(e))), [k]: !(x && x[k]) });
-  const startLive = (r, cfg) => {
+  const [liveStart, setLiveStart] = useState(null); // { busy } while creating, { err } if it failed
+  const startLive = async (r, cfg) => {
     const code = newCode();
-    backend().then(b => {
+    setLiveStart({ busy: true }); setLiveSheet(true);
+    try {
+      const b = await backend();
       const name = cfg.live.name || people.me.first || "Host";
       if (cfg.live.name && !people.me.first) setPeople(p => ({ ...p, me: { ...p.me, first: cfg.live.name } }));
-      b.create(code, roundToDoc(r, people, { code, uid: b.uid, scoring: cfg.live.scoring, myName: name })).catch(() => setLiveErr("Live round not saved online yet. It will sync when you're back."));
-      setLive({ code, myId: "me", mine: {} }); setLiveSheet(true);
-    }).catch(() => setLiveErr("Couldn't start a live round. This round is on this phone only."));
+      // Wait for Firebase to accept the round, so the code we show really works.
+      // With no signal it never answers: after 8 seconds go ahead, and it syncs when the phone reconnects.
+      const made = b.create(code, roundToDoc(r, people, { code, uid: b.uid, scoring: cfg.live.scoring, myName: name }));
+      await Promise.race([made, new Promise(res => setTimeout(res, 8000))]);
+      setLive({ code, myId: "me", mine: {} }); setLiveStart(null);
+    } catch (e) { setLiveStart({ err: explain(e) }); }
   };
   const joined = (code, pid, d) => {
     if (round && !(live && live.code === code)) park();
@@ -3115,6 +3189,7 @@ export default function App() {
         </div>
       )}
       {joinCode != null && !splash && <JoinSheet initial={joinCode} onClose={() => setJoinCode(null)} onJoined={joined} />}
+      {liveSheet && !live && liveStart && <LiveStartSheet state={liveStart} onClose={() => { setLiveSheet(false); setLiveStart(null); }} />}
       {liveSheet && live && <LiveSheet code={live.code} doc={liveDoc} uid={liveUid} onClose={() => setLiveSheet(false)} onScoring={v => push([[["scoring"], v]])} onRelease={pid => push([[["claims", pid], DELETE]])} onLeave={leaveLive} />}
       {liveNotes.length > 0 && <div role="status" style={{ position: "fixed", left: 0, right: 0, top: 10, maxWidth: 430, margin: "0 auto", zIndex: 45, padding: "0 12px", pointerEvents: "none", display: "grid", gap: 6 }}>{liveNotes.map(n => <div key={n.id} style={{ background: "var(--flag)", color: "var(--dk)", fontWeight: 700, fontSize: 13, padding: "7px 10px", border: "3px solid var(--night)" }}>{n.t}</div>)}</div>}
       {liveErr && view === "round" && <div role="status" style={{ position: "fixed", left: 0, right: 0, bottom: 74, maxWidth: 430, margin: "0 auto", zIndex: 25, padding: "0 12px", pointerEvents: "none" }}><div className="cap" style={{ background: "var(--dk)", color: "#EDE8DD", padding: "6px 9px", border: "2px solid var(--night)" }}>{liveErr}</div></div>}
@@ -3137,7 +3212,7 @@ export default function App() {
       {view === "tabs" && (
         <>
           <div style={{ flex: 1 }}>
-            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => (round ? setAskNew(true) : setView("setup"))} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
             {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
           </div>
