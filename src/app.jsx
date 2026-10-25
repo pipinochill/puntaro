@@ -1170,9 +1170,9 @@ const kmBetween = (a, b, c, d) => {
   return 2 * R * Math.asin(Math.sqrt(h));
 };
 async function findCoursesNear(lat, lon) {
-  const key = `near:${lat.toFixed(1)},${lon.toFixed(1)}`;
+  const key = `near5:${lat.toFixed(2)},${lon.toFixed(2)}`;
   const hit = cacheGet(key);
-  const j = hit ? { elements: hit } : await overpass(`[out:json][timeout:12];nwr["leisure"="golf_course"]["name"](around:20000,${lat},${lon});out tags center 60;`);
+  const j = hit ? { elements: hit } : await overpass(`[out:json][timeout:12];nwr["leisure"="golf_course"]["name"](around:5000,${lat},${lon});out tags center 60;`);
   if (!hit) cacheSet(key, j.elements || []);
   const seen = new Set();
   return (j.elements || [])
@@ -1305,7 +1305,7 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
     try {
       const r = await findCoursesNear(lat, lon);
       setResults(r);
-      setMsg(r.length ? "" : "No mapped golf courses within 30 km. Try a town name, or add one by hand.");
+      setMsg(r.length ? "" : "No mapped golf courses within 5 km. Try a nearby town name, or add one by hand.");
     } catch (e) { setMsg("Couldn't reach the map service. Check your connection, or add the course by hand."); }
     setBusy("");
   };
