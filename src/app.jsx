@@ -21,7 +21,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.31";
+const APP_VERSION = "0.32";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -279,9 +279,9 @@ function SoundRow() {
 }
 
 /* ───────────── LOGO AND SPLASH ───────────── */
-function Wordmark({ size = 54, still }) {
+function Wordmark({ size = 54, still, ink }) {
   return (
-    <div className={`wm${still ? " still" : ""}`} style={{ fontSize: size }} aria-label={APP_NAME} role="img">
+    <div className={`wm${still ? " still" : ""}${ink ? " ink" : ""}`} style={{ fontSize: size }} aria-label={APP_NAME} role="img">
       {[..."PUNTARO"].map((c, i) => <span key={i} aria-hidden="true" style={{ animationDelay: `${0.45 + i * 0.07}s, ${1.1 + i * 0.12}s` }}>{c}</span>)}
     </div>
   );
@@ -749,14 +749,24 @@ const CSS = `
 .sg svg *{stroke-linecap:square;stroke-linejoin:miter;}
 .stripes{background:repeating-linear-gradient(90deg,var(--head1) 0 32px,var(--head2) 32px 64px);border-bottom:4px solid var(--night);color:var(--hi);}
 .card{background:var(--card);border:3px solid var(--night);box-shadow:3px 3px 0 var(--night);}
-.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;font-weight:600;font-size:11px;color:var(--dk);border:2px solid var(--night);}
-.stripes .pill{color:var(--hi);}
-.chip{border:2px solid var(--night);background:var(--card);color:var(--ink);padding:2px 8px;font-weight:600;font-size:13px;white-space:nowrap;box-shadow:2px 2px 0 var(--night);}
-.chip.on{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg);box-shadow:none;transform:translate(2px,2px);}
-.cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;font-size:15px !important;background:var(--on-bg);color:var(--on-fg);border:3px solid var(--on-bg);box-shadow:0 3px 0 var(--fair);}
-.cta:active{transform:translateY(3px);box-shadow:none;}
-.cta:disabled{opacity:.4;cursor:not-allowed;}
+.sg .pill{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;font-weight:600;font-size:11px;color:var(--dk);border:2px solid var(--night);}
+.sg .stripes .pill{color:var(--hi);}
+.sg .chip{border:2px solid var(--night);background:var(--card);color:var(--ink);padding:2px 8px;font-weight:600;font-size:13px;white-space:nowrap;box-shadow:2px 2px 0 var(--night);}
+.sg .chip.on{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg);box-shadow:none;transform:translate(2px,2px);}
+.sg .cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;font-size:15px !important;background:var(--on-bg);color:var(--on-fg);border:3px solid var(--on-bg);box-shadow:0 3px 0 var(--fair);}
+.sg .cta:active{transform:translateY(3px);box-shadow:none;}
+.sg .cta:disabled{opacity:.4;cursor:not-allowed;}
 .cap{font-size:11.5px;color:var(--muted);line-height:1.22;}
+.sg .chip:disabled{opacity:.45;cursor:not-allowed;}
+.seg{display:flex;flex-wrap:wrap;gap:6px;}
+.sg .seg .chip{flex:1 1 auto;text-align:center;padding:6px 8px;}
+.sg:not(.dark) .wm.ink span{color:var(--ink);text-shadow:1px 1px 0 var(--flag),2px 2px 0 var(--night);}
+.sg:not(.dark) .wm.ink span:nth-child(5){color:#7A5232;}
+.sg .pt-foot{display:flex;flex-direction:column;align-items:center;gap:7px;margin:22px auto 0;color:var(--muted);}
+.sg .pt-foot:hover{color:var(--ink);}
+.score-empty{display:grid;place-items:center;width:36px;height:36px;border:2px dashed var(--line);color:var(--muted);line-height:1;}
+.score-empty b{font-size:15px;}
+.score-empty small{font-size:8px;letter-spacing:.08em;margin-top:-6px;}
 .scrollx{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 16px 5px;margin:0 -16px;}
 .scrollx::-webkit-scrollbar{display:none;}
 .tile{width:40px;height:40px;background:var(--dk);display:grid;place-items:center;flex:none;}
@@ -910,7 +920,7 @@ function Avatar({ p, size = 38, ring }) {
 const CH = "polygon(25% 0,75% 0,100% 25%,100% 75%,75% 100%,25% 100%,0 75%,0 25%)";
 function ScoreMark({ v, par, size = 50 }) {
   const wrap = { width: size, height: size, display: "grid", placeItems: "center", flex: "none" };
-  if (v == null) return <div style={{ ...wrap, fontSize: 20, fontWeight: 700, color: "var(--muted)" }}>–</div>;
+  if (v == null) return <div style={wrap} title={`Tap + or − to start at par ${par}`}><div className="score-empty" aria-label={`No score yet. Tap plus or minus to start at par ${par}`}><b>{par}</b><small>PAR</small></div></div>;
   const d = v - par;
   const g = "var(--fair)", r = "var(--red)", m = "var(--mint)", w = "var(--card)";
   const layers = d <= -2 ? [[46, g], [41, w], [36, g], [31, m]] : d === -1 ? [[41, g], [36, m]] : d === 1 ? [[41, r], [36, w]] : d >= 2 ? [[46, r], [41, w], [36, r], [31, w]] : [];
@@ -1534,6 +1544,10 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
           </div>
         </div>
       </div>
+      <button className="pt-foot" onClick={onAbout} aria-label="About this alpha">
+        <Wordmark size={16} still ink />
+        <span className="cap" style={{ color: "inherit" }}>Alpha {APP_VERSION}. Bank it or bust.</span>
+      </button>
     </div>
   );
 }
@@ -1902,7 +1916,7 @@ function AboutSheet({ onClose, onReset }) {
     <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={onClose}>
       <div className="sheet card" role="dialog" aria-label={`About ${APP_NAME}`} onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "85vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 className="h2">{APP_NAME} <span className="pill" style={{ background: "var(--flag)" }}>ALPHA {APP_VERSION}</span></h2>
+          <h2 className="h2" style={{ display: "flex", alignItems: "center", gap: 10 }}><Wordmark size={22} still ink /><span className="pill" style={{ background: "var(--flag)" }}>ALPHA {APP_VERSION}</span></h2>
           <button onClick={onClose} aria-label="Close"><X size={22} /></button>
         </div>
         <p style={{ marginTop: 8 }}>A points-only side game that runs alongside your normal comp. Bank your points or bust and lose the pot.</p>
@@ -2005,13 +2019,13 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
             </div>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <div className="seg" style={{ marginTop: 8 }}>
           <button className="chip" disabled={sel.length >= MAXP} onClick={() => setSheet("friend")}>+ Friend</button>
           <button className="chip" disabled={sel.length >= MAXP} onClick={() => setSheet("guest")}>+ Guest</button>
         </div>
 
         <Label sub={sel.length === 4 ? "Everyone plays their own Puntaro. In 2v2 the team totals decide it." : "2v2 needs exactly four players."}>Format</Label>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div className="seg">
           <button className={`chip ${effMode === "ffa" ? "on" : ""}`} onClick={() => setMode("ffa")}>Free for all</button>
           <button className={`chip ${effMode === "2v2" ? "on" : ""}`} disabled={sel.length !== 4} onClick={() => { setMode("2v2"); setTeams(Object.fromEntries(sel.map((id, i) => [id, i < 2 ? 0 : 1]))); }} style={{ opacity: sel.length === 4 ? 1 : 0.5 }}>2v2</button>
           {effMode === "2v2" && <button className="chip" onClick={autoBalance}>Auto-balance by handicap</button>}
@@ -2063,7 +2077,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
         </div>
 
         <Label sub="Cards, catch-up odds and the handicap cushion are always part of the game. These three are up to your group.">Extras</Label>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div className="seg">
           <button className={`chip ${!showCustom && extraKeys.every(k => opts[k]) ? "on" : ""}`} onClick={() => { setExtras(true); setShowCustom(false); }}>Everything</button>
           <button className={`chip ${!showCustom && extraKeys.every(k => !opts[k]) ? "on" : ""}`} onClick={() => { setExtras(false); setShowCustom(false); }}>Keep it simple</button>
           <button className={`chip ${showCustom ? "on" : ""}`} aria-expanded={showCustom} onClick={() => setShowCustom(s => !s)}>Customise</button>
@@ -2083,7 +2097,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
         <Label sub="Agree a buy-in before you tee off. The app tracks who owes who and never moves money.">Prize pool</Label>
         <div className="card" style={{ padding: 12 }}>
           <div className="cap" style={{ fontWeight: 600 }}>Buy-in per player</div>
-          <div className="scrollx" style={{ marginTop: 6 }}>
+          <div className="seg" style={{ marginTop: 6 }}>
             {STAKES.map(s => <button key={s} className={`chip ${!custom && stake === s ? "on" : ""}`} onClick={() => { setCustom(false); setStake(s); }}>{s === 0 ? "Bragging rights" : money(s)}</button>)}
             <button className={`chip ${custom ? "on" : ""}`} onClick={() => { setCustom(true); const v = Number(customText); if (v > 0) setStake(v); }}>Custom amount</button>
           </div>
@@ -2100,7 +2114,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
                 ? <p className="cap" style={{ marginTop: 11 }}>Winning team splits the pool. A tie hands every buy-in back.</p>
                 : <>
                   <div className="cap" style={{ fontWeight: 600, marginTop: 11 }}>How it pays out</div>
-                  <div className="scrollx" style={{ marginTop: 6 }}>
+                  <div className="seg" style={{ marginTop: 6 }}>
                     {SPLITS.map(([k, l]) => <button key={k} className={`chip ${split === k ? "on" : ""}`} onClick={() => setSplit(k)}>{l}</button>)}
                   </div>
                 </>}
@@ -2299,7 +2313,7 @@ function Summary({ round, people, onSave, onBack }) {
   return (
     <div style={{ flex: 1 }}>
       <div className="stripes" style={{ padding: "14px 12px 22px" }}>
-        <button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back to scoring</button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back to scoring</button><Wordmark size={15} still /></div>
         <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -1, marginTop: 9 }}>Round complete</h1>
         <p style={{ opacity: 0.8, marginTop: 3 }}>{round.course.name}</p>
       </div>
