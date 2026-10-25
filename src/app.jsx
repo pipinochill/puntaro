@@ -21,7 +21,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.35";
+const APP_VERSION = "0.36";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -299,7 +299,7 @@ function Tiles({ size = 20, hang = false, toy = false }) {
 
 // Splash hero: the flagstick rises out of the cup, the pennant unrolls in the wind,
 // then a ball putts along the line and drops in. Times in seconds.
-const PN_SLICES = 10;
+const PN_SLICES = 8; // 8 strips x 20px = a 160px pennant
 function Pennant() {
   return (
     <div className="pn" aria-hidden="true">
@@ -363,7 +363,7 @@ function Splash({ onDone }) {
   // The full show plays every launch; a tap skips it.
   useEffect(() => {
     if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
-    const t = [setTimeout(() => SFX.putt(), 1550), setTimeout(() => SFX.cup(), 2900)];
+    const t = [setTimeout(() => SFX.putt(), 1550), setTimeout(() => SFX.cup(), 2700)];
     return () => t.forEach(clearTimeout);
   }, []);
   useEffect(() => { SFX.themeIfAllowed(); setMusic(SFX.themePlaying()); }, []);
@@ -838,25 +838,26 @@ const CSS = `
 @keyframes thang{0%{transform:translateY(-14px) rotate(-12deg);opacity:0}60%{transform:translateY(2px) rotate(5deg);opacity:1}100%{transform:none}}
 .tiles>span.tflip{animation:tflip .3s steps(3) !important;animation-delay:0s !important;}
 @keyframes tflip{50%{transform:scaleY(0)}}
-.pn{position:relative;width:290px;height:140px;font-family:'Pixelify Sans',ui-monospace,monospace;font-weight:700;}
-.pn-pole{position:absolute;left:252px;top:8px;width:6px;height:112px;background:#EDE8DD;box-shadow:3px 0 0 #000;transform-origin:50% 100%;animation:pnrise .4s steps(6) backwards,pnrattle .4s steps(4) 2.95s;}
+.pn{position:relative;width:202px;height:144px;font-family:'Pixelify Sans',ui-monospace,monospace;font-weight:700;}
+.pn-pole{position:absolute;left:174px;top:8px;width:6px;height:116px;background:#EDE8DD;box-shadow:3px 0 0 #000;transform-origin:50% 100%;animation:pnrise .4s steps(6) backwards,pnrattle .4s steps(4) 2.75s;}
 .pn-pole:before{content:"";position:absolute;top:-8px;left:-2px;width:10px;height:8px;background:#D9B07A;}
-.pn-flag{position:absolute;left:44px;top:10px;display:flex;filter:drop-shadow(4px 4px 0 rgba(0,0,0,.5));}
-.pn-sl{width:20px;height:48px;overflow:hidden;transform-origin:right;animation:pnunroll .15s steps(3) backwards;}
+.pn-flag{position:absolute;left:8px;top:10px;display:flex;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.5));}
+.pn-sl{width:20px;height:52px;overflow:hidden;transform-origin:right;animation:pnunroll .15s steps(3) backwards;}
 .pn-sl:first-child{clip-path:polygon(0 0,100% 0,100% 100%,0 100%,55% 50%);}
-.pn-wv{width:20px;height:48px;position:relative;animation:pnwave 1.1s steps(4) infinite;}
-.pn-wv>div{position:absolute;top:0;width:208px;height:48px;padding-left:16px;background:#B84A32;color:#EDE8DD;font-size:28px;line-height:48px;text-align:center;letter-spacing:1px;text-shadow:2px 2px 0 #14150F;box-shadow:inset 0 -4px 0 #8E3826;}
-.pn-green{position:absolute;left:0;right:0;top:118px;height:12px;}
-.pn-dots{position:absolute;left:4px;right:44px;top:4px;height:5px;background:repeating-linear-gradient(90deg,#3E6B4B 0 6px,transparent 6px 12px);}
+.pn-wv{width:20px;height:52px;position:relative;animation:pnwave 1.1s steps(4) infinite;}
+.pn-wv>div{position:absolute;top:0;width:160px;height:52px;padding:0 4px 4px 15px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:#B84A32;color:#EDE8DD;font-size:34px;line-height:1;letter-spacing:-1px;white-space:nowrap;box-shadow:inset 0 -4px 0 #8E3826;
+ text-shadow:1px 1px 0 #D9B07A,2px 2px 0 #D9B07A,3px 3px 0 #6E2516,4px 4px 0 #6E2516,5px 5px 0 #6E2516;}
+.pn-green{position:absolute;left:0;right:0;top:122px;height:12px;}
+.pn-dots{position:absolute;left:8px;width:151px;top:4px;height:5px;background:repeating-linear-gradient(90deg,#3E6B4B 0 6px,transparent 6px 12px);}
 .pn-turf{position:absolute;left:0;right:0;top:12px;height:6px;background:#2C4536;border-top:3px solid #3E6B4B;}
-.pn-cup{position:absolute;left:241px;top:1px;width:28px;height:11px;background:#000;box-shadow:0 -3px 0 #3E6B4B;}
-.pn-ball{position:absolute;left:4px;top:-2px;width:10px;height:10px;background:#EDE8DD;box-shadow:2px 2px 0 #000;animation:pnputt 1.2s steps(16) 1.55s both,pndrop .22s steps(2) 2.75s both;}
-.pn-spark{position:absolute;left:236px;top:-14px;width:38px;height:20px;opacity:0;background:radial-gradient(#D9B07A 2px,transparent 2.5px) 0 0/10px 10px;animation:pnspark .5s steps(3) 2.95s both;}
+.pn-cup{position:absolute;left:163px;top:1px;width:28px;height:11px;background:#000;box-shadow:0 -3px 0 #3E6B4B;}
+.pn-ball{position:absolute;left:8px;top:-2px;width:10px;height:10px;background:#EDE8DD;box-shadow:2px 2px 0 #000;animation:pnputt 1s steps(14) 1.55s both,pndrop .22s steps(2) 2.55s both;}
+.pn-spark{position:absolute;left:158px;top:-14px;width:38px;height:20px;opacity:0;background:radial-gradient(#D9B07A 2px,transparent 2.5px) 0 0/10px 10px;animation:pnspark .5s steps(3) 2.75s both;}
 @keyframes pnrise{from{transform:scaleY(0)}}
 @keyframes pnrattle{25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
 @keyframes pnunroll{from{transform:scaleX(0);filter:brightness(.45)}to{transform:scaleX(1);filter:brightness(1)}}
 @keyframes pnwave{0%,100%{transform:translateY(0)}25%{transform:translateY(-3px)}75%{transform:translateY(3px)}}
-@keyframes pnputt{from{left:4px}to{left:250px}}
+@keyframes pnputt{from{left:8px}to{left:172px}}
 @keyframes pndrop{to{top:8px;height:0;opacity:0}}
 @keyframes pnspark{0%{opacity:0;transform:translateY(6px)}40%{opacity:1}100%{opacity:0;transform:translateY(-8px)}}
 @keyframes blink{0%{opacity:1}50%{opacity:.25}}
