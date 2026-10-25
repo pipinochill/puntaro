@@ -21,7 +21,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.2";
+const APP_VERSION = "0.3";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -74,7 +74,7 @@ const RECENT = [
   { course: "Pebble Hollow", when: "Last Sun", gross: 84, net: 71, note: "Busted a 14 point pot on 15" },
   { course: "Sunrise Links", when: "2 weeks ago", gross: 91, net: 77, note: "Streak hit x3 on the 6th" },
 ];
-const STAKES = [0, 5, 10, 20, 50];
+const STAKES = [0, 5, 10, 20];
 const SPLITS = [["win", "Winner takes all"], ["603010", "60/30/10"], ["spoon", "Wooden spoon pays"]];
 
 /* Puntaro cards. They only ever move game points, never how a shot is played or counted. */
@@ -567,6 +567,27 @@ function payouts(r, ranked) {
   pay[ranked[0]] = Math.round((pay[ranked[0]] + (pool - paid)) * 100) / 100;
   return pay;
 }
+// Bank hints. A guide built from simulating thousands of rounds: holding a big pot pays off until about 20 points.
+const erf = x => { const s = Math.sign(x); x = Math.abs(x); const t = 1 / (1 + 0.3275911 * x); return s * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x)); };
+const normCdf = z => 0.5 * (1 + erf(z / Math.SQRT2));
+// Chance this player makes a net double bogey or worse on hole h. A rough model from handicap and hole difficulty.
+function bustRisk(r, id, h) {
+  const ch = r.useHcp ? r.hcp[id] : 0; const st = r.useHcp ? strokesOn(ch, h) : 0;
+  const mu = ch / 18 + ((9.5 - SI[h]) / 18) * 0.5; const sd = 0.75 + ch / 70;
+  return Math.min(0.6, Math.max(0.005, 1 - normCdf((1.5 + st - mu) / sd)));
+}
+function bankAdvice(r, id, h, s) {
+  if (h >= 17) return null;
+  const pot = s.potAt[h] != null ? s.potAt[h] : s.pot; if (pot < 4) return null;
+  const risk = bustRisk(r, id, h + 1);
+  const streak = s.streakAt[h] != null ? s.streakAt[h] : s.streak; const mult = streak + 1 >= 5 ? 3 : streak + 1 >= 3 ? 2 : 1;
+  const cardNext = r.opts.cards && cardHole(h + 1);
+  const exposure = risk * pot; const gain = 1.7 * mult * (1 - risk);
+  let level = "hold";
+  if (pot >= 20 || (cardNext && pot >= 10) || (pot >= 8 && exposure >= gain * 1.5)) level = "bank";
+  else if (pot >= 12 || exposure >= gain) level = "think";
+  return { risk, level, pot, cardNext };
+}
 const teamRows = (r, pc) => [0, 1].map(k => { const ids = r.playerIds.filter(id => r.teams[id] === k); return { k, ids, total: ids.reduce((a, id) => a + pc[id].total, 0) }; });
 // 2v2: winning team splits the pool. A tie hands every buy-in back.
 function teamPayouts(r, pc) {
@@ -666,9 +687,10 @@ function buildRound(cfg, people, seed) {
 /* ───────────── SMALL PARTS ───────────── */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&text=0123456789&display=swap');
 .sg{--ink:#242622;--muted:#6E6A5E;--chalk:#E7E2D5;--card:#F4F0E6;--sel:#D3DACB;--night:#2A2C28;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C7BFAB;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
 .sg.dark{--ink:#E8E3D6;--muted:#9B968A;--chalk:#1B1C1A;--card:#252724;--sel:#2C4033;--night:#454841;--pine:#4F7A5A;--fair:#7FA886;--lime:#E0C799;--red:#CC5A3E;--bogey:#CC5A3E;--line:#383A35;--track:#1B1C1A;--head1:#2C4536;--head2:#27402F;--grid:rgba(232,227,214,.03);--on-bg:#C69C6D;--on-fg:#1B1C1A;}
-.sg{font-family:'Pixelify Sans',ui-monospace,monospace;font-size:13px;line-height:1.22;letter-spacing:-.01em;color:var(--ink);background-color:var(--chalk);
+.sg{font-family:'Silkscreen','Pixelify Sans',ui-monospace,monospace;font-size:13px;line-height:1.22;letter-spacing:-.01em;color:var(--ink);background-color:var(--chalk);
  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:8px 8px;
  font-variant-numeric:tabular-nums;max-width:430px;margin:0 auto;min-height:100vh;position:relative;display:flex;flex-direction:column;}
 .sg *{box-sizing:border-box;border-radius:0 !important;}
@@ -1023,6 +1045,7 @@ function GamePanel({ gid, round, people, h, api }) {
                   {s.shields > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Safety net held</span>}
                   {s.vaults > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Vault held</span>}
                   {s.leak > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 11 }}>Leaking {s.leak}</span>}
+                  {(() => { const ad = !banking && !heavy && !locked && bankAdvice(round, id, h, s); return ad ? <span className="cap" title="A rough guide, not a rule" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>Bust risk next hole {Math.round(ad.risk * 100)}%<span className="pill" style={{ background: ad.level === "bank" ? "var(--red)" : ad.level === "think" ? "var(--flag)" : "var(--mint)", color: ad.level === "bank" ? "#fff" : "var(--dk)", fontSize: 11 }}>{ad.level === "bank" ? "Bank it" : ad.level === "think" ? "Think about it" : "Hold"}</span>{ad.cardNext && ad.level !== "hold" ? <span className="cap">cards next</span> : null}</span> : null; })()}
                   <button className={`chip ${banking ? "on" : ""}`} disabled={heavy || locked} aria-pressed={banking}
                     onClick={() => api.setBank(id, h, !round.bank[id][h])} style={{ marginLeft: "auto", padding: "2px 7px", fontSize: 12, opacity: heavy || locked ? 0.7 : 1 }}>
                     {heavy ? "Forced bank" : locked ? (banking ? "Banked. Locked" : "Bank locked") : banking ? "Banking after hole" : "Bank after hole"}
@@ -1363,6 +1386,10 @@ function Rules({ onBack }) {
           <p>Points sit in your pot until you bank them. You can bank after any hole. Banked points can never be lost.</p>
           <p>Banking resets your streak multiplier back to x1. Banking an empty pot does nothing.</p>
           <p>Whatever is still in your pot after the 18th hole banks automatically.</p>
+        </RuleSection>
+        <RuleSection title="Bank hints">
+          <p>Under each player's pot you'll see the chance of a net double bogey or worse on the next hole, with a hint: Hold, Think about it, or Bank it.</p>
+          <p>It's a guide worked out from handicap and hole difficulty, and from simulating thousands of rounds. Holding a pot usually pays off until it reaches about 20 points. Past that, one bad hole costs more than the next hole is likely to earn. Cards on the next hole make it worth banking sooner.</p>
         </RuleSection>
         <RuleSection title="Streak multiplier">
           <p>Net par or better on 3 holes in a row doubles your points on that hole (x2). Five in a row triples them (x3). A bogey, a bust or a bank resets the streak.</p>
@@ -1705,6 +1732,8 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
   const [games, setGames] = useState(["punt"]);
   const [useHcp, setUseHcp] = useState(true);
   const [stake, setStake] = useState(10);
+  const [custom, setCustom] = useState(false);
+  const [customText, setCustomText] = useState("");
   const [split, setSplit] = useState("603010");
   const [opts, setOpts] = useState({ cards: true, catchup: true, bonuses: true, penalties: true, ntp: true });
   const tee = course.tees[Math.min(teeI, course.tees.length - 1)];
@@ -1825,8 +1854,16 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
         <div className="card" style={{ padding: 12 }}>
           <div className="cap" style={{ fontWeight: 600 }}>Buy-in per player</div>
           <div className="scrollx" style={{ marginTop: 6 }}>
-            {STAKES.map(s => <button key={s} className={`chip ${stake === s ? "on" : ""}`} onClick={() => setStake(s)}>{s === 0 ? "Just for shouts" : money(s)}</button>)}
+            {STAKES.map(s => <button key={s} className={`chip ${!custom && stake === s ? "on" : ""}`} onClick={() => { setCustom(false); setStake(s); }}>{s === 0 ? "Bragging rights" : money(s)}</button>)}
+            <button className={`chip ${custom ? "on" : ""}`} onClick={() => { setCustom(true); const v = Number(customText); if (v > 0) setStake(v); }}>Custom amount</button>
           </div>
+          {custom && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+              <span style={{ fontWeight: 800 }}>$</span>
+              <input aria-label="Custom buy-in" inputMode="decimal" placeholder="e.g. 15" value={customText} onChange={e => { const x = e.target.value.replace(/[^0-9.]/g, ""); setCustomText(x); const v = Math.round(Number(x) * 100) / 100; if (v > 0 && v <= 1000) setStake(v); }} style={{ ...inp, width: 110 }} />
+              <span className="cap">per player, up to $1000</span>
+            </div>
+          )}
           {stake > 0 && (
             <>
               {effMode === "2v2"
