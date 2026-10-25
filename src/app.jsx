@@ -1146,13 +1146,23 @@ function Rules({ onBack }) {
 }
 
 /* ───────────── COURSE FINDER (OpenStreetMap + scorecard entry) ───────────── */
-const OVERPASS = "https://overpass-api.de/api/interpreter";
-const GA_RATINGS_URL = "https://golf.org.au/courseratings";
+const OVERPASS_HOSTS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+const CACHE_KEY = "puntaro.cache.v1";
+const cacheGet = k => { try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}")[k]; return c && Date.now() - c.t < 7 * 864e5 ? c.v : null; } catch (e) { return null; } };
+const cacheSet = (k, v) => { try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); c[k] = { t: Date.now(), v }; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch (e) { /* fine */ } };
+// Ask every server at once and take the first good answer. Gives up after 15 seconds.
 async function overpass(q) {
-  const res = await fetch(OVERPASS, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) });
-  if (!res.ok) throw new Error("overpass " + res.status);
-  return res.json();
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    return await Promise.any(OVERPASS_HOSTS.map(async h => {
+      const res = await fetch(h, { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) });
+      if (!res.ok) throw new Error("overpass " + res.status);
+      return res.json();
+    }));
+  } finally { clearTimeout(timer); ctl.abort(); }
 }
+const GA_RATINGS_URL = "https://golf.org.au/courseratings";
 const kmBetween = (a, b, c, d) => {
   const R = 6371, rad = x => (x * Math.PI) / 180;
   const dLat = rad(c - a), dLon = rad(d - b);
@@ -1160,7 +1170,10 @@ const kmBetween = (a, b, c, d) => {
   return 2 * R * Math.asin(Math.sqrt(h));
 };
 async function findCoursesNear(lat, lon) {
-  const j = await overpass(`[out:json][timeout:20];nwr["leisure"="golf_course"](around:30000,${lat},${lon});out tags center 80;`);
+  const key = `near:${lat.toFixed(1)},${lon.toFixed(1)}`;
+  const hit = cacheGet(key);
+  const j = hit ? { elements: hit } : await overpass(`[out:json][timeout:12];nwr["leisure"="golf_course"]["name"](around:20000,${lat},${lon});out tags center 60;`);
+  if (!hit) cacheSet(key, j.elements || []);
   const seen = new Set();
   return (j.elements || [])
     .filter(e => e.tags && e.tags.name)
@@ -1175,7 +1188,9 @@ async function findCoursesNear(lat, lon) {
 async function loadOsmHoles(c) {
   if (c.type === "node") return null;
   const area = (c.type === "relation" ? 3600000000 : 2400000000) + c.id;
-  const j = await overpass(`[out:json][timeout:20];area(${area})->.a;way["golf"="hole"](area.a);out tags;`);
+  const hk = "holes:" + c.osm; const hh = cacheGet(hk);
+  const j = hh ? { elements: hh } : await overpass(`[out:json][timeout:12];area(${area})->.a;way["golf"="hole"](area.a);out tags;`);
+  if (!hh) cacheSet(hk, j.elements || []);
   const holes = Array(18).fill(null);
   (j.elements || []).forEach(e => {
     const t = e.tags || {}; const n = parseInt(t.ref, 10); const par = parseInt(t.par, 10);
@@ -1184,7 +1199,7 @@ async function loadOsmHoles(c) {
   return holes.every(Boolean) ? holes : null;
 }
 async function geocode(q) {
-  const res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q));
+  const res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q), { signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error("geocode " + res.status);
   const j = await res.json();
   if (!j.length) throw new Error("notfound");
@@ -1298,7 +1313,7 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
     setMsg("");
     if (!navigator.geolocation) { setMsg("This device can't share its location. Type a town below instead."); return; }
     setBusy("Getting your location…");
-    navigator.geolocation.getCurrentPosition(p => near(p.coords.latitude, p.coords.longitude), () => { setBusy(""); setMsg("Location is off or blocked. Type a town below instead."); }, { timeout: 10000, maximumAge: 600000 });
+    navigator.geolocation.getCurrentPosition(p => near(p.coords.latitude, p.coords.longitude), () => { setBusy(""); setMsg("Location is off or blocked. Type a town below instead."); }, { timeout: 10000, maximumAge: 3600000, enableHighAccuracy: false });
   };
   const search = async () => {
     if (!q.trim()) return;
