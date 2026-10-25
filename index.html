@@ -8,4 +8,4 @@
 <link rel="apple-touch-icon" href="icons/tile-180.png"><link rel="icon" href="icons/tile-192.png">
 <style>html,body{margin:0;background:#1B1C1A}body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}</style></head>
 <body><div id="root"></div><script src="app.js"></script>
-<script>if("serviceWorker"in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))</script></body></html>
+<script>if("serviceWorker"in navigator){const had=!!navigator.serviceWorker.controller;let done=false;navigator.serviceWorker.addEventListener("controllerchange",()=>{if(had&&!done){done=true;location.reload()}});addEventListener("load",()=>navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(r=>r.update()).catch(()=>{}))}</script></body></html>
