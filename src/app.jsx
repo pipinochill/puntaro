@@ -155,19 +155,25 @@ const THEME = (() => {
 })();
 
 const SFX = (() => {
-  let ctx = null; let on = true; let last = 0;
+  let ctx = null; let master = null; let on = true; let last = 0;
   try { on = localStorage.getItem("puntaro.sound") !== "off"; } catch (e) { /* default on */ }
   const ac = () => {
     if (!on) return null;
     try {
-      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!ctx) {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        // Soften: roll off the harsh top end so squares stay chunky but not piercing.
+        master = ctx.createBiquadFilter(); master.type = "lowpass"; master.frequency.value = 2200; master.Q.value = 0.5;
+        const lo = ctx.createBiquadFilter(); lo.type = "highshelf"; lo.frequency.value = 1200; lo.gain.value = -4;
+        master.connect(lo); lo.connect(ctx.destination);
+      }
       if (ctx.state === "suspended") ctx.resume();
       return ctx;
     } catch (e) { return null; }
   };
   // Two slightly detuned voices make the chunky, wobbly chip sound.
   const tone = (a, f, t, d, o = {}) => {
-    const { type = "square", vol = 0.07, to = null, det = 7, out = a.destination } = o;
+    const { type = "square", vol = 0.07, to = null, det = 7, out = master || a.destination } = o;
     (det ? [0, det] : [0]).forEach((c, k) => {
       const osc = a.createOscillator(), g = a.createGain(), t0 = a.currentTime + t;
       osc.type = type; osc.detune.value = c; osc.frequency.setValueAtTime(f, t0);
@@ -177,7 +183,7 @@ const SFX = (() => {
     });
   };
   const noise = (a, t, d, o = {}) => {
-    const { vol = 0.08, from = 3000, to = 800, out = a.destination } = o;
+    const { vol = 0.08, from = 3000, to = 800, out = master || a.destination } = o;
     const n = Math.max(1, Math.floor(a.sampleRate * d)); const buf = a.createBuffer(1, n, a.sampleRate); const dat = buf.getChannelData(0);
     for (let i = 0; i < n; i++) dat[i] = (Math.random() * 2 - 1) * (1 - i / n);
     const src = a.createBufferSource(); src.buffer = buf;
@@ -205,7 +211,7 @@ const SFX = (() => {
   };
   const startSong = a => {
     if (song) return;
-    const out = a.createGain(); out.gain.value = 0.9; out.connect(a.destination);
+    const out = a.createGain(); out.gain.value = 0.9; out.connect(master || a.destination);
     song = { out, next: a.currentTime + 0.1, timer: 0 }; schedule(a);
   };
   const mk = fn => () => { const a = ac(); if (!a) return; last = Date.now(); fn(a); };
@@ -217,16 +223,16 @@ const SFX = (() => {
     theme: () => { const a = ac(); if (a) { last = Date.now(); startSong(a); } },
     themeIfAllowed: () => { if (on && ctx && ctx.state === "running") startSong(ctx); else if (on && !ctx) { const a = ac(); if (a && a.state === "running") startSong(a); } },
     stopTheme: () => { if (!song) return; clearTimeout(song.timer); const s = song; song = null; try { s.out.gain.setTargetAtTime(0, ctx.currentTime, 0.04); } catch (e) { /* fine */ } },
-    tap: () => { const a = ac(); if (a) tone(a, 740, 0, 0.05, { type: "triangle", vol: 0.05 }); },
+    tap: () => { const a = ac(); if (a) tone(a, 587, 0, 0.05, { type: "triangle", vol: 0.06 }); },
     up: mk(a => { tone(a, 523, 0, 0.07); tone(a, 784, 0.06, 0.1); }),
     down: mk(a => { tone(a, 392, 0, 0.07); tone(a, 262, 0.06, 0.13, { type: "triangle", vol: 0.1 }); }),
-    bank: mk(a => { tone(a, 988, 0, 0.07); tone(a, 1319, 0.07, 0.36, { vol: 0.06 }); tone(a, 1976, 0.09, 0.26, { vol: 0.025, type: "triangle" }); }),
+    bank: mk(a => { tone(a, 988, 0, 0.07); tone(a, 1175, 0.07, 0.36, { vol: 0.05 }); tone(a, 988, 0.09, 0.26, { vol: 0.03, type: "triangle" }); }),
     bust: mk(a => { noise(a, 0, 0.38, { vol: 0.13, from: 1200, to: 120 }); tone(a, 220, 0, 0.55, { type: "sawtooth", vol: 0.07, to: 45 }); tone(a, 330, 0, 0.28, { vol: 0.04, to: 80 }); }),
     mult: mk(a => run(a, [523, 659, 784, 1047, 1319], 0.045, { vol: 0.06 })),
     flip: mk(a => { noise(a, 0, 0.07, { vol: 0.1, from: 5000, to: 1500 }); tone(a, 280, 0, 0.09, { to: 900, vol: 0.04 }); }),
-    bless: mk(a => { run(a, [523, 659, 784, 1047], 0.07, { type: "triangle", vol: 0.1 }); tone(a, 2093, 0.3, 0.3, { type: "triangle", vol: 0.03 }); }),
+    bless: mk(a => { run(a, [523, 659, 784, 1047], 0.07, { type: "triangle", vol: 0.1 }); tone(a, 1047, 0.3, 0.3, { type: "triangle", vol: 0.04 }); }),
     curse: mk(a => { run(a, [392, 370, 349, 311], 0.1, { type: "sawtooth", vol: 0.05 }); tone(a, 98, 0.1, 0.6, { vol: 0.05, to: 60 }); }),
-    swing: mk(a => { noise(a, 0, 0.22, { vol: 0.12, from: 400, to: 5000 }); tone(a, 2093, 0.24, 0.12, { type: "triangle", vol: 0.07 }); tone(a, 1568, 0.3, 0.2, { type: "triangle", vol: 0.05 }); }),
+    swing: mk(a => { noise(a, 0, 0.22, { vol: 0.12, from: 400, to: 5000 }); tone(a, 1047, 0.24, 0.12, { type: "triangle", vol: 0.08 }); tone(a, 784, 0.3, 0.2, { type: "triangle", vol: 0.06 }); }),
     start: mk(a => {
       noise(a, 0, 0.2, { vol: 0.1, from: 500, to: 6000 });
       [523, 659, 784, 1047].forEach((f, i) => tone(a, f, 0.18 + i * 0.075, 0.12, { vol: 0.06 }));
