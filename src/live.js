@@ -37,10 +37,12 @@ export function roundToDoc(r, people, { code, uid, scoring, myName }) {
   const ppl = Object.fromEntries(r.playerIds.map(id => {
     const p = people[id] || {};
     const name = id === "me" ? (myName || p.first || "Host") : p.name;
-    return [id, { name, first: p.first || "", last: p.last || "", hi: p.hi ?? 0, color: p.color || "#6F7F73", guest: !!p.guest }];
+    // Only a first name and last initial go online: enough for avatars, no full surnames.
+    return [id, { name, first: p.first || "", last: (p.last || "").slice(0, 1), hi: p.hi ?? 0, color: p.color || "#6F7F73", guest: !!p.guest }];
   }));
   return {
     v: 1, code, host: uid, scoring, createdAt: Date.now(),
+    expireAt: new Date(Date.now() + 30 * 864e5), // a Firestore TTL policy on this field deletes old rounds
     base, people: ppl,
     claims: { me: uid }, members: { [uid]: true }, at: {},
     s: perPlayer(r, "scores"), bk: {}, ev: perPlayer(r, "events"),

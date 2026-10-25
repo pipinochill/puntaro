@@ -18,3 +18,5 @@ One-time Firebase console setup (project `puntaro`):
 4. Firestore → Rules → paste `firestore.rules` → Publish.
 
 Re-publish the rules whenever `firestore.rules` changes. Bank calls in "everyone scores" live in `rounds/{code}/banks/{pid_h}` and stay unreadable until every joined player has moved past that hole.
+
+Optional clean-up: in the Firebase console, Firestore → TTL policies → add a policy on collection group `rounds`, field `expireAt`. Live rounds are then deleted 30 days after they start.

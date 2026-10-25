@@ -24,7 +24,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.43";
+const APP_VERSION = "0.44";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -72,9 +72,9 @@ const GAMES = [
   { id: "punt", name: "Puntaro", blurb: "Bank it or bust it. Net scores, so every handicap has a shot.", hero: true },
 ];
 const RECENT = [
-  { course: "Cedar Ridge", when: "Sat", gross: 88, net: 74, note: "Banked 31 on the back 9" },
-  { course: "Pebble Hollow", when: "Last Sun", gross: 84, net: 71, note: "Busted a 14 point pot on 15" },
-  { course: "Sunrise Links", when: "2 weeks ago", gross: 91, net: 77, note: "Streak hit x3 on the 6th" },
+  { course: "Cedar Ridge", when: "Sat", gross: 88, net: 74, note: "Banked 31 on the back 9", sample: true },
+  { course: "Pebble Hollow", when: "Last Sun", gross: 84, net: 71, note: "Busted a 14 point pot on 15", sample: true },
+  { course: "Sunrise Links", when: "2 weeks ago", gross: 91, net: 77, note: "Streak hit x3 on the 6th", sample: true },
 ];
 const STAKES = [0, 5, 10, 20];
 const SPLITS = [["win", "Winner takes all"], ["603010", "60/30/10"], ["spoon", "Wooden spoon pays"]];
@@ -754,7 +754,7 @@ function buildRound(cfg, people, seed) {
     ntp: Array(18).fill(null),
     ntpOk: Array(18).fill(false),
     stake: cfg.stake ?? 0, split: cfg.split || "603010",
-    wolf: Array(18).fill(null), bbb: Array(18).fill(null), hole: 0,
+    wolf: Array(18).fill(null), bbb: Array(18).fill(null), hole: 0, sample: !!seed,
   };
   if (seed) {
     const off = { me: [0, 1, 0, -1, 1, 0], sam: [0, 0, 1, 0, 0, 1], priya: [1, 1, 0, 1, 2, 0], jake: [1, 0, 0, 0, 1, -1] };
@@ -1545,7 +1545,7 @@ function Home({ people, round, recent, board, onStart, onJoin, liveCode, onLiveD
         </button>
 
         <button className="card" onClick={onJoin} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", textAlign: "left", width: "100%" }}>
-          <div><div style={{ fontWeight: 700 }}>Join a live round</div><div className="cap">A mate started the round? Enter their code.</div></div>
+          <div><div style={{ fontWeight: 700 }}>Join a live round</div><div className="cap">A mate started the round? Scan their QR or enter the code.</div></div>
           <ChevronRight size={18} />
         </button>
 
@@ -1556,7 +1556,7 @@ function Home({ people, round, recent, board, onStart, onJoin, liveCode, onLiveD
 
         {round && (
           <HoldRow className="card" onHold={() => askDelete("round")} style={{ padding: 12 }}>
-            <div className="cap" style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>Round in progress{liveCode && <button className="pill" onClick={onLiveDetails} aria-label="Show join code" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", fontSize: 10 }}>LIVE {liveCode} · SHOW CODE</button>}</div>
+            <div className="cap" style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>Round in progress{round.sample && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 10 }}>SAMPLE</span>}{liveCode && <button className="pill" onClick={onLiveDetails} aria-label="Show join code" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", fontSize: 10 }}>LIVE {liveCode} · SHOW CODE</button>}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
               <h3 style={{ fontSize: 15, fontWeight: 800 }}>{round.course.name}</h3>
               <span style={{ fontWeight: 700 }}>Hole {round.hole + 1} of 18</span>
@@ -1634,7 +1634,7 @@ function Home({ people, round, recent, board, onStart, onJoin, liveCode, onLiveD
               <HoldRow key={i} onHold={() => askDelete("recent", i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                 <div>
                   <div style={{ fontWeight: 700 }}>{r.course}</div>
-                  <div className="cap">{r.when}. {r.note}</div>
+                  <div className="cap">{r.sample ? "Sample round. " : `${r.when}. `}{r.note}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontWeight: 800, fontSize: 15 }}>{r.net}</div>
@@ -1729,6 +1729,13 @@ function Rules({ onBack }) {
         <RuleSection title="Nearest the pin">
           <p>On a par 3, the closest ball earns +3 in their pot. Pick the winner on the hole, or tap Nobody if no one found the pin. You can't move to the next hole until that's done. If the winner busts the hole, the +3 is lost.</p>
         </RuleSection>
+        <RuleSection title="Playing live">
+          <p>Turn on Play live when you set up a round. Your mates scan the QR code on your screen (or type the join code) and pick which player they are. Everyone sees scores and pots as they happen.</p>
+          <p><b>Everyone scores:</b> each player enters their own score and makes their own bank calls. Anyone can fill in a score for a player whose phone is off, and it's marked with who entered it. Changing a score on a finished hole marks it "edited".</p>
+          <p><b>Secret bank calls:</b> in Everyone scores, your bank call is hidden from the group. It locks when you move to the next hole. Once everyone has moved on, all the calls for that hole are revealed together. Card holes are dealt after that reveal.</p>
+          <p><b>One scorer:</b> the host enters everything and everyone else watches. The host can switch modes mid-round, and everyone is told.</p>
+          <p className="cap">Phone died? The host can free that player's seat so the round isn't held up.</p>
+        </RuleSection>
         <RuleSection title="Prize pool">
           <p>Agree a buy-in before you tee off. Payout is winner takes all, 60/30/10, or wooden spoon (last place pays the rest).</p>
           <p>Nobody can lose more than their buy-in. The app shows who owes who at the end but never moves money.</p>
@@ -1736,7 +1743,7 @@ function Rules({ onBack }) {
         <RuleSection title="Handicaps">
           <p>Your handicap index is adjusted for the course's slope and rating to give strokes on the hardest holes. Everything in Puntaro uses those net scores. The Comp, your normal scorecard result, runs alongside it.</p>
         </RuleSection>
-        <p className="cap" style={{ margin: "10px 2px 0" }}>Bonuses, penalties, cards, catch-up odds and nearest the pin can each be switched off when you set up a round.</p>
+        <p className="cap" style={{ margin: "10px 2px 0" }}>Bonuses, penalties and nearest the pin can each be switched off when you set up a round. Cards, catch-up odds and the handicap cushion are always part of the game.</p>
       </div>
     </div>
   );
@@ -2013,6 +2020,7 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
 }
 
 function AboutSheet({ onClose, onReset }) {
+  const [sure, setSure] = useState(false);
   return (
     <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={onClose}>
       <div className="sheet card" role="dialog" aria-label={`About ${APP_NAME}`} onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "85vh", overflowY: "auto" }}>
@@ -2022,14 +2030,17 @@ function AboutSheet({ onClose, onReset }) {
         </div>
         <p style={{ marginTop: 8 }}>A points-only side game that runs alongside your normal comp. Bank your points or bust and lose the pot.</p>
         <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
-          <p><b>Working:</b> banking and busting, Blessings & Curses, bonuses and penalties, near the pin, prize pool maths, handicap strokes, course finder.</p>
-          <p><b>Demo only:</b> friends, stats and leaderboards are made-up people and numbers.</p>
-          <p><b>Live rounds:</b> when you play live, the round (course, players' names and handicaps, scores and bank calls) is stored with Google Firebase so everyone in it can follow along. Anyone with the join code can see it.</p>
+          <p><b>Working:</b> banking and busting, streaks, Blessings & Curses, bonuses and penalties, nearest the pin, free for all or 2v2, handicap strokes and cushion, prize pool maths, course finder, paused rounds.</p>
+          <p><b>New and still being tested:</b> live rounds. Everyone follows the round on their own phone, joining by QR code or join code. Choose one scorer, or everyone enters their own score with bank calls kept secret until the group moves on.</p>
+          <p><b>Not yet:</b> accounts, your history on more than one phone, and stats for friends from rounds played on their phones.</p>
+          <p><b>Samples:</b> the round you see on first open, the sample courses and the Recent rounds marked Sample are made up, for trying the app. Your stats and the friends table only count rounds you finish and save.</p>
+          <p><b>Live rounds and privacy:</b> a live round (course, players' first names, last initials and handicaps, scores) is stored with Google Firebase so the group can follow it. Anyone with the join code can see it. Bank calls stay hidden until they're revealed. No account or email is used.</p>
+          <p><b>Saved on this device only:</b> your courses, friends and guests, finished rounds and stats, paused rounds, and rounds you don't play live.</p>
           <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia.</p>
           <p><b>Money:</b> the prize pool is a scoreboard only. {APP_NAME} never takes or moves money.</p>
-          <p><b>Saved on this device:</b> courses you add and rounds you don't play live. Those are never sent to a server.</p>
         </div>
-        <button className="chip" style={{ marginTop: 12, padding: "7px 0", textAlign: "center", width: "100%" }} onClick={onReset}>Reset demo (clears saved courses)</button>
+        <button className="chip" style={{ marginTop: 12, padding: "7px 0", textAlign: "center", width: "100%", ...(sure ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : {}) }} onClick={() => (sure ? onReset() : setSure(true))}>{sure ? "Tap again to wipe everything" : "Start fresh"}</button>
+        <p className="cap" style={{ marginTop: 5, textAlign: "center" }}>{sure ? "This deletes your saved rounds, stats, friends, guests, courses and paused rounds on this phone, and brings back the samples. It can't be undone." : "Wipes everything on this phone and brings back the samples."}</p>
       </div>
     </div>
   );
@@ -3105,7 +3116,10 @@ export default function App() {
     setScore: (id, h, v) => {
       const prev = round.scores[id][h]; const who = (live && live.myId) || "watch";
       const pairs = [[["s", id, h], v], [["by", bankKey(id, h)], who]];
-      if (live && prev != null && prev !== v && liveDoc && liveDoc.s && liveDoc.s[id] && liveDoc.s[id][h] != null) pairs.push([["ed", bankKey(id, h)], who]);
+      // Tapping +/- while on the hole is just entering the score. It's an edit when the hole is
+      // already finished: the group has moved past it, or this phone has.
+      const holeDone = liveDoc && (h < revealUpTo(liveDoc) || (live.myId && h < ((liveDoc.at || {})[live.myId] || 0)));
+      if (live && holeDone && prev != null && prev !== v && liveDoc.s && liveDoc.s[id] && liveDoc.s[id][h] != null) pairs.push([["ed", bankKey(id, h)], who]);
       push(pairs); setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } }));
     },
     setBank: (id, h, v) => {

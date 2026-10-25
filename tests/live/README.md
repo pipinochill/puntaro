@@ -16,3 +16,5 @@ Keep `rules.py` in step with `firestore.rules` whenever the rules change.
 `scanner.py` covers starting a live round (and the reasons shown when Firebase says no), the LIVE badge, and scanning to join with a fake camera fed a tilted, blurred video of the QR code. It needs OpenCV (`pip install opencv-python`).
 
     python tests/live/scanner.py "$PWD/index.html" /tmp "$PWD/tests/live"
+
+`edited.py` checks that "edited" only marks changes to finished holes, and what player details go online.
