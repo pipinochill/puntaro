@@ -50,15 +50,13 @@ const PEOPLE = {
   dani:  { id: "dani", name: "Dani", hi: 13.1, color: "#3F5F4B" },
   omar:  { id: "omar", name: "Omar", hi: 21.8, color: "#7A7A72" },
 };
-const STATS = {
-  me:    { month: { pts: 24.6, ntp: 1, wins: 5, rounds: 6 }, season: { pts: 23.1, ntp: 6, wins: 31, rounds: 38 } },
-  sam:   { month: { pts: 27.3, ntp: 2, wins: 4, rounds: 5 }, season: { pts: 26.0, ntp: 9, wins: 29, rounds: 34 } },
-  priya: { month: { pts: 21.8, ntp: 0, wins: 6, rounds: 7 }, season: { pts: 22.4, ntp: 4, wins: 38, rounds: 41 } },
-  jake:  { month: { pts: 23.9, ntp: 1, wins: 3, rounds: 4 }, season: { pts: 24.2, ntp: 5, wins: 22, rounds: 27 } },
-  maya:  { month: { pts: 29.1, ntp: 3, wins: 5, rounds: 6 }, season: { pts: 28.0, ntp: 12, wins: 30, rounds: 36 } },
-  leo:   { month: { pts: 19.4, ntp: 0, wins: 2, rounds: 3 }, season: { pts: 20.6, ntp: 2, wins: 15, rounds: 19 } },
-  dani:  { month: { pts: 25.2, ntp: 1, wins: 4, rounds: 5 }, season: { pts: 24.8, ntp: 6, wins: 24, rounds: 28 } },
-  omar:  { month: { pts: 20.7, ntp: 1, wins: 1, rounds: 4 }, season: { pts: 21.3, ntp: 3, wins: 12, rounds: 22 } },
+// Real totals come from saved rounds: history = [{ at, players: { id: { pts, ntp, win } } }]
+const statsFor = (history, id, period) => {
+  const d0 = new Date(); const start = period === "month" ? new Date(d0.getFullYear(), d0.getMonth(), 1).getTime() : new Date(d0.getFullYear(), 0, 1).getTime();
+  const rs = (history || []).filter(x => x.at >= start && x.players && x.players[id]);
+  if (!rs.length) return null;
+  const sum = k => rs.reduce((a, x) => a + (x.players[id][k] || 0), 0);
+  return { rounds: rs.length, wins: rs.reduce((a, x) => a + (x.players[id].win ? 1 : 0), 0), ntp: sum("ntp"), pts: sum("pts") / rs.length };
 };
 const METRICS = [
   { id: "rounds", label: "Rounds", fmt: v => v },
@@ -230,6 +228,7 @@ const SFX = (() => {
     bust: mk(a => { noise(a, 0, 0.38, { vol: 0.13, from: 1200, to: 120 }); tone(a, 220, 0, 0.55, { type: "sawtooth", vol: 0.07, to: 45 }); tone(a, 330, 0, 0.28, { vol: 0.04, to: 80 }); }),
     mult: mk(a => run(a, [523, 659, 784, 1047, 1319], 0.045, { vol: 0.06 })),
     ntp: mk(a => { noise(a, 0, 0.1, { vol: 0.08, from: 600, to: 3000 }); [392, 523, 659, 784, 1047].forEach((f, i) => tone(a, f, 0.08 + i * 0.07, 0.14, { vol: 0.06 })); tone(a, 523, 0.5, 0.4, { type: "triangle", vol: 0.08 }); tone(a, 784, 0.5, 0.4, { type: "triangle", vol: 0.06 }); }),
+    birdie: mk(a => { run(a, [659, 784, 988, 1319], 0.06, { type: "triangle", vol: 0.1 }); tone(a, 1319, 0.26, 0.3, { vol: 0.05 }); }),
     flip: mk(a => { noise(a, 0, 0.07, { vol: 0.1, from: 5000, to: 1500 }); tone(a, 280, 0, 0.09, { to: 900, vol: 0.04 }); }),
     bless: mk(a => { run(a, [523, 659, 784, 1047], 0.07, { type: "triangle", vol: 0.1 }); tone(a, 1047, 0.3, 0.3, { type: "triangle", vol: 0.04 }); }),
     curse: mk(a => { run(a, [392, 370, 349, 311], 0.1, { type: "sawtooth", vol: 0.05 }); tone(a, 98, 0.1, 0.6, { vol: 0.05, to: 60 }); }),
@@ -828,6 +827,18 @@ const CSS = `
 .burst{position:absolute;left:50%;top:42%;width:0;height:0;pointer-events:none;z-index:6;}
 .burst i{position:absolute;left:-3px;top:-3px;width:6px;height:6px;background:var(--bc);animation:burst .75s steps(8) forwards;}
 @keyframes burst{0%{transform:translate(0,0) scale(1.2);opacity:1}100%{transform:translate(var(--bx),var(--by)) scale(.3);opacity:0}}
+.fxo{position:fixed;inset:0;max-width:430px;margin:0 auto;z-index:60;pointer-events:none;display:grid;place-items:center;}
+.fxflash{position:absolute;inset:0;animation:fxfl .5s steps(5) forwards;}
+.fxo.bust .fxflash{background:rgba(184,74,50,.4);}
+.fxo.birdie .fxflash,.fxo.bank .fxflash{background:rgba(255,224,138,.22);}
+@keyframes fxfl{from{opacity:1}to{opacity:0}}
+.fxo.bust .fxbox{animation:shake .45s steps(6) 1;}
+.fxbox{position:relative;text-align:center;}
+.fxt{font-family:'Pixelify Sans',ui-monospace,monospace;font-weight:700;font-size:44px;line-height:1;letter-spacing:1px;color:#FFE08A;text-shadow:4px 4px 0 #14150F;animation:fxpop 1.4s steps(10) forwards;}
+.fxo.bust .fxt{color:#E26A3B;}
+.fxo.bank .fxt{color:#E7E2D5;}
+.fxs{margin-top:8px;font-weight:700;font-size:15px;color:#F4F0E6;text-shadow:2px 2px 0 #14150F;animation:fxpop 1.4s steps(10) forwards;}
+@keyframes fxpop{0%{transform:scale(.3) rotate(-6deg);opacity:0}25%{transform:scale(1.25) rotate(2deg);opacity:1}40%{transform:scale(1) rotate(0)}85%{opacity:1}100%{transform:translateY(-14px);opacity:0}}
 .ntpwin{position:relative;display:flex;align-items:center;gap:10px;padding:8px 10px;margin-top:6px;background:var(--pine);color:#F4F0E6;overflow:visible;animation:ntpin .5s steps(6) both;}
 .ntpwin .flagp{animation:plant .6s steps(6) both;transform-origin:bottom;}
 .ntpwin .plus{font-weight:700;font-size:26px;color:#FFE08A;text-shadow:2px 2px 0 #14150F;animation:plusup 1.1s steps(8) both;}
@@ -955,6 +966,21 @@ function Burst({ colors, n = 16, reach = 70 }) {
 }
 const BURST_B = ["#FFE08A", "#FFF3C9", "#A9BFA3", "#E0C799"];
 const BURST_C = ["#B84A32", "#E26A3B", "#3A302B", "#7A7A72"];
+
+function Celebrate({ fx }) {
+  if (!fx) return null;
+  const gold = fx.kind !== "bust";
+  return (
+    <div className={`fxo ${fx.kind}`} key={fx.key} aria-live="polite" role="status">
+      <div className="fxflash" />
+      <div className="fxbox">
+        <div className="fxt">{fx.text}</div>
+        <div className="fxs">{fx.sub}</div>
+        <Burst colors={gold ? (fx.kind === "bank" ? ["#FFE08A", "#E0C799", "#A9BFA3", "#FFF3C9"] : BURST_B) : BURST_C} n={fx.kind === "birdie" ? 24 : 18} reach={fx.kind === "birdie" ? 120 : 95} />
+      </div>
+    </div>
+  );
+}
 
 function CardZoom({ id, who, onClose }) {
   const c = CARDS[id];
@@ -1365,6 +1391,7 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
             <button onClick={goFriends} style={{ color: "var(--fair)", fontWeight: 700 }}>See all</button>
           </div>
           <div className="card" style={{ padding: "5px 11px" }}>
+            {board.length === 0 && <p className="cap" style={{ padding: "10px 0" }}>Finish and save a round to start the table.</p>}
             {board.slice(0, 3).map((r, i) => (
               <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                 <div style={{ width: 22, fontWeight: 800, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i + 1}</div>
@@ -2021,7 +2048,9 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
     try {
       const nr = { ...round, scores: { ...round.scores, [id]: round.scores[id].map((x, i) => (i === h ? val : x)) } };
       const a = puntCalc(round)[id], b = puntCalc(nr)[id];
-      if (b.bustAt[h] && !a.bustAt[h]) SFX.bust();
+      const sc = val - PAR[h];
+      if (b.bustAt[h] && !a.bustAt[h]) { SFX.bust(); { const bu = b.bustAt[h]; if (bu.lost + (bu.kept || 0) > 0) api.celebrate("bust", `BUST −${bu.lost}`, bu.kept ? `${people[id].name} · cushion keeps ${bu.kept}` : people[id].name); } }
+      else if (d < 0 && cur != null && sc <= -1 && val !== cur) { SFX.birdie(); api.celebrate("birdie", val === 1 && PAR[h] > 2 ? "HOLE IN ONE!" : sc <= -3 ? "ALBATROSS!" : sc === -2 ? "EAGLE!" : "BIRDIE!", people[id].name); }
       else if ((b.multAt[h] || 0) > (a.multAt[h] || 0)) SFX.mult();
       else if (d > 0) SFX.down(); else SFX.up();
     } catch (e) { /* sound is optional */ }
@@ -2304,12 +2333,12 @@ function PersonForm({ cta, onSubmit }) {
   );
 }
 
-function Friends({ people, friendIds, onAddFriend, setFriendIds }) {
+function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
   const [metric, setMetric] = useState("pts");
   const [period, setPeriod] = useState("month");
   const [sheet, setSheet] = useState(false);
   const [copied, setCopied] = useState("");
-  const val = (id, k) => (STATS[id] ? STATS[id][period][k] : null);
+  const val = (id, k) => { const s = statsFor(history, id, period); return s ? s[k] : null; };
   const rows = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: val(id, metric) })).sort((a, b) => (a.v == null) - (b.v == null) || b.v - a.v);
   const sample = ["dani", "omar"].filter(id => people[id] && !friendIds.includes(id));
   const copyLink = async () => {
@@ -2330,7 +2359,7 @@ function Friends({ people, friendIds, onAddFriend, setFriendIds }) {
             <button key={k} className={`chip ${period === k ? "on" : ""}`} onClick={() => setPeriod(k)} style={{ flex: 1, padding: "5px 0", textAlign: "center" }}>{l}</button>
           ))}
         </div>
-        <p className="cap" style={{ margin: "9px 2px" }}>Tap a column to sort. Points are Puntaro points per round, scored net so every handicap competes level. Demo numbers for now. Friends you add yourself show a dash.</p>
+        <p className="cap" style={{ margin: "9px 2px" }}>Tap a column to sort. Avg pts is your average Puntaro points per round, scored net so every handicap competes level. Totals come from rounds you finish and save in this app. Nothing yet shows a dash.</p>
         <div className="card" style={{ padding: "3px 11px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) repeat(4, 46px)", gap: 4, alignItems: "center", padding: "8px 0", borderBottom: "2px solid var(--night)" }}>
             <span /><span className="cap">Player</span>
@@ -2384,11 +2413,11 @@ function Friends({ people, friendIds, onAddFriend, setFriendIds }) {
   );
 }
 
-function Me({ people, setPeople, dark, setDark, saved, onAbout }) {
+function Me({ people, setPeople, dark, setDark, saved, history, onAbout }) {
   const me = people.me;
   const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(36, Math.max(-2, v)) * 10) / 10 } }));
-  const s = STATS.me.season;
-  const tiles = [["Rounds", s.rounds], ["Puntaro wins", s.wins], ["NTPs", s.ntp], ["Avg points", s.pts.toFixed(1)]];
+  const s = statsFor(history, "me", "season") || { rounds: 0, wins: 0, ntp: 0, pts: null };
+  const tiles = [["Rounds", s.rounds], ["Puntaro wins", s.wins], ["NTPs", s.ntp], ["Avg points", s.pts == null ? "–" : s.pts.toFixed(1)]];
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "23px 16px 20px", display: "flex", alignItems: "center", gap: 11 }}>
@@ -2446,6 +2475,9 @@ export default function App() {
     return buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true);
   });
   const [recent, setRecent] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.recent) ? s.recent : RECENT; });
+  const [history, setHistory] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.history) ? s.history : []; });
+  const [fx, setFx] = useState(null);
+  const celebrate = (kind, text, sub) => { const key = Date.now() + Math.random(); setFx({ key, kind, text, sub }); setTimeout(() => setFx(f => (f && f.key === key ? null : f)), 1500); };
   const [del, setDel] = useState(null);
   const [rulesFrom, setRulesFrom] = useState("tabs");
   const [saved, setSaved] = useState(loadSaved);
@@ -2461,12 +2493,12 @@ export default function App() {
   const addFriend = f => { const id = newPerson(f, false); setFriendIds(x => [...x, id]); };
   const saveCourse = c => setSaved(s => { const n = [c, ...s.filter(x => x.id !== c.id)]; storeSaved(n); return n; });
   const resetDemo = () => {
-    storeSaved([]); setSaved([]); setPeople(PEOPLE); setFriendIds(["sam", "priya", "jake", "maya", "leo"]); setRecent(RECENT); setAbout(false);
+    storeSaved([]); setSaved([]); setPeople(PEOPLE); setFriendIds(["sam", "priya", "jake", "maya", "leo"]); setRecent(RECENT); setHistory([]); setAbout(false);
     setRound(buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
     setView("tabs"); setTab("home");
   };
   const [trash, setTrash] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.trash) ? s.trash.filter(x => Date.now() - x.at < TRASH_MS) : []; });
-  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds]);
+  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds, history })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds, history]);
   const [now, setNow] = useState(Date.now());
   const armed = useRef(false);
   const ready = () => armed.current; // a click only counts after a fresh press on the sheet, so the finger lifting after a hold is ignored
@@ -2490,8 +2522,9 @@ export default function App() {
   };
 
   const api = {
+    celebrate,
     setScore: (id, h, v) => setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })),
-    setBank: (id, h, v) => { if (v) SFX.bank(); return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })); },
+    setBank: (id, h, v) => { if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } } return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })); },
     setNtp: (h, id) => setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)), ntpOk: r.ntpOk.map((x, i) => (i === h ? false : x)) })),
     setNtpOk: h => setRound(r => ({ ...r, ntpOk: r.ntpOk.map((x, i) => (i === h ? !x : x)) })),
     setEvent: (id, h, k) => setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? { ...(x || {}), [k]: !(x && x[k]) } : x)) } })),
@@ -2505,11 +2538,21 @@ export default function App() {
     }),
   };
 
-  const board = ["me", ...friendIds].filter(id => STATS[id] && people[id]).map(id => ({ id, v: STATS[id].month.pts })).sort((a, b) => b.v - a.v);
+  const board = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: (statsFor(history, id, "month") || {}).pts })).filter(r => r.v != null).sort((a, b) => b.v - a.v);
 
   const save = () => {
     const t = totalsFor(round, "me");
     setRecent(r => [{ course: round.course.name, when: "Today", gross: t.gross, net: round.useHcp ? t.net : t.gross, note: "Puntaro round" }, ...r]);
+    try {
+      const pc = puntCalc(round); const ids = round.playerIds;
+      const team = round.mode === "2v2" && round.teams ? teamRows(round, pc) : null;
+      let winners = [];
+      if (team) { const best = Math.max(...team.map(x => x.total)); const w = team.filter(x => x.total === best); if (w.length === 1) winners = ids.filter(id => round.teams[id] === w[0].k); }
+      else { const best = Math.max(...ids.map(id => pc[id].total)); winners = ids.filter(id => pc[id].total === best); }
+      const players = {};
+      ids.forEach(id => { players[id] = { pts: pc[id].total, ntp: round.opts.ntp ? round.ntp.filter((w, h) => w === id && PAR[h] === 3 && round.ntpOk[h]).length : 0, win: winners.includes(id) }; });
+      setHistory(hs => [...hs, { at: Date.now(), course: round.course.name, players }]);
+    } catch (e) { /* stats are a bonus; never block saving */ }
     setRound(null); setView("tabs"); setTab("home");
   };
 
@@ -2518,6 +2561,7 @@ export default function App() {
   return (
     <div className={`sg${dark ? " dark" : ""}`} onClickCapture={e => { if (e.target.closest && e.target.closest("button")) setTimeout(() => { if (SFX.sinceSpecial() > 60) SFX.tap(); }, 0); }}>
       <style>{CSS}</style>
+      <Celebrate fx={fx} />
       {splash && <Splash onDone={() => setSplash(false)} />}
       {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
       {del && (
@@ -2540,8 +2584,8 @@ export default function App() {
         <>
           <div style={{ flex: 1 }}>
             {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => setView("setup")} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
-            {tab === "friends" && <Friends people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
-            {tab === "me" && <Me people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
+            {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
+            {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
           </div>
           <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>
             {tabs.map(([k, l, I]) => (
