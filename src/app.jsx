@@ -92,7 +92,7 @@ const CARDS = {
 const EVENTS = {
   sandy:    { kind: "bonus",   name: "Sandy",       tag: "Sandy x2",        hint: "Up and down from a bunker. This hole's points count double." },
   updown:   { kind: "bonus",   name: "Up and down", tag: "Up and down +2",  hint: "Chip or pitch, then one putt." },
-  chipin:   { kind: "bonus",   name: "Chip-in",     tag: "Chip-in +4",      hint: "Holed it from off the green. Net par or better." },
+  chipin:   { kind: "bonus",   name: "Chip-in",     tag: "Chip-in +4",      hint: "Holed it from off the green." },
   barkie:   { kind: "bonus",   name: "Barkie",      tag: "Barkie +2",       hint: "Hit a tree and still made par." },
   lost:     { kind: "penalty", name: "Lost ball",   tag: "Lost ball -3",    hint: "Lost it off the tee." },
   water:    { kind: "penalty", name: "Wet one",     tag: "Wet one -2",      hint: "Found the water." },
@@ -500,7 +500,7 @@ function puntCalc(r, upTo = 18) {
         if (r.opts.bonuses) {
           if (evs.updown && diff <= 0) flat += 2;
           if (evs.barkie && diff <= 0) flat += 2;
-          if (evs.chipin && diff <= 0) flat += 4;
+          if (evs.chipin) flat += 4;
         }
         if (r.opts.ntp && PAR[h] === 3 && r.ntp[h] === id && r.ntpOk[h]) flat += 3;
         st.pot += pts + flat; bonus = pts - core + flat;
@@ -1167,7 +1167,7 @@ function GamePanel({ gid, round, people, h, api }) {
                       <div style={{ marginTop: 6 }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                           {avail.map(k => {
-                            const on = !!evs[k]; const pen = EVENTS[k].kind === "penalty"; const dud = !pen && round.scores[id][h] != null && netOf(round, id, h) - PAR[h] >= 1;
+                            const on = !!evs[k]; const pen = EVENTS[k].kind === "penalty"; const dud = !pen && k !== "chipin" && round.scores[id][h] != null && netOf(round, id, h) - PAR[h] >= 1;
                             return (
                               <button key={k} className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => api.setEvent(id, h, k)}
                                 title={dud ? "Needs net par or better" : undefined} style={{ padding: "1px 6px", fontSize: 12, opacity: dud ? 0.4 : 1, textDecoration: dud && on ? "line-through" : "none", ...(on && pen ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : {}) }}>
@@ -1176,7 +1176,7 @@ function GamePanel({ gid, round, people, h, api }) {
                             );
                           })}
                         </div>
-                        {round.opts.bonuses && <p className="cap" style={{ marginTop: 5 }}>Every bonus only counts if you made net par or better on the hole.</p>}
+                        {round.opts.bonuses && <p className="cap" style={{ marginTop: 5 }}>Sandy, up and down and barkie only count if you made net par or better. A chip-in always counts.</p>}
                       </div>
                     )}
                   </div>
@@ -1514,7 +1514,7 @@ function Rules({ onBack }) {
           <p>Log these from the player's card during the hole.</p>
           <div className="cap" style={{ fontWeight: 700 }}>Bonuses</div>
           {ev("bonus").map(e => <RuleRow key={e.name} k={e.tag} v={e.hint} />)}
-          <p className="cap">Every bonus (sandy, up and down, chip-in, barkie) only counts with net par or better, so a lucky shot can't turn a bad hole into a good one. Nearest the pin is separate: it is won off the tee, so it counts whatever you score, except on a bust.</p>
+          <p className="cap">Sandy, up and down and barkie only count with net par or better. A chip-in is the best shot in golf, so it counts on any hole except a bust. Nearest the pin is won off the tee, so it also counts whatever you score, except on a bust.</p>
           <div className="cap" style={{ fontWeight: 700, marginTop: 4 }}>Penalties</div>
           {ev("penalty").map(e => <RuleRow key={e.name} k={e.tag} v={e.hint} />)}
           <p className="cap">Penalties hit before you bank, so you can't bank to dodge one. They never touch banked points.</p>
