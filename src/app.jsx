@@ -108,6 +108,7 @@ const CURSES = ["tax", "heavy", "leaky", "shout", "mine"];
 /* 8-bit sprites. Each row is a line of pixels; letters map to the palette below. */
 const PAL = { o: "#14150F", w: "#EDE8DD", g: "#D9B07A", r: "#B4472E", l: "#8FAE8B", d: "#3E6B4B", m: "#CFC9B8", n: "#7A5232", c: "#4A4D45", s: "#E6D3AE", b: "#4F7FA3", t: "#9CC3DB" };
 const SPRITES = {
+  c_back: ["ooooooooo.", "ogggggggoo", "oggggggggo", "oggooooggo", "oggo..oggo", "oggooooggo", "oggggggggo", "ogggggggoo", "oggoooooo.", "oggo......", "oggo......", "oggo......", "oooo......"],
   e_sandy: ["...oooo...", "..owwwwo..", "..owmwwo..", "...oooo...", "..oossoo..", ".osssssso.", "ossmssssso", "osssssssso", "oooooooooo", ".........."],
   e_updown: [".w........", ".wrr......", ".wrrr.....", ".wrr......", ".w........", ".w...oo...", ".w..owwo..", "lllllllll.", "dddoooddd.", "dddddddddd"],
   e_chipin: ["g...gg...g", ".g..gg..g.", "..g.oo.g..", "...owwwo..", "...owmwo..", "....oo....", "llllllllll", "ddddoooddd", "dddddddddd", "dddddddddd"],
@@ -1037,7 +1038,7 @@ function PCard({ id, cw = 76, down = false, still = false, rot = 0, delay = 0, h
           <div className="pc-kind">{c.kind === "bless" ? "Blessing" : "Curse"}</div>
           <div className="pc-fx" />
         </div></div>
-        <div className="pc-face pc-back"><div className="pc-in"><Sprite name="c_ball" size={ps} /></div></div>
+        <div className="pc-face pc-back"><div className="pc-in"><Sprite name="c_back" size={ps} /></div></div>
       </div></div>
     </div>
   );
