@@ -1860,8 +1860,8 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
           {custom && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
               <span style={{ fontWeight: 800 }}>$</span>
-              <input aria-label="Custom buy-in" inputMode="decimal" placeholder="e.g. 15" value={customText} onChange={e => { const x = e.target.value.replace(/[^0-9.]/g, ""); setCustomText(x); const v = Math.round(Number(x) * 100) / 100; if (v > 0 && v <= 1000) setStake(v); }} style={{ ...inp, width: 110 }} />
-              <span className="cap">per player, up to $1000</span>
+              <input aria-label="Custom buy-in" inputMode="numeric" placeholder="e.g. 15" value={customText} onChange={e => { const x = e.target.value.replace(/[^0-9]/g, "").slice(0, 4); setCustomText(x); const v = Number(x); if (v > 0 && v <= 1000) setStake(v); }} style={{ ...inp, width: 110 }} />
+              <span className="cap">whole dollars per player, up to $1000</span>
             </div>
           )}
           {stake > 0 && (
