@@ -1892,8 +1892,8 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
 
         <Label sub="Cards, catch-up odds and the handicap cushion are always part of the game. These three are up to your group.">Extras</Label>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button className={`chip ${extraKeys.every(k => opts[k]) ? "on" : ""}`} onClick={() => setExtras(true)}>Everything</button>
-          <button className={`chip ${extraKeys.every(k => !opts[k]) ? "on" : ""}`} onClick={() => setExtras(false)}>Keep it simple</button>
+          <button className={`chip ${!showCustom && extraKeys.every(k => opts[k]) ? "on" : ""}`} onClick={() => { setExtras(true); setShowCustom(false); }}>Everything</button>
+          <button className={`chip ${!showCustom && extraKeys.every(k => !opts[k]) ? "on" : ""}`} onClick={() => { setExtras(false); setShowCustom(false); }}>Keep it simple</button>
           <button className={`chip ${showCustom ? "on" : ""}`} aria-expanded={showCustom} onClick={() => setShowCustom(s => !s)}>Customise</button>
         </div>
         <p className="cap" style={{ marginTop: 6 }}>{extraKeys.filter(k => opts[k]).length === 0 ? "Just the core game. Fewest taps for the scorer." : `On: ${extraKeys.filter(k => opts[k]).map(k => EXTRA_INFO[k][0].toLowerCase()).join(", ")}.`}</p>
