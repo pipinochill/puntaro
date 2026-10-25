@@ -1402,7 +1402,7 @@ function Rules({ onBack }) {
           <p>Points sit in your pot until you bank them. You can bank after any hole. Banked points can never be lost.</p>
           <p>Banking resets your streak multiplier back to x1. Banking an empty pot does nothing.</p>
           <p>Whatever is still in your pot after the 18th hole banks automatically.</p>
-          <p>Handicap cushion (optional, on by default): when you bust you keep 2% of your pot for every handicap stroke you get, up to half, rounded down. A 16 stroke player busting with 20 points keeps 6 and loses 14. It's there to level the field.</p>
+          <p>Handicap cushion (always on when handicaps are on): when you bust you keep 2% of your pot for every handicap stroke you get, up to half, rounded down. A 16 stroke player busting with 20 points keeps 6 and loses 14. It's there to level the field.</p>
         </RuleSection>
         <RuleSection title="Bank hints">
           <p>Under each player's pot you'll see the chance of a net double bogey or worse on the next hole, with a hint: Hold, Think about it, or Bank it.</p>
@@ -1741,6 +1741,11 @@ function AboutSheet({ onClose, onReset }) {
 }
 
 const MAXP = 8;
+const EXTRA_INFO = {
+  bonuses: ["Bonuses", "Sandy x2, up and down +2, chip-in +4, barkie +2."],
+  ntp: ["Nearest the pin", "Closest to the pin on a par 3 earns +3. Ball must be on the green or fringe."],
+  penalties: ["Penalties", "Lost ball -3, wet one -2, four putt halves your pot."],
+};
 function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onGo }) {
   const [course, setCourse] = useState(COURSES[0]);
   const [teeI, setTeeI] = useState(0);
@@ -1750,6 +1755,9 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
   const [useHcp, setUseHcp] = useState(true);
   const [stake, setStake] = useState(10);
   const [custom, setCustom] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+  const extraKeys = ["bonuses", "ntp", "penalties"];
+  const setExtras = v => setOpts(o => ({ ...o, bonuses: v, ntp: v, penalties: v }));
   const [customText, setCustomText] = useState("");
   const [split, setSplit] = useState("603010");
   const [opts, setOpts] = useState({ cards: true, catchup: true, bonuses: true, penalties: true, ntp: true, cushion: true });
@@ -1853,20 +1861,45 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
           </Sheet>
         )}
 
-        <Label sub="Switch on what your group wants. All optional.">Extras</Label>
-        <div className="card" style={{ padding: "3px 11px" }}>
-          {[["cards", "Blessings & Curses", "Hardest and easiest holes: everyone draws a blessing or a curse at the tee. Bank before the hole to dodge the curses."],
-            ["catchup", "Catch-up odds", "Last place draws more blessings, the leader more curses."],
-            ["bonuses", "Bonuses", "Sandy x2, up and down +2, chip-in +4, barkie +2."],
-            ["ntp", "Nearest the pin", "Closest to the pin on a par 3 earns +3. Ball must be on the green or fringe."],
-            ["penalties", "Penalties", "Lost ball -3, wet one -2, four putt halves your pot."],
-            ["cushion", "Handicap cushion", useHcp ? "On a bust you keep 2% of your pot per handicap stroke, up to half. Evens things out for higher handicaps." : "Needs handicaps switched on."]].filter(([k]) => k !== "catchup" || opts.cards).map(([k, t, d], i) => (
-            <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
-              <div><div style={{ fontWeight: 700, fontSize: 15 }}>{t}</div><div className="cap">{d}</div></div>
-              <Toggle on={opts[k]} onChange={v => setOpts(o => ({ ...o, [k]: v }))} />
+        <Label sub="Net scoring is what lets mixed handicaps play each other.">Handicaps</Label>
+        <div className="card" style={{ padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>Use handicaps</div>
+              <div className="cap">Strokes are given on the hardest holes, based on this course's slope ({tee.slope}) and rating ({tee.rating}).</div>
             </div>
-          ))}
+            <Toggle on={useHcp} onChange={setUseHcp} />
+          </div>
+          {useHcp && (
+            <div style={{ marginTop: 11, borderTop: "1px solid var(--line)", paddingTop: 5 }}>
+              {sel.map(id => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                  <Avatar p={people[id]} size={24} />
+                  <div style={{ flex: 1, fontWeight: 600 }}>{people[id].name} <span className="cap">index {people[id].hi.toFixed(1)}</span></div>
+                  <div style={{ fontWeight: 800 }}>{courseHcp(people[id].hi, cinfo)} <span className="cap" style={{ fontWeight: 400 }}>strokes</span></div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        <Label sub="Cards, catch-up odds and the handicap cushion are always part of the game. These three are up to your group.">Extras</Label>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button className={`chip ${extraKeys.every(k => opts[k]) ? "on" : ""}`} onClick={() => setExtras(true)}>Everything</button>
+          <button className={`chip ${extraKeys.every(k => !opts[k]) ? "on" : ""}`} onClick={() => setExtras(false)}>Keep it simple</button>
+          <button className={`chip ${showCustom ? "on" : ""}`} aria-expanded={showCustom} onClick={() => setShowCustom(s => !s)}>Customise</button>
+        </div>
+        <p className="cap" style={{ marginTop: 6 }}>{extraKeys.filter(k => opts[k]).length === 0 ? "Just the core game. Fewest taps for the scorer." : `On: ${extraKeys.filter(k => opts[k]).map(k => EXTRA_INFO[k][0].toLowerCase()).join(", ")}.`}</p>
+        {showCustom && (
+          <div className="card" style={{ padding: "3px 11px", marginTop: 8 }}>
+            {extraKeys.map((k, i) => (
+              <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                <div><div style={{ fontWeight: 700, fontSize: 15 }}>{EXTRA_INFO[k][0]}</div><div className="cap">{EXTRA_INFO[k][1]}</div></div>
+                <Toggle on={opts[k]} onChange={v => setOpts(o => ({ ...o, [k]: v }))} />
+              </div>
+            ))}
+          </div>
+        )}
 
         <Label sub="Agree a buy-in before you tee off. The app tracks who owes who and never moves money.">Prize pool</Label>
         <div className="card" style={{ padding: 12 }}>
@@ -1899,27 +1932,6 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
           )}
         </div>
 
-        <Label>Handicaps</Label>
-        <div className="card" style={{ padding: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>Use handicaps</div>
-              <div className="cap">Strokes are given on the hardest holes, based on this course's slope ({tee.slope}) and rating ({tee.rating}).</div>
-            </div>
-            <Toggle on={useHcp} onChange={setUseHcp} />
-          </div>
-          {useHcp && (
-            <div style={{ marginTop: 11, borderTop: "1px solid var(--line)", paddingTop: 5 }}>
-              {sel.map(id => (
-                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
-                  <Avatar p={people[id]} size={24} />
-                  <div style={{ flex: 1, fontWeight: 600 }}>{people[id].name} <span className="cap">index {people[id].hi.toFixed(1)}</span></div>
-                  <div style={{ fontWeight: 800 }}>{courseHcp(people[id].hi, cinfo)} <span className="cap" style={{ fontWeight: 400 }}>strokes</span></div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
         <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts })}>Tee off</button>
