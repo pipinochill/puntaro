@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, createContext, useContext } from "react";
 
 /* ───────────── ICONS (inline, no library) ───────────── */
 function Ico({ size = 24, color = "currentColor", children }) {
@@ -41,14 +41,14 @@ const SAVED_KEY = "puntaro.courses.v1";
 const loadSaved = () => { try { const v = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
 const storeSaved = v => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(v)); } catch (e) { /* private mode: fine */ } };
 const PEOPLE = {
-  me:    { id: "me", name: "You", hi: 14.2, color: "#4F7A5A" },
-  sam:   { id: "sam", name: "Sam", hi: 8.4, color: "#8B6B4A" },
-  priya: { id: "priya", name: "Priya", hi: 19.0, color: "#A5543A" },
-  jake:  { id: "jake", name: "Jake", hi: 11.6, color: "#6F7F73" },
-  maya:  { id: "maya", name: "Maya", hi: 5.2, color: "#9A7650" },
-  leo:   { id: "leo", name: "Leo", hi: 23.5, color: "#5E4636" },
-  dani:  { id: "dani", name: "Dani", hi: 13.1, color: "#3F5F4B" },
-  omar:  { id: "omar", name: "Omar", hi: 21.8, color: "#7A7A72" },
+  me:    { id: "me", name: "You", first: "", last: "", hi: 14.2, color: "#4F7A5A" },
+  sam:   { id: "sam", name: "Sam", last: "Walker", hi: 8.4, color: "#8B6B4A" },
+  priya: { id: "priya", name: "Priya", last: "Nair", hi: 19.0, color: "#A5543A" },
+  jake:  { id: "jake", name: "Jake", last: "Morrison", hi: 11.6, color: "#6F7F73" },
+  maya:  { id: "maya", name: "Maya", last: "Chen", hi: 5.2, color: "#9A7650" },
+  leo:   { id: "leo", name: "Leo", last: "Costa", hi: 23.5, color: "#5E4636" },
+  dani:  { id: "dani", name: "Dani", last: "Ferris", hi: 13.1, color: "#3F5F4B" },
+  omar:  { id: "omar", name: "Omar", last: "Haddad", hi: 21.8, color: "#7A7A72" },
 };
 // Real totals come from saved rounds: history = [{ at, players: { id: { pts, ntp, win } } }]
 const statsFor = (history, id, period) => {
@@ -502,7 +502,7 @@ function puntCalc(r, upTo = 18) {
           if (evs.barkie && diff <= 0) flat += 2;
           if (evs.chipin) flat += 4;
         }
-        if (r.opts.ntp && PAR[h] === 3 && r.ntp[h] === id && r.ntpOk[h]) flat += 3;
+        if (r.opts.ntp && PAR[h] === 3 && r.ntp[h] === id) flat += 3;
         st.pot += pts + flat; bonus = pts - core + flat;
         st.log[h] = note + `+${pts + flat}` + (mult > 1 ? ` (x${mult} streak)` : "") + (card === "dd" ? " (double dip)" : "") + (sandy > 1 ? " (sandy x2)" : "") + (flat > 0 ? ` (bonus +${flat})` : "");
       }
@@ -553,7 +553,7 @@ function countEvents(r, id) {
     if (!e) return;
     Object.keys(e).forEach(k => { if (e[k]) { if (EVENTS[k].kind === "bonus") b++; else p++; } });
   });
-  const ntpWins = r.opts.ntp ? r.ntp.filter((w, h) => w === id && PAR[h] === 3 && r.ntpOk[h]).length : 0;
+  const ntpWins = r.opts.ntp ? r.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0;
   return { b: (r.opts.bonuses ? b : 0) + ntpWins, p: r.opts.penalties ? p : 0 };
 }
 const tally = (st, c) => [
@@ -698,7 +698,7 @@ function buildRound(cfg, people, seed) {
     r.bbb = [B("sam", "me", "sam"), B("me", "me", "jake"), B("priya", "priya", "priya"), B("jake", "sam", "me"), B("sam", "me", "priya"), B("jake", "jake", "jake"), ...Array(12).fill(null)];
     r.bank.sam[2] = true; r.bank.jake[4] = true;
     r.events.me[3] = { chipin: true }; r.events.sam[0] = { sandy: true }; r.events.priya[4] = { lost: true }; r.events.jake[1] = { water: true };
-    r.ntp[2] = "me"; r.ntpOk[2] = true;
+    r.ntp[2] = "me";
     r.hole = 6; r.seen[3] = true;
   }
   if (r.opts.cards) range18.forEach(h => { if (cardHole(h) && h <= r.hole) r.draws[h] = drawCards(r, h, mulberry32(r.drawSeed + h * 977)); });
@@ -839,6 +839,9 @@ const CSS = `
 .fxo.bank .fxt{color:#E7E2D5;}
 .fxs{margin-top:8px;font-weight:700;font-size:15px;color:#F4F0E6;text-shadow:2px 2px 0 #14150F;animation:fxpop 1.4s steps(10) forwards;}
 @keyframes fxpop{0%{transform:scale(.3) rotate(-6deg);opacity:0}25%{transform:scale(1.25) rotate(2deg);opacity:1}40%{transform:scale(1) rotate(0)}85%{opacity:1}100%{transform:translateY(-14px);opacity:0}}
+.shk{animation:shake .4s steps(6) 1;}
+.tip{border-bottom:2px dotted var(--muted);cursor:help;text-align:inherit;}
+.tipsheet{position:fixed;inset:0;max-width:430px;margin:0 auto;z-index:70;display:flex;align-items:flex-end;background:rgba(0,0,0,.55);}
 .ntpwin{position:relative;display:flex;align-items:center;gap:10px;padding:8px 10px;margin-top:6px;background:var(--pine);color:#F4F0E6;overflow:visible;animation:ntpin .5s steps(6) both;}
 .ntpwin .flagp{animation:plant .6s steps(6) both;transform-origin:bottom;}
 .ntpwin .plus{font-weight:700;font-size:26px;color:#FFE08A;text-shadow:2px 2px 0 #14150F;animation:plusup 1.1s steps(8) both;}
@@ -850,11 +853,12 @@ const CSS = `
 @media (prefers-reduced-motion:reduce){.sg *{animation:none !important;}}
 `;
 
+const initials = p => ((p.first || p.name || "?")[0] + (p.last ? p.last[0] : "")).toUpperCase();
 function Avatar({ p, size = 38, ring }) {
   return (
     <div style={{ width: size, height: size, background: p.color, color: "#fff", display: "grid", placeItems: "center", fontWeight: 700,
-      fontSize: Math.max(10, Math.round(size * 0.5)), flex: "none", border: "3px solid var(--night)", boxShadow: ring ? "0 0 0 3px var(--card), 0 0 0 6px var(--night)" : "none" }}>
-      {p.name[0]}
+      fontSize: Math.max(9, Math.round(size * ((p.last || p.first) ? 0.4 : 0.5))), flex: "none", letterSpacing: -0.5, border: "3px solid var(--night)", boxShadow: ring ? "0 0 0 3px var(--card), 0 0 0 6px var(--night)" : "none" }}>
+      {initials(p)}
     </div>
   );
 }
@@ -903,11 +907,41 @@ function PointsList({ round, people, pts }) {
   );
 }
 
-function PickRow({ label, hint, ids, people, value, onPick }) {
+const TIPS = {
+  pot: ["In pot", "Points you've earned that aren't locked in yet. If you bust, you lose them (the handicap cushion may let you keep some). Bank them to make them safe."],
+  banked: ["Banked", "Safe points. Once banked they can never be lost, whatever happens next."],
+  streak: ["Streak", "Holes in a row at net par or better. Three in a row doubles your points (x2), five triples them (x3). Banking resets the streak unless you hold a Vault."],
+  risk: ["Bust risk", "Your chance of a net double bogey or worse on the next hole, worked out from your handicap and that hole's difficulty. A rough guide, not a rule."],
+  advice: ["Hold, think or bank", "Hold means your pot is small or the risk is low. Think about it means the pot is worth protecting. Bank it means the risk is high for the size of your pot."],
+  stroke: ["Strokes", "Your handicap gives you shots on the hardest holes. They come off your score, so a net score levels the field between a 5 and a 25 handicap."],
+  ntp: ["Nearest the pin", "On a par 3, the player whose tee shot finishes closest to the pin earns +3 in their pot. Pick the winner, or Nobody if no one found the green. If the winner busts the hole, the +3 is lost."],
+  mult: ["Streak multiplier", "Net par or better three holes running doubles your points. Five running triples them. A bogey ends it."],
+  bank: ["Bank after hole", "Tap to lock your pot into your banked points after this hole. Your streak resets, and you can't bank on the hole before a card hole."],
+  bonus: ["Bonuses and penalties", "Tap the chips to log a sandy, up and down, chip-in, barkie, lost ball, wet one or four putt. Bonuses (except a chip-in) need net par or better."],
+};
+const TipCtx = createContext(() => {});
+function Tip({ k, children }) {
+  const show = useContext(TipCtx);
+  return <button type="button" className="tip" onClick={e => { e.stopPropagation(); show(k); }} aria-label={`What is ${TIPS[k][0]}?`} style={{ font: "inherit", color: "inherit", padding: 0, background: "none" }}>{children}</button>;
+}
+function TipSheet({ k, onClose }) {
+  if (!k) return null;
+  return (
+    <div className="tipsheet" onClick={onClose}>
+      <div className="sheet card" role="dialog" aria-label={TIPS[k][0]} onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 14, boxShadow: "none" }}>
+        <h2 className="h2">{TIPS[k][0]}</h2>
+        <p style={{ marginTop: 6, lineHeight: 1.4 }}>{TIPS[k][1]}</p>
+        <button className="cta" onClick={onClose} style={{ marginTop: 12 }}>Got it</button>
+      </div>
+    </div>
+  );
+}
+
+function PickRow({ label, hint, ids, people, value, onPick, extra, tip }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "8px 0" }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 800, fontSize: 14 }}>{label}</div>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>{tip ? <Tip k={tip}>{label}</Tip> : label}</div>
         <div className="cap">{hint}</div>
       </div>
       <div style={{ display: "flex", gap: 6 }}>
@@ -917,6 +951,7 @@ function PickRow({ label, hint, ids, people, value, onPick }) {
             <Avatar p={people[id]} size={31} ring={value === id} />
           </button>
         ))}
+        {extra}
       </div>
     </div>
   );
@@ -1063,9 +1098,10 @@ function MiniBoard({ title, sub, rows, people }) {
 }
 
 /* ───────────── GAME PANELS (live round) ───────────── */
-function GamePanel({ gid, round, people, h, api }) {
+function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
   const [open, setOpen] = useState(null);
   const [zoom, setZoom] = useState(null);
+  const [hintK, setHintK] = useState(null);
   const ids = round.playerIds;
   const done = holeDone(round, h);
   const meta = GAMES.find(g => g.id === gid);
@@ -1081,16 +1117,12 @@ function GamePanel({ gid, round, people, h, api }) {
         <p className="cap">Net Stableford points drop into your pot. Bank to lock them in, but banking resets your streak. A net double bogey or worse busts the pot. Three net pars or better in a row doubles your points, five in a row triples them.</p>
         {round.opts.ntp && PAR[h] === 3 && (
           <div className="card" style={{ marginTop: 6, padding: "2px 8px 6px", boxShadow: "3px 3px 0 var(--night)" }}>
-            <PickRow label="Nearest the pin" hint="Must be on the green or fringe." ids={ids} people={people} value={round.ntp[h]} onPick={id => api.setNtp(h, id)} />
-            {round.ntp[h] && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button className={`chip ${round.ntpOk[h] ? "on" : ""}`} aria-pressed={!!round.ntpOk[h]} onClick={() => { if (!round.ntpOk[h]) SFX.ntp(); api.setNtpOk(h); }} style={{ padding: "1px 6px", fontSize: 12 }}>
-                  {round.ntpOk[h] ? "On the green or fringe" : "Confirm: on the green or fringe"}
-                </button>
-                <span className="cap">{round.ntpOk[h] ? "+3 to their pot" : "No points until confirmed"}</span>
-              </div>
-            )}
-            {round.ntp[h] && round.ntpOk[h] && (
+            <PickRow label="Nearest the pin" tip="ntp" hint="Closest to the pin wins +3." ids={ids} people={people} value={round.ntp[h]} onPick={id => { if (round.ntp[h] !== id) SFX.ntp(); api.setNtp(h, id); }} extra={
+              <button className={`chip ${round.ntp[h] === "none" ? "on" : ""}`} aria-pressed={round.ntp[h] === "none"} onClick={() => api.setNtp(h, "none")} style={{ padding: "2px 7px", fontSize: 12 }}>Nobody</button>
+            } />
+            {nudge > 0 && !round.ntp[h] && <p key={nudge} role="alert" className="shk" style={{ color: "var(--red)", fontWeight: 700, padding: "0 0 6px" }}>Pick who was nearest the pin, or tap Nobody, before moving on.</p>}
+            {round.ntp[h] === "none" && <p className="cap" style={{ paddingBottom: 6 }}>No one found the pin. No points this hole.</p>}
+            {people[round.ntp[h]] && (
               <div className="ntpwin" key={`${h}-${round.ntp[h]}`} role="status">
                 <div className="flagp"><Sprite name="flag" size={4} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1118,8 +1150,8 @@ function GamePanel({ gid, round, people, h, api }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Avatar p={people[id]} size={26} />
                   <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
-                  <div style={{ textAlign: "right", minWidth: 62 }}><span className={hot ? "beat" : ""} style={{ fontWeight: 800, fontSize: 17 }}>{s.pot}</span><span className="cap"> in pot</span></div>
-                  <div style={{ textAlign: "right", minWidth: 72 }}><span style={{ fontWeight: 800, fontSize: 17 }}>{s.banked}</span><span className="cap"> banked</span></div>
+                  <div style={{ textAlign: "right", minWidth: 62 }}><span className={hot ? "beat" : ""} style={{ fontWeight: 800, fontSize: 17 }}>{s.pot}</span><Tip k="pot"><span className="cap"> in pot</span></Tip></div>
+                  <div style={{ textAlign: "right", minWidth: 72 }}><span style={{ fontWeight: 800, fontSize: 17 }}>{s.banked}</span><Tip k="banked"><span className="cap"> banked</span></Tip></div>
                 </div>
                 {bust && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
@@ -1131,7 +1163,7 @@ function GamePanel({ gid, round, people, h, api }) {
                 {hot && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
                     {Array.from({ length: s.mult }).map((_, k) => <Sprite key={k} name="flame" size={4} className="flick" />)}
-                    <div className="px" style={{ fontSize: 15 }}>x{s.mult} streak</div>
+                    <div className="px" style={{ fontSize: 15 }}><Tip k="mult">x{s.mult} streak</Tip></div>
                     <div className="cap" style={{ marginLeft: "auto" }}>{s.streak} in a row</div>
                   </div>
                 )}
@@ -1142,12 +1174,12 @@ function GamePanel({ gid, round, people, h, api }) {
                   </div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                  {!hot && !bust && <span className="cap">Streak {s.streak}</span>}
+                  {!hot && !bust && <span className="cap"><Tip k="streak">Streak {s.streak}</Tip></span>}
                   {banking && <span className="cap">{s.vaults > 0 ? "Vault keeps your streak" : "Streak resets"}</span>}
                   {s.shields > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Safety net held</span>}
                   {s.vaults > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Vault held</span>}
                   {s.leak > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 11 }}>Leaking {s.leak}</span>}
-                  {(() => { const ad = !banking && !heavy && !locked && bankAdvice(round, id, h, s); return ad ? <span className="cap" title="A rough guide, not a rule" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>Bust risk next hole {Math.round(ad.risk * 100)}%<span className="pill" style={{ background: ad.level === "bank" ? "var(--red)" : ad.level === "think" ? "var(--flag)" : "var(--mint)", color: ad.level === "bank" ? "#fff" : "var(--dk)", fontSize: 11 }}>{ad.level === "bank" ? "Bank it" : ad.level === "think" ? "Think about it" : "Hold"}</span>{ad.cardNext && ad.level !== "hold" ? <span className="cap">cards next</span> : null}</span> : null; })()}
+                  {(() => { const ad = !banking && !heavy && !locked && bankAdvice(round, id, h, s); return ad ? <span className="cap" title="A rough guide, not a rule" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Tip k="risk">Bust risk next hole {Math.round(ad.risk * 100)}%</Tip><Tip k="advice"><span className="pill" style={{ background: ad.level === "bank" ? "var(--red)" : ad.level === "think" ? "var(--flag)" : "var(--mint)", color: ad.level === "bank" ? "#fff" : "var(--dk)", fontSize: 11 }}>{ad.level === "bank" ? "Bank it" : ad.level === "think" ? "Think about it" : "Hold"}</span></Tip>{ad.cardNext && ad.level !== "hold" ? <span className="cap">cards next</span> : null}</span> : null; })()}
                   <button className={`chip ${banking ? "on" : ""}`} disabled={heavy || locked} aria-pressed={banking}
                     onClick={() => api.setBank(id, h, !round.bank[id][h])} style={{ marginLeft: "auto", padding: "2px 7px", fontSize: 12, opacity: heavy || locked ? 0.7 : 1 }}>
                     {heavy ? "Forced bank" : locked ? (banking ? "Banked. Locked" : "Bank locked") : banking ? "Banking after hole" : "Bank after hole"}
@@ -1169,14 +1201,14 @@ function GamePanel({ gid, round, people, h, api }) {
                           {avail.map(k => {
                             const on = !!evs[k]; const pen = EVENTS[k].kind === "penalty"; const dud = !pen && k !== "chipin" && round.scores[id][h] != null && netOf(round, id, h) - PAR[h] >= 1;
                             return (
-                              <button key={k} className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => api.setEvent(id, h, k)}
+                              <button key={k} className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => { api.setEvent(id, h, k); setHintK(k); }}
                                 title={dud ? "Needs net par or better" : undefined} style={{ padding: "1px 6px", fontSize: 12, opacity: dud ? 0.4 : 1, textDecoration: dud && on ? "line-through" : "none", ...(on && pen ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : {}) }}>
                                 {EVENTS[k].tag}
                               </button>
                             );
                           })}
                         </div>
-                        {round.opts.bonuses && <p className="cap" style={{ marginTop: 5 }}>Sandy, up and down and barkie only count if you made net par or better. A chip-in always counts.</p>}
+                        <p className="cap" style={{ marginTop: 5 }}>{hintK && EVENTS[hintK] ? <><b>{EVENTS[hintK].name}:</b> {EVENTS[hintK].hint}</> : "Tap a chip to log it. Tap again to undo."}{round.opts.bonuses ? " Sandy, up and down and barkie need net par or better. A chip-in always counts." : ""}</p>
                       </div>
                     )}
                   </div>
@@ -1520,7 +1552,7 @@ function Rules({ onBack }) {
           <p className="cap">Penalties hit before you bank, so you can't bank to dodge one. They never touch banked points.</p>
         </RuleSection>
         <RuleSection title="Nearest the pin">
-          <p>On a par 3, the closest ball earns +3 in their pot. The ball must be on the green or fringe, and the scorer confirms that before the points count. If the winner busts the hole, the +3 is lost.</p>
+          <p>On a par 3, the closest ball earns +3 in their pot. Pick the winner on the hole, or tap Nobody if no one found the pin. You can't move to the next hole until that's done. If the winner busts the hole, the +3 is lost.</p>
         </RuleSection>
         <RuleSection title="Prize pool">
           <p>Agree a buy-in before you tee off. Payout is winner takes all, 60/30/10, or wooden spoon (last place pays the rest).</p>
@@ -1830,7 +1862,7 @@ function AboutSheet({ onClose, onReset }) {
 const MAXP = 8;
 const EXTRA_INFO = {
   bonuses: ["Bonuses", "Sandy x2, up and down +2, chip-in +4, barkie +2."],
-  ntp: ["Nearest the pin", "Closest to the pin on a par 3 earns +3. Ball must be on the green or fringe."],
+  ntp: ["Nearest the pin", "Closest to the pin on a par 3 earns +3. You pick the winner before moving on."],
   penalties: ["Penalties", "Lost ball -3, wet one -2, four putt halves your pot."],
 };
 function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onGo }) {
@@ -2036,10 +2068,13 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
   const cardsHere = !!pc && round.opts.cards && cardHole(h) && !!round.draws[h];
   const showReveal = cardsHere && (!round.seen[h] || again);
   const nextIsCard = !!pc && round.opts.cards && h < 17 && cardHole(h + 1) && !round.draws[h + 1];
-  const goNext = () => (nextIsCard ? setLastCall(true) : api.setHole(Math.min(17, h + 1)));
+  const [nudge, setNudge] = useState(0);
+  const ntpMissing = !!pc && round.opts.ntp && PAR[h] === 3 && !round.ntp[h];
+  const blocked = () => { if (!ntpMissing) return false; setNudge(n => n + 1); SFX.down(); return true; };
+  const goNext = () => { if (blocked()) return; if (nextIsCard) setLastCall(true); else api.setHole(Math.min(17, h + 1)); };
   /* heads-up strips at the top of the hole, for the scorer to read out */
   const notices = [];
-  if (pc && round.opts.ntp && PAR[h] === 3) notices.push({ key: "ntp", icon: "flag", isize: 2, title: "Par 3: nearest the pin", text: "Closest ball on the green or fringe earns +3. Pick the winner, then confirm they're on." });
+  if (pc && round.opts.ntp && PAR[h] === 3) notices.push({ key: "ntp", icon: "flag", isize: 2, title: "Par 3: nearest the pin", text: "Closest ball earns +3. Pick the winner, or Nobody, before you move on." });
   if (cardsHere) notices.push({ key: "cards", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards are out`, text: "Everyone drew a blessing or a curse. Banks from the last hole are locked.", action: ["Show cards", () => setAgain(true)] });
   if (nextIsCard) notices.push({ key: "bank", icon: "c_vault", isize: 2, urgent: true, title: `Next hole is the ${SI[h + 1] === 1 ? "hardest" : "easiest"}: last chance to bank`, text: "Everyone draws a card at the tee, then banks lock. Ask each player now.", action: ["Review banks", () => setLastCall(true)] });
   const bump = (id, d) => {
@@ -2083,7 +2118,7 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 11 }}>
           {range18.map(i => (
-            <button key={i} onClick={() => (i === h + 1 ? goNext() : api.setHole(i))} aria-label={`Go to hole ${i + 1}`} style={{ width: 17, height: 24, display: "grid", placeItems: "center" }}>
+            <button key={i} onClick={() => (i === h + 1 ? goNext() : i > h && blocked() ? null : api.setHole(i))} aria-label={`Go to hole ${i + 1}`} style={{ width: 17, height: 24, display: "grid", placeItems: "center" }}>
               <span style={{ width: i === h ? 13 : 9, height: i === h ? 13 : 9, borderRadius: "50%", background: holeDone(round, i) ? "var(--flag)" : "rgba(255,255,255,.28)", boxShadow: i === h ? "0 0 0 2px #fff" : "none" }} />
             </button>
           ))}
@@ -2118,7 +2153,7 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
                   {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
                 </div>
-                {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}>{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</span>}
+                {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</Tip></span>}
                 {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 14 }}>BUST</span></div>}
                 {hot && <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>{Array.from({ length: pc[id].mult }).map((_, k) => <Sprite key={k} name="flame" size={3} className="flick" />)}<span className="px" style={{ fontSize: 14 }}>x{pc[id].mult}</span></div>}
               </div>
@@ -2139,7 +2174,7 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
               </div>
             )}
             <div className="card" style={{ padding: 12, marginTop: 9 }}>
-              <GamePanel key={gtab} gid={gtab} round={round} people={people} h={h} api={api} />
+              <GamePanel key={gtab} gid={gtab} round={round} people={people} h={h} api={api} nudge={nudge} />
             </div>
           </div>
         )}
@@ -2147,8 +2182,8 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
 
       <div style={{ position: "sticky", bottom: 0, marginTop: "auto", padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
         {h < 17
-          ? <button className="cta" onClick={goNext}>Next hole<ChevronRight size={22} /></button>
-          : <button className="cta" style={{ background: "var(--flag)", color: "var(--dk)" }} onClick={onFinish}>Finish round</button>}
+          ? <button className="cta" onClick={goNext} style={ntpMissing ? { opacity: 0.55 } : undefined}>{ntpMissing ? "Pick nearest the pin first" : "Next hole"}{!ntpMissing && <ChevronRight size={22} />}</button>
+          : <button className="cta" style={{ background: "var(--flag)", color: "var(--dk)", opacity: ntpMissing ? 0.55 : 1 }} onClick={() => { if (!blocked()) onFinish(); }}>{ntpMissing ? "Pick nearest the pin first" : "Finish round"}</button>}
       </div>
       {showReveal && <CardReveal key={h} round={round} people={people} h={h} onDone={() => { api.markSeen(h); setAgain(false); }} />}
       {lastCall && nextIsCard && (
@@ -2320,15 +2355,19 @@ function Sheet({ title, onClose, children }) {
 // Name plus handicap index. Used for guests in a round and for adding a friend by hand.
 function PersonForm({ cta, onSubmit }) {
   const [name, setName] = useState("");
+  const [last, setLast] = useState("");
   const [hi, setHi] = useState("18.0");
   const h = Number(hi);
-  const err = !name.trim() ? "Enter a name." : hi.trim() === "" || Number.isNaN(h) || h < -10 || h > 54 ? "Handicap index should be between -10 and 54." : "";
+  const err = !name.trim() ? "Enter a first name." : !last.trim() ? "Enter a last name." : hi.trim() === "" || Number.isNaN(h) || h < -10 || h > 54 ? "Handicap index should be between -10 and 54." : "";
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <div><div className="cap" style={{ marginBottom: 3 }}>Name</div><input aria-label="Name" value={name} onChange={e => setName(e.target.value)} maxLength={20} style={inp} /></div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div><div className="cap" style={{ marginBottom: 3 }}>First name</div><input aria-label="Name" value={name} onChange={e => setName(e.target.value)} maxLength={20} style={inp} /></div>
+        <div><div className="cap" style={{ marginBottom: 3 }}>Last name</div><input aria-label="Last name" value={last} onChange={e => setLast(e.target.value)} maxLength={20} style={inp} /></div>
+      </div>
       <div><div className="cap" style={{ marginBottom: 3 }}>Handicap index</div><input aria-label="Handicap index" inputMode="decimal" value={hi} onChange={e => setHi(e.target.value)} style={inp} /></div>
-      {err && name.length + hi.length > 0 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
-      <button className="cta" disabled={!!err} onClick={() => onSubmit({ name: name.trim(), hi: Math.round(h * 10) / 10 })}>{cta}</button>
+      {err && name.length + last.length + hi.length > 0 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
+      <button className="cta" disabled={!!err} onClick={() => onSubmit({ name: name.trim(), last: last.trim(), hi: Math.round(h * 10) / 10 })}>{cta}</button>
     </div>
   );
 }
@@ -2431,6 +2470,14 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout }) {
         </div>
         <SoundRow />
         <div className="card" style={{ padding: 12 }}>
+          <div className="cap" style={{ fontWeight: 600 }}>Your initials</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 5 }}>
+            <input aria-label="Your first name" placeholder="First name" maxLength={20} value={me.first || ""} onChange={e => setPeople(p => ({ ...p, me: { ...p.me, first: e.target.value } }))} style={inp} />
+            <input aria-label="Your last name" placeholder="Last name" maxLength={20} value={me.last || ""} onChange={e => setPeople(p => ({ ...p, me: { ...p.me, last: e.target.value } }))} style={inp} />
+          </div>
+          <p className="cap" style={{ marginTop: 5 }}>Shown on your avatar. Everyone still calls you "You" on your own phone.</p>
+        </div>
+        <div className="card" style={{ padding: 12 }}>
           <div className="cap" style={{ fontWeight: 600 }}>Handicap index</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 5 }}>
             <button onClick={() => setHi(me.hi - 0.1)} aria-label="Lower handicap" style={{ width: 40, height: 40, borderRadius: "50%", border: "1.5px solid var(--line)", display: "grid", placeItems: "center" }}><Minus size={22} /></button>
@@ -2464,7 +2511,7 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout }) {
 
 /* ───────────── APP ───────────── */
 export default function App() {
-  const [people, setPeople] = useState(() => { const s = loadAppState(); return s && s.people ? { ...PEOPLE, ...s.people } : PEOPLE; });
+  const [people, setPeople] = useState(() => { const s = loadAppState(); return s && s.people ? { ...PEOPLE, ...Object.fromEntries(Object.entries(s.people).map(([k, v]) => [k, { ...(PEOPLE[k] || {}), ...v }])) } : PEOPLE; });
   const [dark, setDark] = useState(true);
   const [friendIds, setFriendIds] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.friendIds) ? s.friendIds : ["sam", "priya", "jake", "maya", "leo"]; });
   const [tab, setTab] = useState("home");
@@ -2477,6 +2524,7 @@ export default function App() {
   const [recent, setRecent] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.recent) ? s.recent : RECENT; });
   const [history, setHistory] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.history) ? s.history : []; });
   const [fx, setFx] = useState(null);
+  const [tipK, setTipK] = useState(null);
   const celebrate = (kind, text, sub) => { const key = Date.now() + Math.random(); setFx({ key, kind, text, sub }); setTimeout(() => setFx(f => (f && f.key === key ? null : f)), 1500); };
   const [del, setDel] = useState(null);
   const [rulesFrom, setRulesFrom] = useState("tabs");
@@ -2484,9 +2532,9 @@ export default function App() {
   const [splash, setSplash] = useState(true);
   const [about, setAbout] = useState(false);
   const GUEST_COLORS = ["#9A7B3F", "#5E6E55", "#8B6B4A", "#6F7F73", "#A5543A"];
-  const newPerson = ({ name, hi }, guest) => {
+  const newPerson = ({ name, last, hi }, guest) => {
     const id = (guest ? "g" : "f") + Date.now() + Math.floor(Math.random() * 99);
-    setPeople(p => ({ ...p, [id]: { id, name, hi, guest, color: GUEST_COLORS[Object.keys(p).length % GUEST_COLORS.length] } }));
+    setPeople(p => ({ ...p, [id]: { id, name, last: last || "", hi, guest, color: GUEST_COLORS[Object.keys(p).length % GUEST_COLORS.length] } }));
     return id;
   };
   const addGuest = g => newPerson(g, true);
@@ -2525,8 +2573,7 @@ export default function App() {
     celebrate,
     setScore: (id, h, v) => setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })),
     setBank: (id, h, v) => { if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } } return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })); },
-    setNtp: (h, id) => setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)), ntpOk: r.ntpOk.map((x, i) => (i === h ? false : x)) })),
-    setNtpOk: h => setRound(r => ({ ...r, ntpOk: r.ntpOk.map((x, i) => (i === h ? !x : x)) })),
+    setNtp: (h, id) => setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)) })),
     setEvent: (id, h, k) => setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? { ...(x || {}), [k]: !(x && x[k]) } : x)) } })),
     setWolf: (h, v) => setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })),
     setBbb: (h, k, id) => setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })),
@@ -2550,7 +2597,7 @@ export default function App() {
       if (team) { const best = Math.max(...team.map(x => x.total)); const w = team.filter(x => x.total === best); if (w.length === 1) winners = ids.filter(id => round.teams[id] === w[0].k); }
       else { const best = Math.max(...ids.map(id => pc[id].total)); winners = ids.filter(id => pc[id].total === best); }
       const players = {};
-      ids.forEach(id => { players[id] = { pts: pc[id].total, ntp: round.opts.ntp ? round.ntp.filter((w, h) => w === id && PAR[h] === 3 && round.ntpOk[h]).length : 0, win: winners.includes(id) }; });
+      ids.forEach(id => { players[id] = { pts: pc[id].total, ntp: round.opts.ntp ? round.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0, win: winners.includes(id) }; });
       setHistory(hs => [...hs, { at: Date.now(), course: round.course.name, players }]);
     } catch (e) { /* stats are a bonus; never block saving */ }
     setRound(null); setView("tabs"); setTab("home");
@@ -2559,9 +2606,11 @@ export default function App() {
   const tabs = [["home", "Home", HomeIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon]];
 
   return (
+    <TipCtx.Provider value={setTipK}>
     <div className={`sg${dark ? " dark" : ""}`} onClickCapture={e => { if (e.target.closest && e.target.closest("button")) setTimeout(() => { if (SFX.sinceSpecial() > 60) SFX.tap(); }, 0); }}>
       <style>{CSS}</style>
       <Celebrate fx={fx} />
+      <TipSheet k={tipK} onClose={() => setTipK(null)} />
       {splash && <Splash onDone={() => setSplash(false)} />}
       {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
       {del && (
@@ -2597,5 +2646,6 @@ export default function App() {
         </>
       )}
     </div>
+    </TipCtx.Provider>
   );
 }
