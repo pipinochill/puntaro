@@ -66,7 +66,7 @@ const METRICS = [
   { id: "rounds", label: "Rounds", fmt: v => v },
 ];
 const GAMES = [
-  { id: "punt", name: "The Punt", blurb: "Bank it or bust it. Net scores, so every handicap has a shot.", hero: true },
+  { id: "punt", name: "Puntaro", blurb: "Bank it or bust it. Net scores, so every handicap has a shot.", hero: true },
 ];
 const RECENT = [
   { course: "Cedar Ridge", when: "Sat", gross: 88, net: 74, note: "Won the back 9" },
@@ -76,7 +76,7 @@ const RECENT = [
 const STAKES = [0, 5, 10, 20, 50];
 const SPLITS = [["win", "Winner takes all"], ["603010", "60/30/10"], ["spoon", "Wooden spoon pays"]];
 
-/* The Punt cards. They only ever move game points, never how a shot is played or counted. */
+/* Puntaro cards. They only ever move game points, never how a shot is played or counted. */
 const CARDS = {
   dd:    { name: "Double dip",  kind: "bless", text: "This hole's points count double." },
   safe:  { name: "Safety net",  kind: "bless", text: "Your next bust is cancelled." },
@@ -230,7 +230,7 @@ function rabbitCalc(r) {
   return { holder: current, atNine, atEighteen };
 }
 
-/* The Punt: net Stableford points go into a pot. Bank to lock them in. Net double bogey or worse busts the pot. */
+/* Puntaro: net Stableford points go into a pot. Bank to lock them in. Net double bogey or worse busts the pot. */
 const cardHole = h => SI[h] === 1 || SI[h] === 18;
 const cardHoleLabel = h => (SI[h] === 1 ? "Hardest hole on the card." : "Easiest hole on the card.");
 /* seeded random, so a round's draws are fixed once made and can be replayed */
@@ -843,7 +843,7 @@ function GamePanel({ gid, round, people, h, api }) {
           })}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 11 }}>
-          <MiniBoard title="The Punt" sub="Banked plus pot" rows={puntRank} people={people} />
+          <MiniBoard title="Puntaro" sub="Banked plus pot" rows={puntRank} people={people} />
           <MiniBoard title="The Comp" sub={round.useHcp ? "Net to par" : "Gross to par"} rows={compRank} people={people} />
         </div>
         {zoom && <CardZoom id={zoom.id} who={zoom.who} onClose={() => setZoom(null)} />}
@@ -999,12 +999,12 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
           <div className="tile"><Sprite name="flag" size={5} /></div>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.4 }}>Start a round</div>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>Pick the course, your group and the games.</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>Pick the course and your group.</div>
           </div>
         </button>
 
         <button className="card" onClick={onRules} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", textAlign: "left", width: "100%" }}>
-          <div><div style={{ fontWeight: 700 }}>How The Punt works</div><div className="cap">Scoring, cards, bonuses and the prize pool.</div></div>
+          <div><div style={{ fontWeight: 700 }}>How Puntaro works</div><div className="cap">Scoring, cards, bonuses and the prize pool.</div></div>
           <ChevronRight size={18} />
         </button>
 
@@ -1014,9 +1014,6 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
               <h3 style={{ fontSize: 15, fontWeight: 800 }}>{round.course.name}</h3>
               <span style={{ fontWeight: 700 }}>Hole {round.hole + 1} of 18</span>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-              {round.games.map(g => <span key={g} className="pill" style={{ background: "var(--mint)", color: "var(--dk)", padding: "3px 8px", fontSize: 11 }}>{GAMES.find(x => x.id === g).name}</span>)}
             </div>
             {round.stake > 0 && <p className="cap" style={{ marginTop: 8 }}>Buy-in {money(round.stake)} each. Pool {money(round.stake * round.playerIds.length)}.</p>}
             <button className="cta" style={{ marginTop: 11, padding: 11, fontSize: 14 }} onClick={onResume}>Resume scoring</button>
@@ -1108,7 +1105,7 @@ function Rules({ onBack }) {
     <div style={{ flex: 1, paddingBottom: 24 }}>
       <div className="stripes" style={{ padding: "12px 12px 14px" }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 2, fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back</button>
-        <h1 style={{ marginTop: 8 }}>How The Punt works</h1>
+        <h1 style={{ marginTop: 8 }}>How Puntaro works</h1>
         <p style={{ opacity: 0.85, marginTop: 3 }}>Play your normal round. This game runs on top of it.</p>
       </div>
       <div style={{ padding: "4px 14px" }}>
@@ -1132,7 +1129,7 @@ function Rules({ onBack }) {
           <p>Net par or better on 3 holes in a row doubles your points on that hole (x2). Five in a row triples them (x3). A bogey, a bust or a bank resets the streak.</p>
           <p className="cap">Holding your pot keeps the streak alive. That's where the greed comes in.</p>
         </RuleSection>
-        <RuleSection title="Cards on tough holes">
+        <RuleSection title="Blessings & Curses">
           <p>On the hardest hole (stroke index 1) and the easiest (stroke index 18), everyone draws a card from a mixed deck of blessings and curses.</p>
           <p>The hole before, the app prompts the scorer with a last chance to bank. Once the cards are out, banks lock. Bank early to dodge a curse, or hold your nerve for a blessing.</p>
           <p>With catch-up odds on, the leader draws mostly curses and last place mostly blessings.</p>
@@ -1160,7 +1157,7 @@ function Rules({ onBack }) {
           <p>Nobody can lose more than their buy-in. The app shows who owes who at the end but never moves money.</p>
         </RuleSection>
         <RuleSection title="Handicaps">
-          <p>Your handicap index is adjusted for the course's slope and rating to give strokes on the hardest holes. Everything in The Punt uses those net scores. The Comp, your normal scorecard result, runs alongside it.</p>
+          <p>Your handicap index is adjusted for the course's slope and rating to give strokes on the hardest holes. Everything in Puntaro uses those net scores. The Comp, your normal scorecard result, runs alongside it.</p>
         </RuleSection>
         <p className="cap" style={{ margin: "10px 2px 0" }}>Bonuses, penalties, cards, catch-up odds and nearest the pin can each be switched off when you set up a round.</p>
       </div>
@@ -1446,9 +1443,9 @@ function AboutSheet({ onClose, onReset }) {
           <h2 className="h2">{APP_NAME} <span className="pill" style={{ background: "var(--flag)" }}>ALPHA {APP_VERSION}</span></h2>
           <button onClick={onClose} aria-label="Close"><X size={22} /></button>
         </div>
-        <p style={{ marginTop: 8 }}>A points-only side game that runs alongside your normal comp. The main game is The Punt: bank your points or bust and lose the pot.</p>
+        <p style={{ marginTop: 8 }}>A points-only side game that runs alongside your normal comp. Bank your points or bust and lose the pot.</p>
         <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
-          <p><b>Working:</b> The Punt, cards, bonuses and penalties, near the pin, prize pool maths, handicap strokes, course finder.</p>
+          <p><b>Working:</b> banking and busting, Blessings & Curses, bonuses and penalties, near the pin, prize pool maths, handicap strokes, course finder.</p>
           <p><b>Demo only:</b> friends, stats and leaderboards are made-up people and numbers. Nothing syncs between devices yet.</p>
           <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia.</p>
           <p><b>Money:</b> the prize pool is a scoreboard only. {APP_NAME} never takes or moves money.</p>
@@ -1529,29 +1526,9 @@ function Setup({ people, friendIds, saved, onSaveCourse, onBack, onGo }) {
           ))}
         </div>
 
-        <Label sub="Runs on top of your normal scorecard.">Games</Label>
-        <div style={{ display: "grid", gap: 6 }}>
-          {GAMES.map(g => {
-            const locked = g.four && sel.length !== 4; const on = games.includes(g.id);
-            return (
-              <button key={g.id} onClick={() => toggleGame(g)} disabled={locked}
-                style={{ padding: "11px 12px", textAlign: "left", display: "flex", gap: 9, alignItems: "center", borderRadius: 18, opacity: locked ? 0.5 : 1,
-                  background: on ? "var(--sel)" : "var(--card)", border: g.tbc ? `1.5px dashed ${on ? "var(--pine)" : "var(--muted)"}` : `${on ? 2 : 1}px solid ${on ? "var(--pine)" : "var(--line)"}` }}>
-                <div style={{ width: 26, height: 26, borderRadius: 8, flex: "none", display: "grid", placeItems: "center", background: on ? "var(--pine)" : "var(--card)", border: on ? "none" : "1.5px solid var(--muted)" }}>{on && <Check size={17} color="#fff" />}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14 }}>{g.name}</div>
-                  <div className="cap">{locked ? "Needs exactly 4 players." : g.blurb}</div>
-                </div>
-                {g.tbc && <span className="pill" style={{ background: "var(--flag)", padding: "3px 8px", fontSize: 11 }}>Coming soon</span>}
-                {g.hero && <span className="pill" style={{ background: "var(--flag)", padding: "3px 8px", fontSize: 11 }}>New</span>}
-              </button>
-            );
-          })}
-        </div>
-
         <Label sub="Switch on what your group wants. All optional.">Extras</Label>
         <div className="card" style={{ padding: "3px 11px" }}>
-          {[["cards", "Cards on tough holes", "Hardest and easiest holes: everyone draws a blessing or a curse at the tee. Bank before the hole to dodge the curses."],
+          {[["cards", "Blessings & Curses", "Hardest and easiest holes: everyone draws a blessing or a curse at the tee. Bank before the hole to dodge the curses."],
             ["catchup", "Catch-up odds", "Last place draws more blessings, the leader more curses."],
             ["bonuses", "Bonuses", "Sandy x2, up and down +2, chip-in +4, barkie +2."],
             ["ntp", "Nearest the pin", "Closest to the pin on a par 3 earns +3. Ball must be on the green or fringe."],
@@ -1799,7 +1776,7 @@ function Summary({ round, people, onSave, onBack }) {
         {hasPunt && (
           <div className="card" style={{ padding: "5px 11px" }}>
             <div style={{ padding: "9px 0 5px" }}>
-              <h3 style={{ fontWeight: 800, fontSize: 15 }}>The Punt</h3>
+              <h3 style={{ fontWeight: 800, fontSize: 15 }}>Puntaro</h3>
               <p className="cap">Everything left in a pot at the 18th is banked automatically.</p>
             </div>
             {punt.map((id, i) => (
@@ -1818,7 +1795,7 @@ function Summary({ round, people, onSave, onBack }) {
         {round.stake > 0 && (
           <div className="card" style={{ padding: 12 }}>
             <h3 style={{ fontWeight: 800, fontSize: 15 }}>Prize pool</h3>
-            <p className="cap">{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "The Punt" : "The Comp"}. {SPLITS.find(s => s[0] === round.split)[1]}.</p>
+            <p className="cap">{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}. {SPLITS.find(s => s[0] === round.split)[1]}.</p>
             <div style={{ marginTop: 6 }}>
               {ranked.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
@@ -2054,7 +2031,7 @@ export default function App() {
 
   const save = () => {
     const t = totalsFor(round, "me");
-    setRecent(r => [{ course: round.course.name, when: "Today", gross: t.gross, net: round.useHcp ? t.net : t.gross, note: `${round.games.length} side games` }, ...r]);
+    setRecent(r => [{ course: round.course.name, when: "Today", gross: t.gross, net: round.useHcp ? t.net : t.gross, note: "Puntaro round" }, ...r]);
     setRound(null); setView("tabs"); setTab("home");
   };
 
