@@ -21,7 +21,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.32";
+const APP_VERSION = "0.33";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -251,6 +251,8 @@ const SFX = (() => {
       else if (k === "water") { noise(a, 0, 0.25, { vol: 0.12, from: 2500, to: 500 }); tone(a, 300, 0.2, 0.18, { type: "sine", vol: 0.1, to: 700, det: 0 }); tone(a, 250, 0.38, 0.14, { type: "sine", vol: 0.08, to: 600, det: 0 }); }
       else if (k === "fourputt") { [0, 0.12, 0.24, 0.36].forEach(s => tone(a, 110, s, 0.08, { type: "square", vol: 0.1, det: 0, to: 70 })); [330, 262, 196].forEach((f, i) => tone(a, f, 0.55 + i * 0.12, 0.14, { type: "sawtooth", vol: 0.05 })); }
     })(),
+    putt: () => { const a = ac(); if (!a) return; tone(a, 1568, 0, 0.04, { type: "triangle", vol: 0.05, det: 0 }); for (let i = 0; i < 6; i++) noise(a, 0.05 + i * 0.16, 0.05, { vol: 0.03, from: 2400, to: 1800 }); },
+    cup: () => { const a = ac(); if (!a) return; tone(a, 180, 0, 0.12, { type: "sine", vol: 0.16, to: 90, det: 0 }); [0.1, 0.17, 0.22].forEach((t, i) => tone(a, 1760 - i * 120, t, 0.06, { type: "triangle", vol: 0.05, det: 0 })); tone(a, 1319, 0.3, 0.35, { type: "triangle", vol: 0.05 }); },
     flip: mk(a => { noise(a, 0, 0.07, { vol: 0.1, from: 5000, to: 1500 }); tone(a, 280, 0, 0.09, { to: 900, vol: 0.04 }); }),
     bless: mk(a => { run(a, [523, 659, 784, 1047], 0.07, { type: "triangle", vol: 0.1 }); tone(a, 1047, 0.3, 0.3, { type: "triangle", vol: 0.04 }); }),
     curse: mk(a => { run(a, [392, 370, 349, 311], 0.1, { type: "sawtooth", vol: 0.05 }); tone(a, 98, 0.1, 0.6, { vol: 0.05, to: 60 }); }),
@@ -279,10 +281,42 @@ function SoundRow() {
 }
 
 /* ───────────── LOGO AND SPLASH ───────────── */
-function Wordmark({ size = 54, still, ink }) {
+// Leaderboard tiles: the everyday logo. Hung like a clubhouse scoreboard.
+let tilesHung = false; // hang them in once per app launch, then keep them still
+function Tiles({ size = 20, hang = false, toy = false }) {
+  const [anim] = useState(() => hang && !tilesHung);
+  const [flip, setFlip] = useState({});
+  useEffect(() => { if (hang) tilesHung = true; }, [hang]);
+  const tap = (i, e) => { e.stopPropagation(); setFlip(f => ({ ...f, [i]: (f[i] || 0) + 1 })); SFX.tap(); };
   return (
-    <div className={`wm${still ? " still" : ""}${ink ? " ink" : ""}`} style={{ fontSize: size }} aria-label={APP_NAME} role="img">
-      {[..."PUNTARO"].map((c, i) => <span key={i} aria-hidden="true" style={{ animationDelay: `${0.45 + i * 0.07}s, ${1.1 + i * 0.12}s` }}>{c}</span>)}
+    <span className={`tiles${anim ? " hang" : ""}${toy ? " toy" : ""}`} style={{ "--ts": `${size}px` }} role="img" aria-label={APP_NAME}>
+      {[..."PUNTARO"].map((c, i) => (
+        <span key={`${i}-${flip[i] || 0}`} aria-hidden="true" className={flip[i] ? "tflip" : ""} onClick={toy ? e => tap(i, e) : undefined} style={{ animationDelay: `${i * 0.08}s` }}>{c}</span>
+      ))}
+    </span>
+  );
+}
+
+// Splash hero: the flagstick rises out of the cup, the pennant unrolls in the wind,
+// then a ball putts along the line and drops in. Times in seconds.
+const PN_SLICES = 10;
+function Pennant({ quick }) {
+  return (
+    <div className={`pn${quick ? " quick" : ""}`} aria-hidden="true">
+      <div className="pn-flag">
+        {Array.from({ length: PN_SLICES }, (_, i) => {
+          const fromPole = PN_SLICES - 1 - i;
+          return (
+            <div key={i} className="pn-sl" style={{ animationDelay: `${0.4 + fromPole * 0.09}s` }}>
+              <div className="pn-wv" style={{ animationDelay: `${(quick ? 0 : 1.3) + fromPole * 0.1}s` }}>
+                <div style={{ left: -i * 20 }}>{APP_NAME.toUpperCase()}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="pn-pole" />
+      <div className="pn-green"><div className="pn-dots" /><div className="pn-turf" /><div className="pn-cup" /><div className="pn-spark" /><div className="pn-ball" /></div>
     </div>
   );
 }
@@ -323,9 +357,18 @@ function SwirlBg() {
   return <canvas ref={ref} className="swirl" aria-hidden="true" />;
 }
 
+const SPLASH_DAY_KEY = "puntaro.splash.day";
 function Splash({ onDone }) {
   const [leaving, setLeaving] = useState(false);
   const [music, setMusic] = useState(false);
+  // Full show on the first launch of the day, a short one after that.
+  const [quick] = useState(() => { try { const d = new Date().toDateString(); const q = localStorage.getItem(SPLASH_DAY_KEY) === d; localStorage.setItem(SPLASH_DAY_KEY, d); return q; } catch (e) { return false; } });
+  useEffect(() => {
+    if (quick) return undefined;
+    if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
+    const t = [setTimeout(() => SFX.putt(), 1550), setTimeout(() => SFX.cup(), 2900)];
+    return () => t.forEach(clearTimeout);
+  }, [quick]);
   useEffect(() => { SFX.themeIfAllowed(); setMusic(SFX.themePlaying()); }, []);
   const go = () => {
     if (leaving) return;
@@ -337,11 +380,11 @@ function Splash({ onDone }) {
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
   });
   return (
-    <div className={`splash${leaving ? " out" : ""}`} onPointerDown={go} role="button" tabIndex={0} aria-label={`${APP_NAME}. Tap to start`}>
+    <div className={`splash${leaving ? " out" : ""}${quick ? " quick" : ""}`} onPointerDown={go} role="button" tabIndex={0} aria-label={`${APP_NAME}. Tap to start`}>
       <SwirlBg />
       <div className="scan" aria-hidden="true" />
       <div className="stack">
-        <Wordmark size={56} />
+        <Pennant quick={quick} />
         <div className="tag"><i /><span>BANK IT. OR BUST.</span><i /></div>
       </div>
       <div className="tapgo">{music || !SFX.isOn() ? "TAP TO TEE OFF" : "TAP TO START"}</div>
@@ -760,8 +803,6 @@ const CSS = `
 .sg .chip:disabled{opacity:.45;cursor:not-allowed;}
 .seg{display:flex;flex-wrap:wrap;gap:6px;}
 .sg .seg .chip{flex:1 1 auto;text-align:center;padding:6px 8px;}
-.sg:not(.dark) .wm.ink span{color:var(--ink);text-shadow:1px 1px 0 var(--flag),2px 2px 0 var(--night);}
-.sg:not(.dark) .wm.ink span:nth-child(5){color:#7A5232;}
 .sg .pt-foot{display:flex;flex-direction:column;align-items:center;gap:7px;margin:22px auto 0;color:var(--muted);}
 .sg .pt-foot:hover{color:var(--ink);}
 .score-empty{display:grid;place-items:center;width:36px;height:36px;border:2px dashed var(--line);color:var(--muted);line-height:1;}
@@ -789,20 +830,45 @@ const CSS = `
 .splash .mark{transform:rotate(-6deg);filter:drop-shadow(6px 6px 0 rgba(0,0,0,.55));animation:markin .55s steps(7) both,markbob 2.4s steps(6) .8s infinite;}
 @keyframes markin{0%{transform:translateY(-70vh) rotate(-40deg)}70%{transform:translateY(14px) rotate(-3deg)}100%{transform:translateY(0) rotate(-6deg)}}
 @keyframes markbob{0%,100%{transform:rotate(-6deg) translateY(0)}50%{transform:rotate(-4deg) translateY(-7px)}}
-.wm{display:flex;font-family:'Pixelify Sans',ui-monospace,monospace;font-weight:700;letter-spacing:2px;line-height:1;transform:rotate(-2deg);}
-.wm span{display:inline-block;color:#EDE8DD;text-shadow:1px 1px 0 #D9B07A,2px 2px 0 #D9B07A,3px 3px 0 #7A5232,4px 4px 0 #7A5232,5px 5px 0 #14150F,6px 6px 0 #14150F,7px 7px 0 #14150F;animation:wmpop .4s steps(5) both,wmbob 1.8s steps(4) infinite;}
-.wm span:nth-child(5){color:#D9B07A;}
-.wm.still span{animation:none;text-shadow:1px 1px 0 #7A5232,2px 2px 0 #14150F;}
-.wm.still{letter-spacing:1px;transform:none;}
-@keyframes wmpop{0%{opacity:0;transform:translateY(-34px) scale(1.5)}100%{opacity:1;transform:none}}
-@keyframes wmbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-.splash .tag{display:flex;align-items:center;gap:10px;color:#D9B07A;font-size:12px;letter-spacing:.28em;font-weight:600;animation:tagin .5s steps(4) 1.1s both;}
+.splash .tag{display:flex;align-items:center;gap:10px;color:#D9B07A;font-size:12px;letter-spacing:.28em;font-weight:600;animation:tagin .5s steps(4) 3s both;}
+.splash.quick .tag{animation-delay:.3s;}
 .splash .tag i{display:block;width:34px;height:2px;background:#D9B07A;}
 @keyframes tagin{from{opacity:0}to{opacity:1}}
-.splash .tapgo{position:absolute;bottom:calc(64px + env(safe-area-inset-bottom,0px));color:#EDE8DD;font-weight:700;font-size:15px;letter-spacing:.2em;animation:blink 1s steps(2) infinite;text-shadow:2px 2px 0 #14150F;}
+.splash .tapgo{position:absolute;bottom:calc(64px + env(safe-area-inset-bottom,0px));color:#EDE8DD;font-weight:700;font-size:15px;letter-spacing:.2em;animation:tagin .01s 3.3s both,blink 1s steps(2) 3.35s infinite;text-shadow:2px 2px 0 #14150F;}
+.splash.quick .tapgo{animation-delay:.4s,.45s;}
+.tiles{display:inline-flex;gap:2px;padding:3px;background:#14150F;box-shadow:3px 3px 0 rgba(0,0,0,.45);font-family:'Pixelify Sans',ui-monospace,monospace;font-weight:700;line-height:1;vertical-align:middle;}
+.tiles>span{width:var(--ts);height:calc(var(--ts)*1.3);display:grid;place-items:center;background:#EDE8DD;color:#2C4536;font-size:calc(var(--ts)*.86);box-shadow:inset 0 calc(var(--ts)*-.1) 0 #CFC9B8;transform-origin:top;}
+.tiles.toy>span{cursor:pointer;}
+.tiles.hang>span{animation:thang .36s steps(4) both;}
+@keyframes thang{0%{transform:translateY(-14px) rotate(-12deg);opacity:0}60%{transform:translateY(2px) rotate(5deg);opacity:1}100%{transform:none}}
+.tiles>span.tflip{animation:tflip .3s steps(3) !important;animation-delay:0s !important;}
+@keyframes tflip{50%{transform:scaleY(0)}}
+.pn{position:relative;width:290px;height:140px;font-family:'Pixelify Sans',ui-monospace,monospace;font-weight:700;}
+.pn-pole{position:absolute;left:252px;top:8px;width:6px;height:112px;background:#EDE8DD;box-shadow:3px 0 0 #000;transform-origin:50% 100%;animation:pnrise .4s steps(6) backwards,pnrattle .4s steps(4) 2.95s;}
+.pn-pole:before{content:"";position:absolute;top:-8px;left:-2px;width:10px;height:8px;background:#D9B07A;}
+.pn-flag{position:absolute;left:44px;top:10px;display:flex;filter:drop-shadow(4px 4px 0 rgba(0,0,0,.5));}
+.pn-sl{width:20px;height:48px;overflow:hidden;transform-origin:right;animation:pnunroll .15s steps(3) backwards;}
+.pn-sl:first-child{clip-path:polygon(0 0,100% 0,100% 100%,0 100%,55% 50%);}
+.pn-wv{width:20px;height:48px;position:relative;animation:pnwave 1.1s steps(4) infinite;}
+.pn-wv>div{position:absolute;top:0;width:208px;height:48px;padding-left:16px;background:#B84A32;color:#EDE8DD;font-size:28px;line-height:48px;text-align:center;letter-spacing:1px;text-shadow:2px 2px 0 #14150F;box-shadow:inset 0 -4px 0 #8E3826;}
+.pn-green{position:absolute;left:0;right:0;top:118px;height:12px;}
+.pn-dots{position:absolute;left:4px;right:44px;top:4px;height:5px;background:repeating-linear-gradient(90deg,#3E6B4B 0 6px,transparent 6px 12px);}
+.pn-turf{position:absolute;left:0;right:0;top:12px;height:6px;background:#2C4536;border-top:3px solid #3E6B4B;}
+.pn-cup{position:absolute;left:241px;top:1px;width:28px;height:11px;background:#000;box-shadow:0 -3px 0 #3E6B4B;}
+.pn-ball{position:absolute;left:4px;top:-2px;width:10px;height:10px;background:#EDE8DD;box-shadow:2px 2px 0 #000;animation:pnputt 1.2s steps(16) 1.55s both,pndrop .22s steps(2) 2.75s both;}
+.pn-spark{position:absolute;left:236px;top:-14px;width:38px;height:20px;opacity:0;background:radial-gradient(#D9B07A 2px,transparent 2.5px) 0 0/10px 10px;animation:pnspark .5s steps(3) 2.95s both;}
+@keyframes pnrise{from{transform:scaleY(0)}}
+@keyframes pnrattle{25%{transform:rotate(-3deg)}75%{transform:rotate(3deg)}}
+@keyframes pnunroll{from{transform:scaleX(0);filter:brightness(.45)}to{transform:scaleX(1);filter:brightness(1)}}
+@keyframes pnwave{0%,100%{transform:translateY(0)}25%{transform:translateY(-3px)}75%{transform:translateY(3px)}}
+@keyframes pnputt{from{left:4px}to{left:250px}}
+@keyframes pndrop{to{top:8px;height:0;opacity:0}}
+@keyframes pnspark{0%{opacity:0;transform:translateY(6px)}40%{opacity:1}100%{opacity:0;transform:translateY(-8px)}}
+.pn.quick .pn-pole,.pn.quick .pn-sl{animation:none;}
+.pn.quick .pn-ball,.pn.quick .pn-spark{display:none;}
 @keyframes blink{0%{opacity:1}50%{opacity:.25}}
 .splash .ver{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom,0px));color:#9B968A;font-size:11px;letter-spacing:.2em;}
-@media (prefers-reduced-motion:reduce){.splash .mark,.wm span,.splash .tapgo,.splash .tag{animation:none}}
+@media (prefers-reduced-motion:reduce){.splash .mark,.splash .tapgo,.splash .tag,.tiles>span,.pn *{animation:none !important}.pn-ball,.pn-spark{display:none}}
 
 @keyframes flip{from{transform:scaleY(0)}to{transform:scaleY(1)}}
 .reveal{transform-origin:top;animation:flip .35s steps(5);}
@@ -1451,14 +1517,14 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}><Wordmark size={24} still />&nbsp;<button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
-          <div style={{ display: "flex", gap: 5 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}><Tiles size={20} hang toy /><button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 }}>
+          <p style={{ opacity: 0.8 }}>Handicap index {people.me.hi.toFixed(1)}</p>
+          <div style={{ display: "flex", gap: 5, flex: "none" }}>
             <SoundChip />
             <button className="chip" onClick={() => setDark(!dark)} style={{ padding: "1px 6px", fontSize: 11 }}>{dark ? "Light mode" : "Dark mode"}</button>
           </div>
         </div>
-        <p style={{ marginTop: 14, opacity: 0.8 }}>Handicap index {people.me.hi.toFixed(1)}</p>
       </div>
       <div style={{ padding: "0 12px", marginTop: -36, display: "grid", gap: 11 }}>
         <button onClick={onStart} style={{ background: "var(--flag)", color: "var(--dk)", borderRadius: 24, padding: "16px 16px", textAlign: "left", display: "flex", alignItems: "center", gap: 11, boxShadow: "0 6px 0 var(--night)", border: "3px solid var(--night)" }}>
@@ -1545,7 +1611,7 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
         </div>
       </div>
       <button className="pt-foot" onClick={onAbout} aria-label="About this alpha">
-        <Wordmark size={16} still ink />
+        <Tiles size={15} />
         <span className="cap" style={{ color: "inherit" }}>Alpha {APP_VERSION}. Bank it or bust.</span>
       </button>
     </div>
@@ -1916,7 +1982,7 @@ function AboutSheet({ onClose, onReset }) {
     <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={onClose}>
       <div className="sheet card" role="dialog" aria-label={`About ${APP_NAME}`} onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "85vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 className="h2" style={{ display: "flex", alignItems: "center", gap: 10 }}><Wordmark size={22} still ink /><span className="pill" style={{ background: "var(--flag)" }}>ALPHA {APP_VERSION}</span></h2>
+          <h2 className="h2" style={{ display: "flex", alignItems: "center", gap: 10 }}><Tiles size={18} /><span className="pill" style={{ background: "var(--flag)" }}>ALPHA {APP_VERSION}</span></h2>
           <button onClick={onClose} aria-label="Close"><X size={22} /></button>
         </div>
         <p style={{ marginTop: 8 }}>A points-only side game that runs alongside your normal comp. Bank your points or bust and lose the pot.</p>
@@ -2313,7 +2379,7 @@ function Summary({ round, people, onSave, onBack }) {
   return (
     <div style={{ flex: 1 }}>
       <div className="stripes" style={{ padding: "14px 12px 22px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back to scoring</button><Wordmark size={15} still /></div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back to scoring</button><Tiles size={14} /></div>
         <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -1, marginTop: 9 }}>Round complete</h1>
         <p style={{ opacity: 0.8, marginTop: 3 }}>{round.course.name}</p>
       </div>
