@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, createContext, useContext } from "react";
+import { backend, newCode, cleanCode, joinLink, roundToDoc, docToRound, rights } from "./live.js";
 
 /* ───────────── ICONS (inline, no library) ───────────── */
 function Ico({ size = 24, color = "currentColor", children }) {
@@ -21,7 +22,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.37";
+const APP_VERSION = "0.40";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -798,6 +799,7 @@ const CSS = `
 .sg .cta:disabled{opacity:.4;cursor:not-allowed;}
 .cap{font-size:11.5px;color:var(--muted);line-height:1.22;}
 .sg .chip:disabled{opacity:.45;cursor:not-allowed;}
+.sg fieldset:disabled button{opacity:.4;cursor:not-allowed;}
 .seg{display:flex;flex-wrap:wrap;gap:6px;}
 .sg .seg .chip{flex:1 1 auto;text-align:center;padding:6px 8px;}
 .sg .pt-foot{display:flex;flex-direction:column;align-items:center;gap:7px;margin:22px auto 0;color:var(--muted);}
@@ -1033,6 +1035,8 @@ const TIPS = {
   bonus: ["Bonuses and penalties", "Tap the chips to log a sandy, up and down, chip-in, barkie, lost ball, wet one or four putt. Bonuses (except a chip-in) need net par or better."],
 };
 const TipCtx = createContext(() => {});
+// Live-round permissions. Outside a live round everything is allowed.
+const LiveCtx = createContext({ score: () => true, bank: () => true, host: true, live: null });
 function Tip({ k, children }) {
   const show = useContext(TipCtx);
   return <button type="button" className="tip" onClick={e => { e.stopPropagation(); show(k); }} aria-label={`What is ${TIPS[k][0]}?`} style={{ font: "inherit", color: "inherit", padding: 0, background: "none" }}>{children}</button>;
@@ -1225,6 +1229,7 @@ function MiniBoard({ title, sub, rows, people }) {
 
 /* ───────────── GAME PANELS (live round) ───────────── */
 function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
+  const can = useContext(LiveCtx);
   const [open, setOpen] = useState(null);
   const [zoom, setZoom] = useState(null);
   const [hintK, setHintK] = useState(null);
@@ -1307,7 +1312,7 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
                   {s.vaults > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Vault held</span>}
                   {s.leak > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 11 }}>Leaking {s.leak}</span>}
                   {(() => { const ad = !banking && !heavy && !locked && bankAdvice(round, id, h, s); return ad ? <span className="cap" title="A rough guide, not a rule" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Tip k="risk">Bust risk next hole {Math.round(ad.risk * 100)}%</Tip><Tip k="advice"><span className="pill" style={{ background: ad.level === "bank" ? "var(--red)" : ad.level === "think" ? "var(--flag)" : "var(--mint)", color: ad.level === "bank" ? "#fff" : "var(--dk)", fontSize: 11 }}>{ad.level === "bank" ? "Bank it" : ad.level === "think" ? "Think about it" : "Hold"}</span></Tip>{ad.cardNext && ad.level !== "hold" ? <span className="cap">cards next</span> : null}</span> : null; })()}
-                  <button className={`chip ${banking ? "on" : ""}`} disabled={heavy || locked} aria-pressed={banking}
+                  <button className={`chip ${banking ? "on" : ""}`} disabled={heavy || locked || !can.bank(id)} aria-pressed={banking}
                     onClick={() => api.setBank(id, h, !round.bank[id][h])} style={{ marginLeft: "auto", padding: "2px 7px", fontSize: 12, opacity: heavy || locked ? 0.7 : 1 }}>
                     {heavy ? "Forced bank" : locked ? (banking ? "Banked. Locked" : "Bank locked") : banking ? "Banking after hole" : "Bank after hole"}
                   </button>
@@ -1507,7 +1512,7 @@ function HoldRow({ onHold, children, style, className }) {
   );
 }
 
-function Home({ people, round, recent, board, onStart, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
+function Home({ people, round, recent, board, onStart, onJoin, liveCode, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
@@ -1529,6 +1534,11 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
           </div>
         </button>
 
+        <button className="card" onClick={onJoin} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", textAlign: "left", width: "100%" }}>
+          <div><div style={{ fontWeight: 700 }}>Join a live round</div><div className="cap">A mate started the round? Enter their code.</div></div>
+          <ChevronRight size={18} />
+        </button>
+
         <button className="card" onClick={onRules} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", textAlign: "left", width: "100%" }}>
           <div><div style={{ fontWeight: 700 }}>How Puntaro works</div><div className="cap">Scoring, cards, bonuses and the prize pool.</div></div>
           <ChevronRight size={18} />
@@ -1536,7 +1546,7 @@ function Home({ people, round, recent, board, onStart, onResume, goFriends, dark
 
         {round && (
           <HoldRow className="card" onHold={() => askDelete("round")} style={{ padding: 12 }}>
-            <div className="cap" style={{ fontWeight: 600 }}>Round in progress</div>
+            <div className="cap" style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>Round in progress{liveCode && <span className="pill" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", fontSize: 10 }}>LIVE {liveCode}</span>}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
               <h3 style={{ fontSize: 15, fontWeight: 800 }}>{round.course.name}</h3>
               <span style={{ fontWeight: 700 }}>Hole {round.hole + 1} of 18</span>
@@ -1982,10 +1992,11 @@ function AboutSheet({ onClose, onReset }) {
         <p style={{ marginTop: 8 }}>A points-only side game that runs alongside your normal comp. Bank your points or bust and lose the pot.</p>
         <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
           <p><b>Working:</b> banking and busting, Blessings & Curses, bonuses and penalties, near the pin, prize pool maths, handicap strokes, course finder.</p>
-          <p><b>Demo only:</b> friends, stats and leaderboards are made-up people and numbers. Nothing syncs between devices yet.</p>
+          <p><b>Demo only:</b> friends, stats and leaderboards are made-up people and numbers.</p>
+          <p><b>Live rounds:</b> when you play live, the round (course, players' names and handicaps, scores and bank calls) is stored with Google Firebase so everyone in it can follow along. Anyone with the join code can see it.</p>
           <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia.</p>
           <p><b>Money:</b> the prize pool is a scoreboard only. {APP_NAME} never takes or moves money.</p>
-          <p><b>Saved on this device:</b> courses you add. Nothing is sent to a server.</p>
+          <p><b>Saved on this device:</b> courses you add and rounds you don't play live. Those are never sent to a server.</p>
         </div>
         <button className="chip" style={{ marginTop: 12, padding: "7px 0", textAlign: "center", width: "100%" }} onClick={onReset}>Reset demo (clears saved courses)</button>
       </div>
@@ -2001,6 +2012,9 @@ const EXTRA_INFO = {
 };
 function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onGo }) {
   const [course, setCourse] = useState(COURSES[0]);
+  const [liveOn, setLiveOn] = useState(false);
+  const [scoring, setScoring] = useState("each");
+  const [liveName, setLiveName] = useState(people.me.first || "");
   const [teeI, setTeeI] = useState(0);
   const [finding, setFinding] = useState(false);
   const [sel, setSel] = useState(["me", "sam", "priya", "jake"]);
@@ -2185,15 +2199,36 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
           )}
         </div>
 
+        <Label sub="Everyone follows the round on their own phone. They join with a code.">Play live</Label>
+        <div className="card" style={{ padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
+            <div><div style={{ fontWeight: 800, fontSize: 14 }}>Live round</div><div className="cap">{liveOn ? "You'll get a join code to share at the tee." : "Off. This round stays on this phone."}</div></div>
+            <Toggle on={liveOn} onChange={setLiveOn} />
+          </div>
+          {liveOn && (
+            <div style={{ marginTop: 11, borderTop: "1px solid var(--line)", paddingTop: 9 }}>
+              <div className="cap" style={{ fontWeight: 600 }}>Your name for the group</div>
+              <input aria-label="Your name for the group" placeholder="First name" maxLength={20} value={liveName} onChange={e => setLiveName(e.target.value)} style={{ ...inp, width: "100%", marginTop: 6, marginBottom: 11 }} />
+              <div className="cap" style={{ fontWeight: 600 }}>Who enters scores</div>
+              <div className="seg" style={{ marginTop: 6 }}>
+                <button className={`chip ${scoring === "each" ? "on" : ""}`} onClick={() => setScoring("each")}>Everyone scores</button>
+                <button className={`chip ${scoring === "one" ? "on" : ""}`} onClick={() => setScoring("one")}>One scorer</button>
+              </div>
+              <p className="cap" style={{ marginTop: 6 }}>{scoring === "each" ? "Each player enters their own score and makes their own bank calls. Anyone can fill in for a player whose phone is off." : "You enter every score and bank call. Everyone else watches live."}</p>
+            </div>
+          )}
+        </div>
+
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
-        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts })}>Tee off</button>
+        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts, live: liveOn ? { scoring, name: liveName.trim() } : null })}>{liveOn ? "Tee off live" : "Tee off"}</button>
       </div>
     </div>
   );
 }
 
-function Round({ round, people, api, onBack, onFinish, onRules }) {
+function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
+  const can = useContext(LiveCtx);
   const [gtab, setGtab] = useState(round.games[0] || null);
   const h = round.hole; const ids = round.playerIds;
   const pc = round.games.includes("punt") ? puntCalc(round) : null;
@@ -2234,6 +2269,7 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />{round.course.name}</button>
           <div style={{ display: "flex", gap: 6 }}>
+            {can.live && <button onClick={onLive} aria-label="Live round details" style={{ fontWeight: 700, background: "var(--red)", color: "#fff", padding: "5px 9px", display: "flex", alignItems: "center", gap: 5 }}><span className="blink" style={{ width: 7, height: 7, background: "#fff", display: "block" }} />LIVE</button>}
             <button onClick={onRules} style={{ fontWeight: 700, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 11px" }}>Rules</button>
             <button onClick={onFinish} style={{ fontWeight: 700, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 11px" }}>Finish</button>
           </div>
@@ -2274,6 +2310,8 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
         ))}
         </div>
         )}
+        {can.live && !can.score() && <p className="cap" role="status" style={{ textAlign: "center", padding: "2px 0" }}>{can.live.hostName} is keeping score. You're watching live.</p>}
+        <fieldset disabled={!can.score()} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "grid", gap: 6 }}>
         {ids.map(id => {
           const v = round.scores[id][h]; const st = round.useHcp ? strokesOn(round.hcp[id], h) : 0;
           const t = totalsFor(round, id); const n = netOf(round, id, h);
@@ -2286,6 +2324,7 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
                 <div className="cap">
                   {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
+                  {can.enteredBy && v != null && can.enteredBy(id, h) && <span>{` · by ${can.enteredBy(id, h)}`}</span>}
                 </div>
                 {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</Tip></span>}
                 {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 14 }}>BUST</span></div>}
@@ -2312,6 +2351,7 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
             </div>
           </div>
         )}
+        </fieldset>
       </div>
 
       <div style={{ position: "sticky", bottom: 0, marginTop: "auto", padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
@@ -2335,7 +2375,7 @@ function Round({ round, people, api, onBack, onFinish, onRules }) {
                     <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
                     {mult > 1 && <span className="pill" style={{ background: "var(--flag)", color: "var(--dk)" }}>x{mult} streak</span>}
                     <div style={{ minWidth: 54, textAlign: "right" }}><span style={{ fontWeight: 800, fontSize: 17 }}>{banking ? s.banked : potBefore}</span><span className="cap">{banking ? " banked" : " in pot"}</span></div>
-                    <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={potBefore === 0 && !banking} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
+                    <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={(potBefore === 0 && !banking) || !can.bank(id)} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
                       {banking ? "Banking" : potBefore === 0 ? "Empty" : "Bank it"}
                     </button>
                   </div>
@@ -2644,6 +2684,125 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout }) {
 }
 
 /* ───────────── APP ───────────── */
+/* ───────────── LIVE ROUND SHEETS ───────────── */
+const sheetWrap = { position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" };
+const sheetBox = { width: "100%", padding: 12, boxShadow: "none", maxHeight: "88vh", overflowY: "auto" };
+const firstOpenHole = d => { const ids = d.base.playerIds; for (let h = 0; h < 18; h++) if (!ids.every(id => d.s && d.s[id] && d.s[id][h] != null)) return h; return 17; };
+
+function JoinSheet({ initial, onClose, onJoined }) {
+  const [text, setText] = useState(initial || "");
+  const [found, setFound] = useState(null); // { code, doc, uid }
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const find = async () => {
+    const code = cleanCode(text);
+    if (!code) { setErr("Codes look like PUNT-7KQ4M."); return; }
+    setBusy(true); setErr("");
+    try {
+      const b = await backend();
+      const doc = await b.get(code);
+      if (!doc) setErr("No live round with that code. Check it with whoever started the round.");
+      else setFound({ code, doc, uid: b.uid });
+    } catch (e) { setErr("Couldn't reach live rounds. Check your connection and try again."); }
+    setBusy(false);
+  };
+  useEffect(() => { if (initial) find(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const pick = async pid => {
+    setBusy(true); setErr("");
+    try {
+      const b = await backend();
+      const pairs = [[["members", found.uid], true]];
+      if (pid) pairs.push([["claims", pid], found.uid]);
+      await b.update(found.code, pairs);
+      onJoined(found.code, pid, found.doc);
+    } catch (e) { setErr("Couldn't join. Try again."); setBusy(false); }
+  };
+  const d = found && found.doc;
+  return (
+    <div style={sheetWrap} onClick={onClose}>
+      <div className="sheet card" role="dialog" aria-label="Join a live round" onClick={e => e.stopPropagation()} style={sheetBox}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 className="h2">{d ? "Which one are you?" : "Join a live round"}</h2>
+          <button onClick={onClose} aria-label="Close"><X size={22} /></button>
+        </div>
+        {!d && (
+          <>
+            <p className="cap" style={{ marginTop: 4 }}>Ask whoever started the round for the code on their screen.</p>
+            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+              <input aria-label="Join code" placeholder="PUNT-7KQ4M" autoCapitalize="characters" autoCorrect="off" value={text} onChange={e => setText(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === "Enter") find(); }} style={{ ...inp, flex: 1, fontSize: 18, letterSpacing: 2 }} />
+              <button className="cta" style={{ width: "auto", padding: "8px 14px" }} disabled={busy} onClick={find}>{busy ? "…" : "Find"}</button>
+            </div>
+          </>
+        )}
+        {d && (
+          <>
+            <p className="cap" style={{ marginTop: 4 }}>{d.base.course.name} · {d.scoring === "one" ? `${d.people.me ? d.people.me.name : "The host"} is keeping score` : "Everyone enters their own score"}</p>
+            <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+              {d.base.playerIds.map(id => {
+                const by = d.claims && d.claims[id]; const taken = by && by !== found.uid;
+                return (
+                  <button key={id} className="chip" disabled={busy || taken} onClick={() => pick(id)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", textAlign: "left" }}>
+                    <Avatar p={{ id, ...d.people[id] }} size={28} />
+                    <span style={{ flex: 1 }}>{d.people[id].name}<span className="cap"> HCP {Number(d.people[id].hi).toFixed(1)}</span></span>
+                    <span className="cap">{taken ? "Joined" : by ? "That's you" : ""}</span>
+                  </button>
+                );
+              })}
+              <button className="chip" disabled={busy} onClick={() => pick(null)} style={{ padding: "7px 0", textAlign: "center" }}>I'm not playing, just watch</button>
+            </div>
+          </>
+        )}
+        {err && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, marginTop: 8 }}>{err}</p>}
+      </div>
+    </div>
+  );
+}
+
+function LiveSheet({ code, doc, uid, onClose, onScoring, onLeave }) {
+  const [copied, setCopied] = useState(false);
+  const host = doc && doc.host === uid;
+  const share = async () => {
+    const url = joinLink(code);
+    try { if (navigator.share) { await navigator.share({ title: "Join my Puntaro round", text: `Join my round with code ${code}`, url }); return; } } catch (e) { return; }
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch (e) { /* fine */ }
+  };
+  return (
+    <div style={sheetWrap} onClick={onClose}>
+      <div className="sheet card" role="dialog" aria-label="Live round" onClick={e => e.stopPropagation()} style={sheetBox}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 className="h2">Live round</h2>
+          <button onClick={onClose} aria-label="Close"><X size={22} /></button>
+        </div>
+        <p className="cap" style={{ marginTop: 4 }}>Mates open Puntaro, tap Join a live round, and enter this code.</p>
+        <div className="px" style={{ marginTop: 10, padding: "12px 0", textAlign: "center", fontSize: 30, letterSpacing: 3, background: "var(--chalk)", border: "3px solid var(--night)" }}>{code}</div>
+        <button className="cta" style={{ marginTop: 9 }} onClick={share}>{copied ? "Link copied" : "Share invite link"}</button>
+        {doc && (
+          <>
+            <div className="cap" style={{ fontWeight: 600, marginTop: 13 }}>Players</div>
+            <div style={{ marginTop: 4 }}>
+              {doc.base.playerIds.map((id, i) => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                  <Avatar p={{ id, ...doc.people[id] }} size={24} />
+                  <div style={{ flex: 1, fontWeight: 700 }}>{doc.people[id].name}</div>
+                  <span className="cap" style={{ color: doc.claims && doc.claims[id] ? "var(--fair)" : "var(--muted)", fontWeight: 600 }}>{doc.claims && doc.claims[id] ? (doc.claims[id] === uid ? "You" : "Joined") : "Not joined"}</span>
+                </div>
+              ))}
+            </div>
+            <div className="cap" style={{ fontWeight: 600, marginTop: 11 }}>Who enters scores</div>
+            {host ? (
+              <div className="seg" style={{ marginTop: 6 }}>
+                <button className={`chip ${doc.scoring === "each" ? "on" : ""}`} onClick={() => onScoring("each")}>Everyone scores</button>
+                <button className={`chip ${doc.scoring === "one" ? "on" : ""}`} onClick={() => onScoring("one")}>One scorer</button>
+              </div>
+            ) : <p style={{ marginTop: 3 }}>{doc.scoring === "one" ? `${doc.people.me ? doc.people.me.name : "The host"} keeps score.` : "Everyone enters their own score."}</p>}
+          </>
+        )}
+        <button className="chip" style={{ marginTop: 13, padding: "7px 0", textAlign: "center", width: "100%" }} onClick={onLeave}>Stop following live (keep a copy here)</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [people, setPeople] = useState(() => { const s = loadAppState(); return s && s.people ? { ...PEOPLE, ...Object.fromEntries(Object.entries(s.people).map(([k, v]) => [k, { ...(PEOPLE[k] || {}), ...v }])) } : PEOPLE; });
   const [dark, setDark] = useState(true);
@@ -2665,6 +2824,15 @@ export default function App() {
   const [saved, setSaved] = useState(loadSaved);
   const [splash, setSplash] = useState(true);
   const [about, setAbout] = useState(false);
+  /* live rounds: { code, myId } where myId is the player this phone claimed (null = watching) */
+  const [live, setLive] = useState(() => { const s = loadAppState(); return s && s.live && s.live.code ? s.live : null; });
+  const [liveDoc, setLiveDoc] = useState(null);
+  const [liveUid, setLiveUid] = useState(null);
+  const [liveErr, setLiveErr] = useState("");
+  const [liveSheet, setLiveSheet] = useState(false);
+  const [joinCode, setJoinCode] = useState(() => {
+    try { const q = new URLSearchParams(location.search).get("join"); if (q == null) return null; history.replaceState(null, "", location.pathname); return cleanCode(q) || ""; } catch (e) { return null; }
+  });
   const GUEST_COLORS = ["#9A7B3F", "#5E6E55", "#8B6B4A", "#6F7F73", "#A5543A"];
   const newPerson = ({ name, last, hi }, guest) => {
     const id = (guest ? "g" : "f") + Date.now() + Math.floor(Math.random() * 99);
@@ -2680,7 +2848,7 @@ export default function App() {
     setView("tabs"); setTab("home");
   };
   const [trash, setTrash] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.trash) ? s.trash.filter(x => Date.now() - x.at < TRASH_MS) : []; });
-  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds, history })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds, history]);
+  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds, history, live })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds, history, live]);
   const [now, setNow] = useState(Date.now());
   const armed = useRef(false);
   const ready = () => armed.current; // a click only counts after a fresh press on the sheet, so the finger lifting after a hold is ignored
@@ -2691,7 +2859,7 @@ export default function App() {
   }, [trash.length]);
   const confirmDelete = () => {
     const at = Date.now();
-    if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); setRound(null); }
+    if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); setRound(null); setLive(null); }
     else { const item = recent[del.i]; setTrash(t => [{ id: at, kind: "recent", item, idx: del.i, at }, ...t]); setRecent(r => r.filter((_, j) => j !== del.i)); }
     setNow(at); setDel(null);
   };
@@ -2703,26 +2871,66 @@ export default function App() {
     } else setRecent(r => { const n = r.slice(); n.splice(Math.min(x.idx, n.length), 0, x.item); return n; });
   };
 
+  // Follow the live round: every change on any phone arrives here and rebuilds the round.
+  useEffect(() => {
+    if (!live) { setLiveDoc(null); setLiveErr(""); return undefined; }
+    let off = () => {}; let dead = false;
+    backend().then(b => {
+      if (dead) return;
+      setLiveUid(b.uid);
+      off = b.watch(live.code, d => {
+        if (!d) return; // not created yet, or removed: keep the local copy
+        setLiveErr(""); setLiveDoc(d); applyHoles(d.base.holes || null);
+        setRound(prev => docToRound(d, { hole: prev ? prev.hole : firstOpenHole(d), seen: prev ? prev.seen : undefined }));
+      }, () => setLiveErr("Offline. Scores you enter are saved and will sync when you're back."));
+    }).catch(() => setLiveErr("Couldn't connect to live rounds. Scores are saved on this phone."));
+    return () => { dead = true; off(); };
+  }, [live && live.code]); // eslint-disable-line react-hooks/exhaustive-deps
+  const push = pairs => { if (!live) return; backend().then(b => b.update(live.code, pairs)).catch(() => setLiveErr("Offline. Scores you enter are saved and will sync when you're back.")); };
+  const nextEvent = (x, k) => ({ ...Object.fromEntries(Object.entries(x || {}).filter(([e]) => (x && x[k]) || !(CLASH[k] || []).includes(e))), [k]: !(x && x[k]) });
+  const startLive = (r, cfg) => {
+    const code = newCode();
+    backend().then(b => {
+      const name = cfg.live.name || people.me.first || "Host";
+      if (cfg.live.name && !people.me.first) setPeople(p => ({ ...p, me: { ...p.me, first: cfg.live.name } }));
+      b.create(code, roundToDoc(r, people, { code, uid: b.uid, scoring: cfg.live.scoring, myName: name })).catch(() => setLiveErr("Live round not saved online yet. It will sync when you're back."));
+      setLive({ code, myId: "me" }); setLiveSheet(true);
+    }).catch(() => setLiveErr("Couldn't start a live round. This round is on this phone only."));
+  };
+  const joined = (code, pid, d) => {
+    if (round && !live) { const at = Date.now(); setTrash(t => [{ id: at, kind: "round", item: round, at }, ...t]); }
+    applyHoles(d.base.holes || null);
+    setRound(docToRound(d, { hole: firstOpenHole(d) }));
+    setLiveDoc(d); setLive({ code, myId: pid }); setJoinCode(null); setView("round");
+  };
+  const leaveLive = () => { setLive(null); setLiveSheet(false); };
+
   const api = {
     celebrate,
-    setScore: (id, h, v) => setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })),
-    setBank: (id, h, v) => { if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } } return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })); },
-    setNtp: (h, id) => setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)) })),
-    setEvent: (id, h, k) => setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? { ...Object.fromEntries(Object.entries(x || {}).filter(([e]) => (x && x[k]) || !(CLASH[k] || []).includes(e))), [k]: !(x && x[k]) } : x)) } })),
-    setWolf: (h, v) => setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })),
-    setBbb: (h, k, id) => setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })),
+    setScore: (id, h, v) => { push([[["s", id, h], v], [["by", `${id}_${h}`], (live && live.myId) || "watch"]]); setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } })); },
+    setBank: (id, h, v) => { if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } } push([[["bk", id, h], v]]); return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } })); },
+    setNtp: (h, id) => { push([[["ntp", h], round.ntp[h] === id ? null : id]]); setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)) })); },
+    setEvent: (id, h, k) => { push([[["ev", id, h], nextEvent(round.events[id][h], k)]]); setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? nextEvent(x, k) : x)) } })); },
+    setWolf: (h, v) => { push([[["wolf", h], v]]); setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })); },
+    setBbb: (h, k, id) => { const x = round.bbb[h]; push([[["bbb", h], { ...(x || {}), [k]: x && x[k] === id ? null : id }]]); setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })); },
     markSeen: h => setRound(r => ({ ...r, seen: r.seen.map((x, i) => (i === h ? true : x)) })),
-    setHole: h => setRound(r => {
+    setHole: h => {
+      // The first phone to reach a card hole deals the cards; everyone else adopts them.
+      if (live && round.opts.cards && cardHole(h) && !round.draws[h]) { const d = drawCards(round, h, mulberry32(round.drawSeed + h * 977)); backend().then(b => b.setIfAbsent(live.code, ["draws", h], d)).catch(() => {}); }
+      setRound(r => {
       let draws = r.draws;
       if (r.opts.cards && cardHole(h) && !draws[h]) { draws = draws.slice(); draws[h] = drawCards(r, h, mulberry32(r.drawSeed + h * 977)); }
       return { ...r, hole: h, draws };
-    }),
+      });
+    },
   };
 
   const board = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: (statsFor(history, id, "month") || {}).pts })).filter(r => r.v != null).sort((a, b) => b.v - a.v);
 
   const save = () => {
-    const t = totalsFor(round, "me");
+    const myId = live ? live.myId : "me";
+    if (live && !myId) { setLive(null); setRound(null); setView("tabs"); setTab("home"); return; }
+    const t = totalsFor(round, myId);
     setRecent(r => [{ course: round.course.name, when: "Today", gross: t.gross, net: round.useHcp ? t.net : t.gross, note: "Puntaro round" }, ...r]);
     try {
       const pc = puntCalc(round); const ids = round.playerIds;
@@ -2731,15 +2939,24 @@ export default function App() {
       if (team) { const best = Math.max(...team.map(x => x.total)); const w = team.filter(x => x.total === best); if (w.length === 1) winners = ids.filter(id => round.teams[id] === w[0].k); }
       else { const best = Math.max(...ids.map(id => pc[id].total)); winners = ids.filter(id => pc[id].total === best); }
       const players = {};
-      ids.forEach(id => { players[id] = { pts: pc[id].total, ntp: round.opts.ntp ? round.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0, win: winners.includes(id) }; });
+      // A joined phone only knows the host's player ids, so it keeps just its own result (as "me").
+      (live && myId !== "me" ? [myId] : ids).forEach(id => { players[live && myId !== "me" ? "me" : id] = { pts: pc[id].total, ntp: round.opts.ntp ? round.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0, win: winners.includes(id) }; });
       setHistory(hs => [...hs, { at: Date.now(), course: round.course.name, players }]);
     } catch (e) { /* stats are a bonus; never block saving */ }
-    setRound(null); setView("tabs"); setTab("home");
+    setLive(null); setRound(null); setView("tabs"); setTab("home");
   };
 
   const tabs = [["home", "Home", HomeIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon]];
 
+  const roundPeople = live && liveDoc ? { ...people, ...Object.fromEntries(Object.entries(liveDoc.people).map(([k, v]) => [k, { id: k, ...v }])) } : people;
+  const can = live && liveDoc ? {
+    ...rights(liveDoc, liveUid),
+    live: { code: live.code, hostName: liveDoc.people.me ? liveDoc.people.me.name : "The host" },
+    enteredBy: (id, h) => { const by = liveDoc.by && liveDoc.by[`${id}_${h}`]; return by && by !== id ? (by === "watch" ? "a watcher" : (liveDoc.people[by] || {}).name || "someone") : null; },
+  } : live ? { score: () => true, bank: () => true, host: true, live: { code: live.code, hostName: "The host" } } : { score: () => true, bank: () => true, host: true, live: null };
+
   return (
+    <LiveCtx.Provider value={can}>
     <TipCtx.Provider value={setTipK}>
     <div className={`sg${dark ? " dark" : ""}`} onClickCapture={e => { if (e.target.closest && e.target.closest("button")) setTimeout(() => { if (SFX.sinceSpecial() > 60) SFX.tap(); }, 0); }}>
       <style>{CSS}</style>
@@ -2747,6 +2964,9 @@ export default function App() {
       <TipSheet k={tipK} onClose={() => setTipK(null)} />
       {splash && <Splash onDone={() => setSplash(false)} />}
       {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
+      {joinCode != null && !splash && <JoinSheet initial={joinCode} onClose={() => setJoinCode(null)} onJoined={joined} />}
+      {liveSheet && live && <LiveSheet code={live.code} doc={liveDoc} uid={liveUid} onClose={() => setLiveSheet(false)} onScoring={v => push([[["scoring"], v]])} onLeave={leaveLive} />}
+      {liveErr && view === "round" && <div role="status" style={{ position: "fixed", left: 0, right: 0, bottom: 74, maxWidth: 430, margin: "0 auto", zIndex: 25, padding: "0 12px", pointerEvents: "none" }}><div className="cap" style={{ background: "var(--dk)", color: "#EDE8DD", padding: "6px 9px", border: "2px solid var(--night)" }}>{liveErr}</div></div>}
       {del && (
         <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onPointerDown={() => { armed.current = true; }} onClick={() => ready() && setDel(null)}>
           <div className="sheet card" role="dialog" aria-label="Delete round" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
@@ -2759,14 +2979,14 @@ export default function App() {
           </div>
         </div>
       )}
-      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); setRound(buildRound(cfg, people, false)); setView("round"); }} />}
-      {view === "round" && round && <Round round={round} people={people} api={api} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => setView("summary")} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
+      {view === "round" && round && <Round round={round} people={roundPeople} api={api} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => setView("summary")} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
-      {view === "summary" && round && <Summary round={round} people={people} onSave={save} onBack={() => setView("round")} />}
+      {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} />}
       {view === "tabs" && (
         <>
           <div style={{ flex: 1 }}>
-            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => setView("setup")} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => setView("setup")} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
             {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
           </div>
@@ -2781,5 +3001,6 @@ export default function App() {
       )}
     </div>
     </TipCtx.Provider>
+    </LiveCtx.Provider>
   );
 }

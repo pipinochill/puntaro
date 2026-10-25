@@ -1,0 +1,31 @@
+rules_version = '2';
+// Puntaro live rounds. One document per round: rounds/{PUNT-XXXXX}.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rounds/{code} {
+      function signedIn() { return request.auth != null; }
+      function isHost() { return resource.data.host == request.auth.uid; }
+      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+      // Nobody can change who hosts the round, its code, or its setup (course, players, games, stakes).
+      function keepsSetup() {
+        return request.resource.data.host == resource.data.host
+          && request.resource.data.code == resource.data.code
+          && request.resource.data.base == resource.data.base;
+      }
+      function playKeys() { return ['s', 'bk', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'by', 'ed', 'members', 'claims', 'updatedAt']; }
+
+      // Anyone signed in who knows the code can follow the round.
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && code.matches('PUNT-[A-Z0-9]{5}')
+        && request.resource.data.host == request.auth.uid
+        && request.resource.data.scoring in ['each', 'one'];
+      allow update: if signedIn() && keepsSetup() && (
+        isHost()                                                        // host can do anything, incl. switching scoring mode
+        || (resource.data.scoring == 'each' && changed().hasOnly(playKeys())) // everyone scores
+        || changed().hasOnly(['members', 'claims', 'updatedAt'])       // joining works in either mode
+      );
+      allow delete: if signedIn() && isHost();
+    }
+  }
+}
