@@ -42,7 +42,6 @@ export function roundToDoc(r, people, { code, uid, scoring, myName }) {
   }));
   return {
     v: 1, code, host: uid, scoring, createdAt: Date.now(),
-    expireAt: new Date(Date.now() + 30 * 864e5), // a Firestore TTL policy on this field deletes old rounds
     base, people: ppl,
     claims: { me: uid }, members: { [uid]: true }, at: {},
     s: perPlayer(r, "scores"), bk: {}, ev: perPlayer(r, "events"),
@@ -66,6 +65,7 @@ export function docToRound(d, local = {}) {
 // Holes below this number are revealed: every joined player has moved past them.
 export function revealUpTo(d) {
   if (!d) return 0;
+  if (d.done) return 18; // a finished round has no secrets left
   const ids = d.base.playerIds.filter(id => d.claims && d.claims[id]);
   if (!ids.length) return 0;
   return Math.min(...ids.map(id => (d.at && d.at[id]) || 0));
@@ -86,6 +86,7 @@ export function rights(meta, uid, mine = {}) {
   if (!meta) return { score: () => true, bank: () => true, hidden: () => false, host: true };
   const host = meta.host === uid;
   const claims = meta.claims || {}; const at = meta.at || {};
+  if (meta.done) return { score: () => false, bank: () => false, hidden: () => false, host, scoring: meta.scoring, done: true };
   if (meta.scoring === "one") return { score: () => host, bank: () => host, hidden: () => false, host, scoring: "one" };
   const up = revealUpTo(meta);
   const own = id => claims[id] === uid;
@@ -104,12 +105,18 @@ export function rights(meta, uid, mine = {}) {
 /* ---------- plain-words reasons for setup problems ---------- */
 export function explain(e) {
   const c = (e && (e.code || e.name)) || ""; const m = (e && e.message) || "";
-  if (/admin-restricted-operation|operation-not-allowed/.test(c)) return "Live rounds aren't switched on yet: turn on Anonymous sign-in in the Firebase console (Authentication, Sign-in method).";
+  if (/signed-out/.test(c)) return "You're signed out. Sign in again to play live.";
+  if (/admin-restricted-operation|operation-not-allowed/.test(c)) return "That sign-in method isn't switched on yet in the Firebase console (Authentication, Sign-in method).";
   if (/unauthorized-domain/.test(c)) return "This site isn't allowed yet: add pipinochill.github.io under Firebase Authentication, Settings, Authorized domains.";
-  if (/permission-denied/.test(c)) return "Firebase turned the round down. Publish the latest firestore.rules in the Firebase console (Firestore, Rules).";
+  if (/permission-denied/.test(c)) return "Firebase said no. Publish the latest firestore.rules in the Firebase console (Firestore, Rules).";
   if (/not-found|failed-precondition/.test(c) || /does not exist/.test(m)) return "The live rounds database isn't set up yet: create the Firestore database in the Firebase console.";
   if (/network|unavailable|Failed to fetch|dynamically imported/i.test(c + m)) return "Couldn't reach live rounds. Check your connection and try again.";
-  return "Couldn't start a live round" + (c ? ` (${c})` : "") + ".";
+  if (/popup-closed-by-user|cancelled-popup-request/.test(c)) return "Sign-in was cancelled.";
+  if (/popup-blocked/.test(c)) return "Your browser blocked the Google sign-in window. Allow pop-ups for this site, or use the email link.";
+  if (/invalid-action-code|expired-action-code/.test(c)) return "That sign-in link has expired or was already used. Send yourself a new one.";
+  if (/invalid-email/.test(c)) return "That email address doesn't look right.";
+  if (/requires-recent-login/.test(c)) return "For your security, sign in again and then delete your account.";
+  return "Something went wrong" + (c ? ` (${c})` : "") + ".";
 }
 
 /* ---------- backends ---------- */
@@ -120,6 +127,7 @@ export function backend() {
   if (!backendP) backendP = firebaseBackend().catch(e => { backendP = null; throw e; });
   return backendP;
 }
+export const EMAIL_KEY = "puntaro.signinEmail"; // only kept between sending a sign-in link and opening it
 
 async function firebaseBackend() {
   const load = u => import(/* @vite-ignore */ u);
@@ -127,37 +135,66 @@ async function firebaseBackend() {
   const app = initializeApp(FIREBASE_CONFIG);
   const auth = A.getAuth(app);
   let db;
+  // A temporary offline copy so scoring works without signal. Cleared on sign-out.
   try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }), ignoreUndefinedProperties: true }); }
   catch (e) { db = F.getFirestore(app); }
-  const uid = await new Promise((res, rej) => {
-    const off = A.onAuthStateChanged(auth, u => { if (u) { off(); res(u.uid); } });
-    A.signInAnonymously(auth).catch(err => { off(); rej(err); });
-  });
+  const me = () => { const u = auth.currentUser; if (!u) throw Object.assign(new Error("signed out"), { code: "signed-out" }); return u.uid; };
   const ref = code => F.doc(db, "rounds", code);
   const fp = path => new F.FieldPath(...path.map(String));
   const val = v => (v && v.__delete ? F.deleteField() : v);
   const bankRef = (code, id, h) => F.doc(db, "rounds", code, "banks", `${id}_${h}`);
+  const userRef = p => (p ? F.doc(db, "users", me(), ...p.split("/")) : F.doc(db, "users", me()));
+  const userCol = p => F.collection(db, "users", me(), ...p.split("/"));
   return {
-    uid,
-    create: (code, data) => F.setDoc(ref(code), { ...data, updatedAt: F.serverTimestamp() }),
+    get uid() { return auth.currentUser ? auth.currentUser.uid : null; },
+
+    /* accounts */
+    watchAuth: cb => A.onAuthStateChanged(auth, u => cb(u ? { uid: u.uid, email: u.email || "", name: u.displayName || "" } : null)),
+    signInGoogle: () => A.signInWithPopup(auth, new A.GoogleAuthProvider()),
+    sendEmailLink: async email => {
+      await A.sendSignInLinkToEmail(auth, email, { url: location.origin + location.pathname, handleCodeInApp: true });
+      try { localStorage.setItem(EMAIL_KEY, email); } catch (e) { /* fine */ }
+    },
+    isEmailLink: url => A.isSignInWithEmailLink(auth, url),
+    finishEmailLink: async (email, url) => { await A.signInWithEmailLink(auth, email, url); try { localStorage.removeItem(EMAIL_KEY); } catch (e) { /* fine */ } },
+    // Sign out and wipe the offline copy, so nothing of yours stays on the phone.
+    signOut: async () => { await A.signOut(auth); try { await F.terminate(db); await F.clearIndexedDbPersistence(db); } catch (e) { /* fine */ } },
+    deleteLogin: () => A.deleteUser(auth.currentUser),
+
+    /* your own data: users/{uid}/... */
+    getMine: async p => { const s = await F.getDoc(userRef(p)); return s.exists() ? s.data() : null; },
+    setMine: (p, data, merge = true) => F.setDoc(userRef(p), data, { merge }),
+    deleteMine: p => F.deleteDoc(userRef(p)),
+    watchMine: (p, cb, onErr) => F.onSnapshot(userCol(p), q => cb(q.docs.map(d => ({ id: d.id, ...d.data() }))), onErr),
+    listMine: async p => (await F.getDocs(userCol(p))).docs.map(d => d.id),
+
+    /* live rounds */
+    create: (code, data) => F.setDoc(ref(code), { ...data, updatedAt: F.serverTimestamp(), hostAt: F.serverTimestamp() }),
     get: async code => { const s = await F.getDoc(ref(code)); return s.exists() ? s.data() : null; },
-    update: (code, pairs) => {
+    // host: true when the host's phone is writing; it stamps hostAt, the clock behind the 6-hour fallback.
+    update: (code, pairs, host = false) => {
       const args = []; pairs.forEach(([p, v]) => args.push(fp(p), val(v))); args.push(fp(["updatedAt"]), F.serverTimestamp());
+      if (host) args.push(fp(["hostAt"]), F.serverTimestamp());
       return F.updateDoc(ref(code), ...args);
     },
-    setIfAbsent: (code, path, value, extra = []) => F.runTransaction(db, async tx => {
+    setIfAbsent: (code, path, value, extra = [], host = false) => F.runTransaction(db, async tx => {
       const s = await tx.get(ref(code)); if (!s.exists()) return;
       let cur = s.data(); for (const k of path) cur = cur == null ? undefined : cur[String(k)];
-      if (cur == null) { const args = [fp(path), value]; extra.forEach(([p, v]) => args.push(fp(p), val(v))); args.push(fp(["updatedAt"]), F.serverTimestamp()); tx.update(ref(code), ...args); }
+      if (cur == null) {
+        const args = [fp(path), value]; extra.forEach(([p, v]) => args.push(fp(p), val(v))); args.push(fp(["updatedAt"]), F.serverTimestamp());
+        if (host) args.push(fp(["hostAt"]), F.serverTimestamp());
+        tx.update(ref(code), ...args);
+      }
     }),
-    // Host only: remove a finished round. Bank calls go first, because their rules check the round.
-    endRound: async (code, ids) => {
-      await Promise.all(ids.flatMap(id => Array.from({ length: 18 }, (_, h) => F.deleteDoc(bankRef(code, id, h)).catch(() => {}))));
-      await F.deleteDoc(ref(code));
-    },
-    putBank: (code, id, h, v) => F.setDoc(bankRef(code, id, h), { pid: id, h, v, uid }),
+    // Finish a live round for everyone: it becomes read-only and every player's account records it.
+    finish: (code, host = false) => F.updateDoc(ref(code), "done", true, "doneBy", me(), "updatedAt", F.serverTimestamp(), ...(host ? ["hostAt", F.serverTimestamp()] : [])),
+    putBank: (code, id, h, v) => F.setDoc(bankRef(code, id, h), { pid: id, h, v, uid: me() }),
     // true / false = the call; null = no call made. Throws if it's still secret.
     getBank: async (code, id, h) => { const s = await F.getDoc(bankRef(code, id, h)); return s.exists() ? !!s.data().v : null; },
-    watch: (code, cb, onErr) => F.onSnapshot(ref(code), s => cb(s.exists() ? s.data() : null), onErr),
+    watch: (code, cb, onErr) => F.onSnapshot(ref(code), s => {
+      if (!s.exists()) { cb(null); return; }
+      const d = s.data(); const ms = t => (t && t.toMillis ? t.toMillis() : t);
+      cb({ ...d, updatedAt: ms(d.updatedAt), hostAt: ms(d.hostAt) });
+    }, onErr),
   };
 }

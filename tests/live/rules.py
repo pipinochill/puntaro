@@ -18,9 +18,13 @@ def moved_on(r, i, h):
     return (r.get('at') or {}).get(pid, 0) > h
 
 def revealed(r, h):
-    return all(moved_on(r, i, h) for i in range(8))
+    return r.get('done') is True or all(moved_on(r, i, h) for i in range(8))
 
-def can_create(code, data, uid):
+SIX_HOURS = 6 * 3600 * 1000
+
+def can_create(code, data, uid, now=None):
+    if now is not None and (data.get('updatedAt') != now or data.get('hostAt') != now): return False
+    if data.get('done'): return False
     return (re.fullmatch(r'PUNT-[A-Z0-9]{5}', code) is not None and data.get('code') == code and data.get('host') == uid
             and data.get('scoring') in ('each', 'one') and data.get('claims') == {'me': uid}
             and set(data.get('members', {}).keys()) <= {uid} and data.get('members', {}).get(uid) is True
@@ -29,14 +33,21 @@ def can_create(code, data, uid):
 JOIN = {'members', 'claims', 'who', 'updatedAt'}
 WATCH = {'members', 'claims', 'at', 'who', 'updatedAt'}
 PLAY = {'s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt'}
-HOST = PLAY | {'bk', 'scoring'}
+HOST = PLAY | {'bk', 'scoring', 'hostAt'}
 
-def can_update(before, after, uid):
+def can_update(before, after, uid, now=None):
     ch = affected(after, before)
     is_host = before['host'] == uid
     is_member = (before.get('members') or {}).get(uid) is True
     keeps = all(after.get(k) == before.get(k) for k in ('host', 'code', 'base', 'people'))
     if not keeps: return False, 'setup changed'
+    if now is not None and after.get('updatedAt') != now: return False, 'clock'
+    if now is not None and (after.get('hostAt') != now if is_host else after.get('hostAt') != before.get('hostAt')): return False, 'host clock'
+    if before.get('done') is True: return False, 'finished'
+    if 'done' in ch or 'doneBy' in ch:
+        ok = (ch <= {'done', 'doneBy', 'updatedAt', 'hostAt'} and after.get('done') is True and after.get('doneBy') == uid
+              and (is_host or (is_member and now is not None and now > (before.get('hostAt') or 0) + SIX_HOURS)))
+        return (True, '') if ok else (False, 'finish')
     if not (is_member or ch <= JOIN): return False, 'not a member'
     allowed = HOST if is_host else PLAY if before['scoring'] == 'each' else WATCH
     if not ch <= allowed: return False, f'keys not allowed: {sorted(ch - allowed)}'
@@ -72,14 +83,18 @@ def bank_write(r, key, data, uid):
     if set(data.keys()) - {'pid', 'h', 'v', 'uid'}: return False
     if data.get('pid') != pid or data.get('h') != h or not (0 <= h < 18): return False
     if not isinstance(data.get('v'), bool) or data.get('uid') != uid: return False
-    if r['scoring'] != 'each' or pid not in r['base']['playerIds']: return False
+    if r['scoring'] != 'each' or r.get('done') is True or pid not in r['base']['playerIds']: return False
     if (r.get('members') or {}).get(uid) is not True: return False
     c = (r.get('claims') or {}).get(pid)
     if c == uid: return (r.get('at') or {}).get(pid, 0) <= h
     return c is None and not revealed(r, h)
 
 def bank_delete(r, uid):
-    return r is not None and r.get('host') == uid
+    return False
 
 def round_delete(r, uid):
-    return r is not None and r.get('host') == uid
+    return False
+
+def user_doc(path_uid, uid):
+    """users/{uid}/** : yours alone."""
+    return uid is not None and path_uid == uid

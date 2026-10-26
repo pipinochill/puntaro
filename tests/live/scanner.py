@@ -6,54 +6,41 @@ import cv2, numpy as np
 from playwright.async_api import async_playwright
 HERE = sys.argv[3]; sys.path.insert(0, HERE); import rules
 SRC, OUT = sys.argv[1], sys.argv[2]; res = []
-def check(n, ok, d=''): res.append(ok); print(('PASS ' if ok else 'FAIL ') + n + (f'  [{d}]' if d and not ok else ''))
-DB = {}; FAIL_CREATE = {}
-def setp(d, path, v):
-    for k in path[:-1]: d = d.setdefault(str(k), {})
-    d[str(path[-1])] = v
-INIT = """(()=>{let uid=localStorage.getItem('fake.uid');if(!uid){uid='u'+Math.random().toString(36).slice(2,8);localStorage.setItem('fake.uid',uid)}
-const call=async(f,...a)=>{const r=JSON.parse(await window[f](uid,...a.map(x=>JSON.stringify(x))));if(r.err){const e=new Error(r.err);e.code=r.err;throw e}return r.v};
-window.__puntaroLiveBackend={uid,create:(c,d)=>call('__c',c,d),get:c=>call('__g',c),update:(c,p)=>call('__u',c,p),setIfAbsent:async()=>{},putBank:async()=>{},getBank:async()=>null,
-watch:(c,cb)=>{let l=null,a=true;const t=async()=>{if(!a)return;const r=await call('__g',c);const s=JSON.stringify(r);if(s!==l){l=s;cb(r)}setTimeout(t,150)};t();return()=>{a=false}}};
-const g=navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+def check(n, ok, d=''): ok = bool(ok); res.append(ok); print(('PASS ' if ok else 'FAIL ') + n + (f'  [{d}]' if d and not ok else ''))
+import fakecloud as fc
+cloud = fc.Cloud(rules)
+NAMES = iter(['u_host', 'u_sam', 'u_other', 'u_iphone', 'u_blocked'])
+for u in ['u_host', 'u_sam', 'u_other', 'u_iphone', 'u_blocked']: cloud.seed(u, fc.profile(u.split('_')[1].title()))
+class _Rounds:
+    def __getitem__(self, code): return cloud.docs[f'rounds/{code}']
+    def __iter__(self): return iter([k.split('/')[1] for k in cloud.docs if k.startswith('rounds/') and k.count('/') == 1])
+    def __bool__(self): return any(True for _ in self)
+DB = _Rounds()
+class _Fail(dict):
+    def __setitem__(self, k, v): cloud.fail_create = v
+    def clear(self): cloud.fail_create = None
+FAIL_CREATE = _Fail()
+# Camera hooks: remember the stream so tests can check the camera switches off.
+CAM = """(()=>{const g=navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
 if(g)navigator.mediaDevices.getUserMedia=async c=>{const s=await g(c);window.__lastStream=s;return s};})();"""
-# Stand-in for the phone's built-in QR reader: hand the real camera frame to OpenCV.
 DETECTOR = """window.BarcodeDetector=class{static async getSupportedFormats(){return['qr_code']}
 async detect(v){if(!v.videoWidth)return[];const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
 c.getContext('2d').drawImage(v,0,0);window.__frames=(window.__frames||0)+1;const t=await window.__cv(c.toDataURL('image/png'));return t?[{rawValue:t}]:[]}};"""
 NO_DETECTOR = "delete window.BarcodeDetector;"
 
 async def phone(b, extra='', perms=True):
-    ctx = await b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=1.5, service_workers='block',
-                              permissions=['camera'] if perms else [])
-    await ctx.add_init_script(INIT + extra)
-    async def c(uid, code, d):
-        code = json.loads(code)
-        if FAIL_CREATE.get('code'): return json.dumps({'err': FAIL_CREATE['code']})
-        DB[code] = json.loads(d); return json.dumps({'v': None})
-    async def g(uid, code): return json.dumps({'v': DB.get(json.loads(code))})
-    async def u(uid, code, p):
-        code = json.loads(code); after = copy.deepcopy(DB[code])
-        for path, v in json.loads(p): setp(after, path, v)
-        ok, why = rules.can_update(DB[code], after, uid)
-        if not ok: return json.dumps({'err': 'permission-denied'})
-        DB[code] = after; return json.dumps({'v': None})
+    pg = await cloud.phone(b, next(NAMES), extra_init=CAM + extra, permissions=['camera'] if perms else [])
     async def cv(url):
         img = cv2.imdecode(np.frombuffer(base64.b64decode(url.split(',')[1]), np.uint8), cv2.IMREAD_GRAYSCALE)
         for d in (cv2.QRCodeDetector(), cv2.QRCodeDetectorAruco()):
             t = d.detectAndDecode(img)[0]
             if t: return t
         return None
-    for n, f in (('__c', c), ('__g', g), ('__u', u), ('__cv', cv)): await ctx.expose_function(n, f)
-    pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
-    return ctx, pg, errs
+    await pg.context.expose_function('__cv', cv)
+    return None, pg, pg.errs
 
 async def open_app(pg, q=''):
-    await pg.wait_for_timeout(1000)  # let storage finish saving, as it would before a person reopens the app
-    await pg.goto((SRC if SRC.startswith('http') else 'file://' + SRC) + q); await pg.wait_for_timeout(700)
-    for _ in range(3):
-        if await pg.locator('.splash').count(): await pg.locator('.splash').dispatch_event('pointerdown'); await pg.wait_for_timeout(400)
-    await pg.wait_for_timeout(300)
+    await fc.open_app(pg, SRC, q)
 
 def make_video(text, name):
     subprocess.run(['node', f'{HERE}/cam/mkvideo.mjs', text, f'{HERE}/cam/{name}.json'], check=True)
@@ -86,7 +73,7 @@ async def main():
         FAIL_CREATE['code'] = 'auth/admin-restricted-operation'
         await start_live(H); await H.wait_for_timeout(800)
         txt = await H.get_by_role('dialog', name='Live round').inner_text()
-        check('Anonymous sign-in switched off is explained', 'Anonymous sign-in' in txt, txt[:120])
+        check('A sign-in method switched off in Firebase is explained', "sign-in method isn't switched on" in txt, txt[:160])
         await H.get_by_role('button', name='OK', exact=True).click()
         await open_app(H)
         FAIL_CREATE.clear()

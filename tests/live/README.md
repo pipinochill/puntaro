@@ -1,17 +1,18 @@
-# Live round tests
+# Tests
 
-Each suite drives simulated phones in headless Chromium against a stand-in database that enforces
-`rules.py`, a line-for-line Python copy of `firestore.rules`, and attacks it directly the way someone
-with developer tools could. Keep `rules.py` in step with `firestore.rules` whenever the rules change.
+Each suite drives simulated phones in headless Chromium against `fakecloud.py`, a stand-in for Firebase
+(accounts, each account's private data, live rounds and secret bank calls). Every read and write is checked
+against `rules.py`, a line-for-line Python copy of `firestore.rules`, and the suites attack it directly the way
+someone with developer tools could. Keep `rules.py` in step with `firestore.rules` whenever the rules change.
 
-Serve the app over http, not file://. Headless Chromium sometimes starts a file:// page with empty
-localStorage after a reload, which looks like lost data but is a browser quirk.
+Serve the app over http, not file:// (headless Chromium sometimes starts a file:// page with empty storage).
 
     pip install playwright opencv-python && python -m playwright install chromium
     python -m http.server 8777 --bind 127.0.0.1 &
-    APP=http://127.0.0.1:8777/index.html
-    python tests/live/secret_banks.py $APP /tmp tests/live   # secret bank calls, 42 checks incl. 25 attacks
-    python tests/live/parked.py       $APP /tmp tests/live   # round-in-progress warning, paused rounds
-    python tests/live/scanner.py      $APP /tmp "$PWD/tests/live"  # live start-up, scan to join (fake camera)
-    python tests/live/edited.py       $APP /tmp tests/live   # "edited" marks, what goes online
-    python tests/live/cleanup.py      $APP /tmp tests/live   # host removes finished live rounds
+    APP=http://127.0.0.1:8777/index.html; T="$PWD/tests/live"
+    python $T/accounts.py     $APP /tmp $T   # sign-in, setup, importing phone data, cloud storage, scoresheets, sign out, delete (41)
+    python $T/finished.py     $APP /tmp $T   # finished live rounds: lock, recorded for every player, 6-hour fallback (23)
+    python $T/secret_banks.py $APP /tmp $T   # secret bank calls and cheating attempts (42)
+    python $T/parked.py       $APP /tmp $T   # round-in-progress warning, paused rounds (15)
+    python $T/scanner.py      $APP /tmp $T   # live start-up and scan to join with a fake camera (14)
+    python $T/edited.py       $APP /tmp $T   # "edited" marks, what goes online (8)

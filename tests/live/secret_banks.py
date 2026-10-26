@@ -6,70 +6,30 @@ from playwright.async_api import async_playwright
 sys.path.insert(0, sys.argv[3]); import rules
 
 SRC, OUT = sys.argv[1], sys.argv[2]
-DB, BANKS, LOG = {}, {}, []
+import fakecloud as fc
+cloud = fc.Cloud(rules)
+UIDS = {'Pierre': 'u_pierre', 'Sam': 'u_sam', 'Priya': 'u_priya', 'Stranger': 'u_stranger'}
+for n, u in UIDS.items(): cloud.seed(u, fc.profile(n))
+class _Rounds:  # DB[code] -> the live round in the stand-in cloud
+    def __getitem__(self, code): return cloud.docs[f'rounds/{code}']
+    def __contains__(self, code): return f'rounds/{code}' in cloud.docs
+    def __iter__(self): return iter([k.split('/')[1] for k in cloud.docs if k.startswith('rounds/') and k.count('/') == 1])
+    def get(self, code, default=None): return cloud.docs.get(f'rounds/{code}', default)
+class _Banks:
+    def __getitem__(self, code): return cloud.banks(code)
+DB, BANKS = _Rounds(), _Banks()
 results = []
 
 def check(name, ok, detail=''):
-    results.append((name, ok)); print(('PASS ' if ok else 'FAIL ') + name + (f'  [{detail}]' if detail and not ok else ''))
-
-def setp(d, path, v):
-    for k in path[:-1]: d = d.setdefault(str(k), {})
-    if isinstance(v, dict) and v.get('__delete'): d.pop(str(path[-1]), None)
-    else: d[str(path[-1])] = v
-
-INIT = """
-(()=>{let uid=localStorage.getItem('fake.uid');if(!uid){uid='u'+Math.random().toString(36).slice(2,8);localStorage.setItem('fake.uid',uid)}
-const call=async(f,...a)=>{const r=JSON.parse(await window[f](uid,...a.map(x=>JSON.stringify(x))));if(r.err){const e=new Error(r.err);e.code='permission-denied';throw e}return r.v};
-window.__puntaroLiveBackend={uid,
- create:(c,d)=>call('__fb_create',c,d), get:c=>call('__fb_get',c), update:(c,p)=>call('__fb_update',c,p),
- setIfAbsent:(c,p,v,e)=>call('__fb_sia',c,p,v,e||[]), putBank:(c,id,h,v)=>call('__fb_put',c,id,h,v), getBank:(c,id,h)=>call('__fb_getbank',c,id,h),
- watch:(c,cb)=>{let last=null,alive=true;const t=async()=>{if(!alive)return;try{const r=await call('__fb_get',c);const s=JSON.stringify(r);if(s!==last){last=s;cb(r)}}catch(e){}setTimeout(t,150)};t();return()=>{alive=false}}};})();
-"""
-
-def ok(v=None): return json.dumps({'v': v})
-def deny(why): LOG.append(why); return json.dumps({'err': 'permission-denied: ' + why})
+    ok = bool(ok); results.append((name, ok)); print(('PASS ' if ok else 'FAIL ') + name + (f'  [{detail}]' if detail and not ok else ''))
 
 async def phone(b, name):
-    ctx = await b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=1.5, service_workers='block')
-    await ctx.add_init_script(INIT)
-    async def create(uid, c, d):
-        c, d = json.loads(c), json.loads(d)
-        if c in DB: return deny('exists')
-        if not rules.can_create(c, d, uid): return deny('create')
-        DB[c] = d; BANKS[c] = {}; return ok()
-    async def get(uid, c): return ok(DB.get(json.loads(c)))
-    async def update(uid, c, p):
-        c, p = json.loads(c), json.loads(p)
-        before = DB[c]; after = copy.deepcopy(before)
-        for path, v in p: setp(after, path, v)
-        allowed, why = rules.can_update(before, after, uid)
-        if not allowed: return deny('update ' + why)
-        DB[c] = after; return ok()
-    async def sia(uid, c, p, v, e):
-        c, p, v, e = json.loads(c), json.loads(p), json.loads(v), json.loads(e)
-        d = DB[c]
-        for k in p:
-            d = d.get(str(k)) if isinstance(d, dict) else None
-        if d is not None: return ok()
-        return await update(uid, json.dumps(c), json.dumps([[p, v]] + e))
-    async def put(uid, c, i, h, v):
-        c, i, h, v = json.loads(c), json.loads(i), json.loads(h), json.loads(v)
-        key = f'{i}_{h}'; data = {'pid': i, 'h': h, 'v': v, 'uid': uid}
-        if not rules.bank_write(DB[c], key, data, uid): return deny('bank write ' + key)
-        BANKS[c][key] = data; return ok()
-    async def getbank(uid, c, i, h):
-        c, i, h = json.loads(c), json.loads(i), json.loads(h)
-        key = f'{i}_{h}'; doc = BANKS[c].get(key)
-        if not rules.bank_get(DB[c], key, doc, uid): return deny('bank read ' + key)
-        return ok(None if doc is None else doc['v'])
-    for n, f in [('__fb_create', create), ('__fb_get', get), ('__fb_update', update), ('__fb_sia', sia), ('__fb_put', put), ('__fb_getbank', getbank)]:
-        await ctx.expose_function(n, f)
-    pg = await ctx.new_page(); errs = []
-    pg.on('pageerror', lambda e: errs.append(f'{name}: {e}'))
-    await pg.goto((SRC if SRC.startswith('http') else 'file://' + SRC)); await pg.wait_for_timeout(700)
-    for _ in range(3):
-        if await pg.locator('.splash').count(): await pg.locator('.splash').dispatch_event('pointerdown'); await pg.wait_for_timeout(400)
-    return pg, errs
+    pg = await cloud.phone(b, UIDS[name])
+    await fc.open_app(pg, SRC)
+    return pg, pg.errs
+
+def state(name):
+    return cloud.now_state(UIDS[name])
 
 async def api(pg, js):
     """Run a raw backend call from the phone's console. Returns 'ok' or the error."""
@@ -99,7 +59,7 @@ async def main():
         await A.get_by_role('button', name='Close').first.click()
 
         # ---- Sam joins by the link the QR encodes; Priya joins by typing the code
-        await B.goto((SRC if SRC.startswith('http') else 'file://' + SRC) + f'?join={code}'); await B.wait_for_timeout(700)
+        await B.goto(SRC + f'?join={code}'); await B.wait_for_timeout(700)
         for _ in range(3):
             if await B.locator('.splash').count(): await B.locator('.splash').dispatch_event('pointerdown'); await B.wait_for_timeout(400)
         await B.wait_for_timeout(600)
@@ -159,8 +119,9 @@ async def main():
         await C.get_by_role('button', name='Go to hole 2').click(); await settle(A, B, C, ms=1500)
         r = await api(A, f"b.getBank('{code}','sam',0)")
         check('Once everyone has moved on, the calls are revealed', r == 'ok:true', r)
-        sam_banked_on_A = await A.evaluate("JSON.parse(localStorage.getItem('puntaro.state.v1')).round.bank.sam[0]")
-        pri_banked_on_B = await B.evaluate("JSON.parse(localStorage.getItem('puntaro.state.v1')).round.bank.priya[0]")
+        await fc.flushed(A)
+        sam_banked_on_A = state('Pierre')['round']['bank']['sam'][0]
+        pri_banked_on_B = state('Sam')['round']['bank']['priya'][0]
         check('Every phone now applies the revealed calls to the scores', sam_banked_on_A is True and pri_banked_on_B is True, f'{sam_banked_on_A} {pri_banked_on_B}')
         r = await api(C, f"b.putBank('{code}','priya',0,false)")
         check('ATTACK Priya changes her call after the reveal: blocked', r == 'denied', r)
@@ -210,8 +171,9 @@ async def main():
             await pg.get_by_role('button', name='Draw the cards').click(); await pg.wait_for_timeout(300)
         await settle(A, B, C, ms=1500)
         seen = []
-        for pg in (A, B, C):
-            seen.append(await pg.evaluate("JSON.parse(localStorage.getItem('puntaro.state.v1')).round.draws[3]"))
+        await fc.flushed(A)
+        for n in ('Pierre', 'Sam', 'Priya'):
+            seen.append(state(n)['round']['draws'][3])
         same = all(json.dumps(x, sort_keys=True) == json.dumps(seen[0], sort_keys=True) for x in seen)
         check('ATTACK rigged deal in storage: every phone ignores it and deals fairly', same and seen[0] != rigged, json.dumps(seen))
         for nm, pg in (('A', A), ('B', B), ('C', C)):

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, createContext, useContext } from "react";
-import { backend, newCode, cleanCode, joinLink, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain } from "./live.js";
+import { backend, newCode, cleanCode, joinLink, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain, EMAIL_KEY } from "./live.js";
 import { makeDecoder, cameraProblem } from "./scan.js";
 import { qrPath } from "./qr.js";
 
@@ -24,7 +24,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.45";
+const APP_VERSION = "0.50";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -39,11 +39,17 @@ const COURSES = [
 ];
 const TRASH_MS = 5 * 60 * 1000;
 const PARK_MS = 24 * 60 * 60 * 1000; // paused rounds are kept for a day
+// Before accounts, everything was kept on the phone under these keys. Now only read once, to import, then removed.
 const STATE_KEY = "puntaro.state.v1";
 const loadAppState = () => { try { const s = JSON.parse(localStorage.getItem(STATE_KEY)); return s && typeof s === "object" ? s : null; } catch (e) { return null; } };
 const SAVED_KEY = "puntaro.courses.v1";
 const loadSaved = () => { try { const v = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
-const storeSaved = v => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(v)); } catch (e) { /* private mode: fine */ } };
+const START_URL = (() => { try { return location.href; } catch (e) { return ""; } })();
+const PENDING_JOIN = (() => {
+  try { const q = new URLSearchParams(location.search).get("join"); if (q == null) return null; window.history.replaceState(null, "", location.pathname); return cleanCode(q) || ""; } catch (e) { return null; }
+})();
+const parseJSON = (t, fallback) => { try { const v = JSON.parse(t); return v == null ? fallback : v; } catch (e) { return fallback; } };
+const ME_COLOR = "#4F7A5A";
 const PEOPLE = {
   me:    { id: "me", name: "You", first: "", last: "", hi: 14.2, color: "#4F7A5A" },
   sam:   { id: "sam", name: "Sam", last: "Walker", hi: 8.4, color: "#8B6B4A" },
@@ -70,11 +76,6 @@ const METRICS = [
 ];
 const GAMES = [
   { id: "punt", name: "Puntaro", blurb: "Bank it or bust it. Net scores, so every handicap has a shot.", hero: true },
-];
-const RECENT = [
-  { course: "Cedar Ridge", when: "Sat", gross: 88, net: 74, note: "Banked 31 on the back 9", sample: true },
-  { course: "Pebble Hollow", when: "Last Sun", gross: 84, net: 71, note: "Busted a 14 point pot on 15", sample: true },
-  { course: "Sunrise Links", when: "2 weeks ago", gross: 91, net: 77, note: "Streak hit x3 on the 6th", sample: true },
 ];
 const STAKES = [0, 5, 10, 20];
 const SPLITS = [["win", "Winner takes all"], ["603010", "60/30/10"], ["spoon", "Wooden spoon pays"]];
@@ -1506,7 +1507,7 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
 
 /* ───────────── SCREENS ───────────── */
 /* Press and hold a row for 0.6s to ask to delete it. A quick tap behaves as normal. */
-function HoldRow({ onHold, children, style, className }) {
+function HoldRow({ onHold, onTap, children, style, className }) {
   const [holding, setHolding] = useState(false);
   const timer = useRef(null); const fired = useRef(false);
   const start = () => { fired.current = false; setHolding(true); timer.current = setTimeout(() => { fired.current = true; setHolding(false); onHold(); }, 600); };
@@ -1515,14 +1516,15 @@ function HoldRow({ onHold, children, style, className }) {
     <div className={className} onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
       onContextMenu={e => e.preventDefault()}
       onClickCapture={e => { if (fired.current) { e.stopPropagation(); e.preventDefault(); fired.current = false; } }}
-      style={{ position: "relative", overflow: "hidden", touchAction: "manipulation", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", ...style }}>
+      onClick={onTap} role={onTap ? "button" : undefined}
+      style={{ position: "relative", overflow: "hidden", touchAction: "manipulation", cursor: onTap ? "pointer" : undefined, userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", ...style }}>
       {holding && <div className="holdfill" aria-hidden="true" />}
       {children}
     </div>
   );
 }
 
-function Home({ people, round, recent, board, onStart, onJoin, liveCode, onLiveDetails, parked = [], onResumeParked, onDropParked, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
+function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, liveCode, onLiveDetails, parked = [], onResumeParked, onDropParked, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
@@ -1627,11 +1629,11 @@ function Home({ people, round, recent, board, onStart, onJoin, liveCode, onLiveD
         )}
 
         <div>
-          <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recent rounds</h2><p className="cap" style={{ marginTop: 2 }}>Hold a round to delete it.</p></div>
+          <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recent rounds</h2><p className="cap" style={{ marginTop: 2 }}>Tap a round for its scoresheet. Hold to remove it from this list (your stats keep it).</p></div>
           <div className="card" style={{ padding: "5px 11px" }}>
             {recent.length === 0 && <div className="cap" style={{ padding: "9px 0" }}>No rounds yet. Finish one and it shows up here.</div>}
             {recent.map((r, i) => (
-              <HoldRow key={i} onHold={() => askDelete("recent", i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+              <HoldRow key={r.id || i} onHold={() => askDelete("recent", i)} onTap={r.id ? () => onOpenRound(r.id) : undefined} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                 <div>
                   <div style={{ fontWeight: 700 }}>{r.course}</div>
                   <div className="cap">{r.sample ? "Sample round. " : `${r.when}. `}{r.note}</div>
@@ -2019,8 +2021,7 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
   );
 }
 
-function AboutSheet({ onClose, onReset }) {
-  const [sure, setSure] = useState(false);
+function AboutSheet({ onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={onClose}>
       <div className="sheet card" role="dialog" aria-label={`About ${APP_NAME}`} onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "85vh", overflowY: "auto" }}>
@@ -2032,15 +2033,14 @@ function AboutSheet({ onClose, onReset }) {
         <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
           <p><b>Working:</b> banking and busting, streaks, Blessings & Curses, bonuses and penalties, nearest the pin, free for all or 2v2, handicap strokes and cushion, prize pool maths, course finder, paused rounds.</p>
           <p><b>New and still being tested:</b> live rounds. Everyone follows the round on their own phone, joining by QR code or join code. Choose one scorer, or everyone enters their own score with bank calls kept secret until the group moves on.</p>
-          <p><b>Not yet:</b> accounts, your history on more than one phone, and stats for friends from rounds played on their phones.</p>
-          <p><b>Samples:</b> the round you see on first open, the sample courses and the Recent rounds marked Sample are made up, for trying the app. Your stats and the friends table only count rounds you finish and save.</p>
-          <p><b>Live rounds and privacy:</b> a live round (course, players' first names, last initials and handicaps, scores) is stored with Google Firebase so the group can follow it. Anyone with the join code can see it. Bank calls stay hidden until they're revealed. No account or email is used.</p>
-          <p><b>Saved on this device only:</b> your courses, friends and guests, finished rounds and stats, paused rounds, and rounds you don't play live.</p>
+          <p><b>New:</b> accounts. Sign in with Google or an email link, and your rounds, scoresheets and stats are saved to your account in the cloud, the same on any phone.</p>
+          <p><b>Not yet:</b> linking friends' accounts, so the friends table shows their stats from rounds on their own phones.</p>
+          <p><b>Your data:</b> stored with Google Firebase, in your account, where only you can see it. Your phone keeps a temporary offline copy so scoring works with no signal; signing out clears it. You can wipe or delete your account from the Me tab.</p>
+          <p><b>Live rounds:</b> the round (course, players' first names, last initials and handicaps, scores) is shared with the players in it. Anyone with the join code can see it. Bank calls stay hidden until they're revealed. Finished live rounds are kept for everyone who played, even if one player deletes theirs.</p>
+          <p><b>Samples:</b> the sample courses are made up, for trying the app.</p>
           <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia.</p>
           <p><b>Money:</b> the prize pool is a scoreboard only. {APP_NAME} never takes or moves money.</p>
         </div>
-        <button className="chip" style={{ marginTop: 12, padding: "7px 0", textAlign: "center", width: "100%", ...(sure ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : {}) }} onClick={() => (sure ? onReset() : setSure(true))}>{sure ? "Tap again to wipe everything" : "Start fresh"}</button>
-        <p className="cap" style={{ marginTop: 5, textAlign: "center" }}>{sure ? "This deletes your saved rounds, stats, friends, guests, courses and paused rounds on this phone, and brings back the samples. It can't be undone." : "Wipes everything on this phone and brings back the samples."}</p>
       </div>
     </div>
   );
@@ -2059,7 +2059,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
   const [liveName, setLiveName] = useState(people.me.first || "");
   const [teeI, setTeeI] = useState(0);
   const [finding, setFinding] = useState(false);
-  const [sel, setSel] = useState(["me", "sam", "priya", "jake"]);
+  const [sel, setSel] = useState(() => ["me", ...friendIds.filter(id => people[id]).slice(0, 3)]);
   const [games, setGames] = useState(["punt"]);
   const [useHcp, setUseHcp] = useState(true);
   const [stake, setStake] = useState(10);
@@ -2438,7 +2438,70 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
   );
 }
 
-function Summary({ round, people, onSave, onBack, liveHost }) {
+const fmtDay = at => {
+  const d = new Date(at); const now = new Date(); const day = 864e5;
+  const start = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((start(now) - start(d)) / day);
+  if (diff === 0) return "Today"; if (diff === 1) return "Yesterday";
+  if (diff < 7) return d.toLocaleDateString("en-AU", { weekday: "long" });
+  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+};
+
+// Hole-by-hole card: gross score (circled under par, boxed over), B = banked after the hole, X = bust.
+function Scorecard({ round, people }) {
+  const ids = round.playerIds; const pc = puntCalc(round);
+  const w = ids.length > 5 ? 34 : 44;
+  const cell = { width: w, textAlign: "center", flex: "none" };
+  const half = (a, b) => range18.slice(a, b).reduce((t, h) => t + (PAR[h] || 0), 0);
+  const tot = (id, a, b) => { let n = 0, any = false; for (let h = a; h < b; h++) { const v = round.scores[id][h]; if (v != null) { n += v; any = true; } } return any ? n : "–"; };
+  const Row = ({ label, par, children, strong }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "3px 0", borderTop: "1px solid var(--line)", fontWeight: strong ? 800 : 400 }}>
+      <div style={{ width: 40, flex: "none", fontWeight: 700 }}>{label}</div>
+      <div className="cap" style={{ width: 26, flex: "none", textAlign: "center" }}>{par}</div>
+      {children}
+    </div>
+  );
+  return (
+    <div className="card" style={{ padding: "9px 11px" }}>
+      <h3 style={{ fontWeight: 800, fontSize: 15 }}>Scoresheet</h3>
+      <p className="cap">Gross scores. B banked after the hole, X bust.</p>
+      <div style={{ overflowX: "auto", marginTop: 6 }}>
+        <div style={{ minWidth: 70 + ids.length * (w + 2) }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 2, paddingBottom: 4 }}>
+            <div className="cap" style={{ width: 40, flex: "none" }}>Hole</div>
+            <div className="cap" style={{ width: 26, flex: "none", textAlign: "center" }}>Par</div>
+            {ids.map(id => <div key={id} style={{ ...cell, display: "grid", placeItems: "center" }}><Avatar p={people[id] || { name: "?" }} size={22} /></div>)}
+          </div>
+          {range18.map(h => (
+            <div key={h}>
+              <Row label={h + 1} par={PAR[h]}>
+                {ids.map(id => {
+                  const v = round.scores[id][h]; const d = v == null ? 0 : v - PAR[h];
+                  const bust = pc[id].bustAt[h]; const bank = round.bank[id][h] && !bust;
+                  return (
+                    <div key={id} style={{ ...cell, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                      <span style={{ display: "inline-grid", placeItems: "center", minWidth: 20, height: 20, fontWeight: 700, color: d < 0 ? "var(--fair)" : d > 0 ? "var(--red)" : "var(--ink)", border: v == null ? "none" : d < 0 ? "2px solid var(--fair)" : d > 0 ? "2px solid var(--red)" : "none", borderRadius: d < 0 ? "50%" : 0 }}>{v == null ? "·" : v}</span>
+                      {(bank || bust) && <span className="px" style={{ fontSize: 9, color: bust ? "var(--red)" : "var(--fair)" }}>{bust ? "X" : "B"}</span>}
+                    </div>
+                  );
+                })}
+              </Row>
+              {(h === 8 || h === 17) && (
+                <Row label={h === 8 ? "Out" : "In"} par={h === 8 ? half(0, 9) : half(9, 18)} strong>
+                  {ids.map(id => <div key={id} style={cell}>{h === 8 ? tot(id, 0, 9) : tot(id, 9, 18)}</div>)}
+                </Row>
+              )}
+            </div>
+          ))}
+          <Row label="Total" par={half(0, 18)} strong>{ids.map(id => <div key={id} style={cell}>{tot(id, 0, 18)}</div>)}</Row>
+          <Row label="Pts" par="" strong>{ids.map(id => <div key={id} style={{ ...cell, color: "var(--fair)" }}>{pc[id].total}</div>)}</Row>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Summary({ round, people, onSave, onBack, footer, record }) {
   const comp = round.playerIds.map(id => ({ id, ...totalsFor(round, id) })).sort((a, b) => (round.useHcp ? a.netPar - b.netPar : a.grossPar - b.grossPar));
   const hasPunt = round.games.includes("punt");
   const pc = puntCalc(round);
@@ -2457,11 +2520,12 @@ function Summary({ round, people, onSave, onBack, liveHost }) {
   return (
     <div style={{ flex: 1 }}>
       <div className="stripes" style={{ padding: "14px 12px 22px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />Back to scoring</button><Tiles size={14} /></div>
-        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -1, marginTop: 9 }}>Round complete</h1>
-        <p style={{ opacity: 0.8, marginTop: 3 }}>{round.course.name}</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />{record ? "Back" : "Back to scoring"}</button><Tiles size={14} /></div>
+        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -1, marginTop: 9 }}>{record ? round.course.name : "Round complete"}</h1>
+        <p style={{ opacity: 0.8, marginTop: 3 }}>{record ? `${fmtDay(record.at)}${record.live ? " · live round" : ""}` : round.course.name}</p>
       </div>
-      <div style={{ padding: "12px 12px 86px", display: "grid", gap: 11 }}>
+      <div style={{ padding: record ? "12px 12px 24px" : "12px 12px 86px", display: "grid", gap: 11 }}>
+        <Scorecard round={round} people={people} />
         <div className="card" style={{ padding: "5px 11px" }}>
           <div style={{ padding: "9px 0 0" }}>
             <h3 style={{ fontWeight: 800, fontSize: 15 }}>The Comp</h3>
@@ -2549,10 +2613,11 @@ function Summary({ round, people, onSave, onBack, liveHost }) {
           </div>
         ))}
       </div>
-      <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
-        {liveHost && <p className="cap" style={{ textAlign: "center", marginBottom: 6 }}>Saving ends the live round for everyone. Their phones keep their own copy.</p>}
-        <button className="cta" onClick={onSave}>Save round</button>
-      </div>
+      {!record && (
+        <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: footer ? "var(--chalk)" : "linear-gradient(to top, var(--chalk) 70%, transparent)", borderTop: footer ? "3px solid var(--night)" : "none" }}>
+          {footer || <button className="cta" onClick={onSave}>Save round</button>}
+        </div>
+      )}
     </div>
   );
 }
@@ -2671,8 +2736,9 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
   );
 }
 
-function Me({ people, setPeople, dark, setDark, saved, history, onAbout }) {
+function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, onSignOut, onStartFresh, onDeleteAccount }) {
   const me = people.me;
+  const [ask, setAsk] = useState(null); // "fresh" | "delete"
   const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(36, Math.max(-2, v)) * 10) / 10 } }));
   const s = statsFor(history, "me", "season") || { rounds: 0, wins: 0, ntp: 0, pts: null };
   const tiles = [["Rounds", s.rounds], ["Puntaro wins", s.wins], ["NTPs", s.ntp], ["Avg points", s.pts == null ? "–" : s.pts.toFixed(1)]];
@@ -2715,6 +2781,29 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout }) {
           ))}
         </div>
         <button className="chip" onClick={onAbout} style={{ padding: "8px 0", textAlign: "center" }}>About this alpha</button>
+        <div className="card" style={{ padding: 12 }}>
+          <div className="cap" style={{ fontWeight: 600 }}>Your account</div>
+          <div style={{ fontWeight: 700, marginTop: 3, wordBreak: "break-all" }}>{(user && user.email) || "Signed in"}</div>
+          <p className="cap" style={{ marginTop: 3 }}>Your rounds, stats, friends and courses are saved to this account, so they're the same on any phone you sign in on.</p>
+          <button className="chip" style={{ marginTop: 9, padding: "7px 0", textAlign: "center", width: "100%" }} onClick={onSignOut}>Sign out</button>
+          <p className="cap" style={{ marginTop: 4 }}>Signing out also clears the offline copy from this phone.</p>
+          {ask === null && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 10 }}>
+              <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => setAsk("fresh")}>Start fresh</button>
+              <button className="chip" style={{ padding: "6px 0", textAlign: "center", color: "var(--red)" }} onClick={() => setAsk("delete")}>Delete account</button>
+            </div>
+          )}
+          {ask && (
+            <div role="alert" style={{ marginTop: 10, padding: 9, border: "2px solid var(--red)" }}>
+              <p style={{ fontWeight: 700 }}>{ask === "fresh" ? "Wipe your rounds and stats?" : "Delete your account?"}</p>
+              <p className="cap" style={{ marginTop: 3 }}>{ask === "fresh" ? "Deletes every round, stat, friend, guest, course and paused round in this account. You stay signed in and start again. Live rounds you played stay with the other players. This can't be undone." : "Deletes everything in this account and your login. Live rounds you played stay with the other players. This can't be undone."}</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
+                <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => setAsk(null)}>Keep it</button>
+                <button className="cta" style={{ padding: "6px 0", background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => (ask === "fresh" ? onStartFresh() : onDeleteAccount())}>{ask === "fresh" ? "Wipe it" : "Delete"}</button>
+              </div>
+            </div>
+          )}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {tiles.map(([l, v]) => (
             <div key={l} className="card" style={{ padding: 12 }}>
@@ -2923,36 +3012,36 @@ function LiveSheet({ code, doc, uid, onClose, onScoring, onRelease, onLeave }) {
   );
 }
 
-export default function App() {
-  const [people, setPeople] = useState(() => { const s = loadAppState(); return s && s.people ? { ...PEOPLE, ...Object.fromEntries(Object.entries(s.people).map(([k, v]) => [k, { ...(PEOPLE[k] || {}), ...v }])) } : PEOPLE; });
+function Game({ user, cloud, profile, now0, finished }) {
+  const start = parseJSON(now0 && now0.json, {});
+  const [people, setPeople] = useState(() => {
+    const p = parseJSON(profile.people, {});
+    return { ...p, me: { id: "me", name: "You", color: ME_COLOR, ...(p.me || {}), first: (p.me && p.me.first) || profile.first || "", last: (p.me && p.me.last) || profile.last || "", hi: p.me && p.me.hi != null ? p.me.hi : profile.hi ?? 18 } };
+  });
   const [dark, setDark] = useState(true);
-  const [friendIds, setFriendIds] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.friendIds) ? s.friendIds : ["sam", "priya", "jake", "maya", "leo"]; });
+  const [friendIds, setFriendIds] = useState(() => (Array.isArray(profile.friendIds) ? profile.friendIds : []));
   const [tab, setTab] = useState("home");
   const [view, setView] = useState("tabs");
-  const [round, setRound] = useState(() => {
-    const s = loadAppState();
-    if (s && "round" in s) { if (s.round) applyHoles(s.round.holes || null); return s.round; }
-    return buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true);
-  });
-  const [recent, setRecent] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.recent) ? s.recent : RECENT; });
-  const [history, setHistory] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.history) ? s.history : []; });
+  const [round, setRound] = useState(() => { if (start.round) applyHoles(start.round.holes || null); return start.round || null; });
+  // Finished rounds live in your account (users/{uid}/rounds). Removing one from the list only hides it: stats keep it.
+  const recent = finished.filter(r => !r.hidden).sort((a, b) => b.at - a.at).map(r => ({ id: r.id, course: r.course, when: fmtDay(r.at), gross: r.gross, net: r.net, note: r.note, hasCard: !!r.round }));
+  const history = finished.map(r => ({ at: r.at, course: r.course, players: r.players || {} }));
+  const [openRec, setOpenRec] = useState(null);
   const [fx, setFx] = useState(null);
   const [tipK, setTipK] = useState(null);
   const celebrate = (kind, text, sub, badge) => { const key = Date.now() + Math.random(); setFx({ key, kind, text, sub, badge }); setTimeout(() => setFx(f => (f && f.key === key ? null : f)), 1500); };
   const [del, setDel] = useState(null);
   const [rulesFrom, setRulesFrom] = useState("tabs");
-  const [saved, setSaved] = useState(loadSaved);
-  const [splash, setSplash] = useState(true);
+  const [saved, setSaved] = useState(() => parseJSON(profile.courses, []));
+  const splash = false; // the splash screen is shown before sign-in
   const [about, setAbout] = useState(false);
   /* live rounds: { code, myId } where myId is the player this phone claimed (null = watching) */
-  const [live, setLive] = useState(() => { const s = loadAppState(); return s && s.live && s.live.code ? s.live : null; });
+  const [live, setLive] = useState(() => (start.live && start.live.code ? start.live : null));
   const [liveDoc, setLiveDoc] = useState(null);
   const [liveUid, setLiveUid] = useState(null);
   const [liveErr, setLiveErr] = useState("");
   const [liveSheet, setLiveSheet] = useState(false);
-  const [joinCode, setJoinCode] = useState(() => {
-    try { const q = new URLSearchParams(location.search).get("join"); if (q == null) return null; try { window.history.replaceState(null, "", location.pathname); } catch (e) { /* fine */ } return cleanCode(q) || ""; } catch (e) { return null; }
-  });
+  const [joinCode, setJoinCode] = useState(PENDING_JOIN);
   const GUEST_COLORS = ["#9A7B3F", "#5E6E55", "#8B6B4A", "#6F7F73", "#A5543A"];
   const newPerson = ({ name, last, hi }, guest) => {
     const id = (guest ? "g" : "f") + Date.now() + Math.floor(Math.random() * 99);
@@ -2961,30 +3050,46 @@ export default function App() {
   };
   const addGuest = g => newPerson(g, true);
   const addFriend = f => { const id = newPerson(f, false); setFriendIds(x => [...x, id]); };
-  const saveCourse = c => setSaved(s => { const n = [c, ...s.filter(x => x.id !== c.id)]; storeSaved(n); return n; });
-  const resetDemo = () => {
-    storeSaved([]); setSaved([]); setPeople(PEOPLE); setFriendIds(["sam", "priya", "jake", "maya", "leo"]); setRecent(RECENT); setHistory([]); setAbout(false); setParked([]); setLive(null);
-    setRound(buildRound({ courseId: "pebble", playerIds: ["me", "sam", "priya", "jake"], games: ["punt"], useHcp: true, stake: 10, split: "603010" }, PEOPLE, true));
-    setView("tabs"); setTab("home");
-  };
-  const [trash, setTrash] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.trash) ? s.trash.filter(x => Date.now() - x.at < TRASH_MS) : []; });
+  const saveCourse = c => setSaved(s => [c, ...s.filter(x => x.id !== c.id)]);
+  const [trash, setTrash] = useState(() => (Array.isArray(start.trash) ? start.trash.filter(x => Date.now() - x.at < TRASH_MS) : []));
   // Paused rounds: a round that a new one replaced. { id, at, round, live } kept for PARK_MS.
-  const [parked, setParked] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.parked) ? s.parked.filter(x => Date.now() - x.at < PARK_MS) : []; });
+  const [parked, setParked] = useState(() => (Array.isArray(start.parked) ? start.parked.filter(x => Date.now() - x.at < PARK_MS) : []));
   const [askNew, setAskNew] = useState(false);
-  // Clean-up: when a live round this phone hosted is finished for good, remove it from Firebase.
-  // (Players' phones keep their own copy.) Only the host's phone holds the "me" seat.
-  const retire = (lv, r) => { if (lv && lv.code && lv.myId === "me" && !lv.ended && r) backend().then(b => b.endRound(lv.code, r.playerIds)).catch(() => {}); };
-  // Rounds that ran out of time while the app was closed.
-  const lapsed = useRef(null);
-  if (lapsed.current === null) {
-    const s0 = loadAppState() || {}; const t0 = Date.now();
-    lapsed.current = [
-      ...(Array.isArray(s0.trash) ? s0.trash.filter(x => x.kind === "round" && t0 - x.at >= TRASH_MS).map(x => [x.live, x.item]) : []),
-      ...(Array.isArray(s0.parked) ? s0.parked.filter(x => t0 - x.at >= PARK_MS).map(x => [x.live, x.round]) : []),
-    ];
-  }
-  useEffect(() => { lapsed.current.forEach(([lv, r]) => retire(lv, r)); lapsed.current = []; }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds, history, live, parked })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds, history, live, parked]);
+  // Save to your account. Writes are batched a moment after the last change, and sent at once if the app is closed.
+  const pending = useRef({});
+  const flush = () => { const p = pending.current; pending.current = {}; Object.entries(p).forEach(([path, [data, merge]]) => cloud.setMine(path, data, merge).catch(() => {})); };
+  const queue = (path, data, merge) => { pending.current[path] = [data, merge]; clearTimeout(pending.timer); pending.timer = setTimeout(flush, 700); };
+  useEffect(() => {
+    const go = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", go); window.addEventListener("pagehide", flush);
+    return () => { document.removeEventListener("visibilitychange", go); window.removeEventListener("pagehide", flush); flush(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const booted = useRef(0);
+  useEffect(() => { if (booted.current++ < 1) return; queue("", { people: JSON.stringify(people), friendIds, courses: JSON.stringify(saved), first: people.me.first || "", last: people.me.last || "", hi: people.me.hi }, true); }, [people, friendIds, saved]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Skip the save on first load, unless loading dropped something (an expired paused round): then tidy the account too.
+  const bootedNow = useRef((Array.isArray(start.parked) && start.parked.some(x => Date.now() - x.at >= PARK_MS)) || (Array.isArray(start.trash) && start.trash.some(x => Date.now() - x.at >= TRASH_MS)) ? 1 : 0);
+  useEffect(() => { if (bootedNow.current++ < 1) return; queue("state/now", { json: JSON.stringify({ round, live, parked, trash }), at: Date.now() }, false); }, [round, live, parked, trash]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A finished round, recorded in your account. id: the live code, or a new id for a round on this phone only.
+  const resultFor = (r, myId, joined) => {
+    const t = totalsFor(r, myId); const players = {};
+    try {
+      const pc = puntCalc(r); const ids = r.playerIds;
+      const team = r.mode === "2v2" && r.teams ? teamRows(r, pc) : null;
+      let winners = [];
+      if (team) { const best = Math.max(...team.map(x => x.total)); const w = team.filter(x => x.total === best); if (w.length === 1) winners = ids.filter(id => r.teams[id] === w[0].k); }
+      else { const best = Math.max(...ids.map(id => pc[id].total)); winners = ids.filter(id => pc[id].total === best); }
+      // A joined player only knows the host's player ids, so they keep just their own result (as "me").
+      (joined ? [myId] : ids).forEach(id => { players[joined ? "me" : id] = { pts: pc[id].total, ntp: r.opts.ntp ? r.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0, win: winners.includes(id) }; });
+    } catch (e) { /* stats are a bonus; never block saving */ }
+    return { gross: t.gross, net: r.useHcp ? t.net : t.gross, players };
+  };
+  const record = (id, r, ppl, myId, lv) => {
+    const joined = !!lv && myId !== "me";
+    const res = resultFor(r, myId, joined);
+    const names = Object.fromEntries(r.playerIds.map(pid => { const p = ppl[pid] || {}; return [pid, { id: pid, name: p.name || "?", first: p.first || "", last: (p.last || "").slice(0, 1), color: p.color || "#6F7F73", hi: p.hi ?? null }]; }));
+    return cloud.setMine(`rounds/${id}`, { id, at: Date.now(), course: r.course.name, ...res, note: lv ? "Live round" : "Puntaro round", round: JSON.stringify(r), people: JSON.stringify(names), hidden: false, live: lv ? { code: lv.code, myId: myId || null } : null }, false);
+  };
   useEffect(() => {
     if (!parked.length) return undefined;
     const id = setInterval(() => setParkTick(Date.now()), 30000);
@@ -2995,7 +3100,6 @@ export default function App() {
     const gone = parked.filter(x => Date.now() - x.at >= PARK_MS);
     if (!gone.length) return;
     setParked(p => p.filter(x => !gone.some(g => g.id === x.id)));
-    gone.forEach(x => retire(x.live, x.round));
   }, [parkTick]); // eslint-disable-line react-hooks/exhaustive-deps
   // Put the round in progress (if any) to one side so it can be picked up again.
   const park = () => { if (!round) return; const at = Date.now(); setParked(p => [{ id: at, at, round, live }, ...p].slice(0, 5)); };
@@ -3018,12 +3122,11 @@ export default function App() {
     const gone = trash.filter(x => now - x.at >= TRASH_MS);
     if (!gone.length) return;
     setTrash(t => t.filter(x => !gone.some(g => g.id === x.id)));
-    gone.forEach(x => { if (x.kind === "round") retire(x.live, x.item); });
   }, [now]); // eslint-disable-line react-hooks/exhaustive-deps
   const confirmDelete = () => {
     const at = Date.now();
     if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, live, at }, ...t]); setRound(null); setLive(null); }
-    else { const item = recent[del.i]; setTrash(t => [{ id: at, kind: "recent", item, idx: del.i, at }, ...t]); setRecent(r => r.filter((_, j) => j !== del.i)); }
+    else { const item = recent[del.i]; setTrash(t => [{ id: at, kind: "recent", item, at }, ...t]); if (item.id) cloud.setMine(`rounds/${item.id}`, { hidden: true }, true).catch(() => {}); }
     setNow(at); setDel(null);
   };
   const restore = x => {
@@ -3031,7 +3134,7 @@ export default function App() {
     if (x.kind === "round") {
       park(); // the round in progress is paused, not deleted
       applyHoles(x.item.holes || null); setRound(x.item); setLive(x.live || null);
-    } else setRecent(r => { const n = r.slice(); n.splice(Math.min(x.idx, n.length), 0, x.item); return n; });
+    } else if (x.item && x.item.id) cloud.setMine(`rounds/${x.item.id}`, { hidden: false }, true).catch(() => {});
   };
 
   // Follow the live round: every change on any phone arrives in liveDoc.
@@ -3049,8 +3152,8 @@ export default function App() {
       setLiveUid(b.uid);
       off = b.watch(live.code, d => {
         if (!d) {
-          // Not created yet, or the host has finished and removed it: keep the local copy.
-          if (prevDoc.current) { prevDoc.current = null; setLive(l => (l && !l.ended ? { ...l, ended: true } : l)); note("The host has finished this live round. Your copy stays on this phone."); }
+          // Not created yet, or no longer online (older versions removed finished rounds): keep our copy.
+          if (prevDoc.current) { prevDoc.current = null; setLive(l => (l && !l.ended ? { ...l, ended: true } : l)); note("This live round is no longer online. Your copy is kept in your account."); }
           return;
         }
         setLiveErr(""); applyHoles(d.base.holes || null);
@@ -3111,11 +3214,12 @@ export default function App() {
     const h = round.hole;
     if (cardHole(h) && !round.draws[h] && canDeal(h)) {
       const d = drawCards(round, h, mulberry32(round.drawSeed + h * 977));
-      backend().then(b => b.setIfAbsent(live.code, ["draws", h], d, [[["deal"], h]])).catch(() => {});
+      backend().then(b => b.setIfAbsent(live.code, ["draws", h], d, [[["deal"], h]], amHost())).catch(() => {});
     }
   }, [liveDoc, shown, round && round.hole]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const push = (pairs, quiet) => { if (!live || live.ended) return Promise.resolve(); return backend().then(b => b.update(live.code, pairs)).catch(() => { if (!quiet) setLiveErr("Offline. Scores you enter are saved and will sync when you're back."); }); };
+  const amHost = () => !!(liveDoc && liveUid && liveDoc.host === liveUid);
+  const push = (pairs, quiet) => { if (!live || live.ended) return Promise.resolve(); return backend().then(b => b.update(live.code, pairs, amHost())).catch(() => { if (!quiet) setLiveErr("Offline. Scores you enter are saved and will sync when you're back."); }); };
   // Moving on locks your bank call for the hole you left. Never goes backwards.
   const moveOn = h => { if (live && !live.ended && live.myId && liveDoc && h > ((liveDoc.at || {})[live.myId] || 0)) push([[["at", live.myId], Math.min(18, h)], [["who"], live.myId]]); };
   const nextEvent = (x, k) => ({ ...Object.fromEntries(Object.entries(x || {}).filter(([e]) => (x && x[k]) || !(CLASH[k] || []).includes(e))), [k]: !(x && x[k]) });
@@ -3180,27 +3284,92 @@ export default function App() {
 
   const board = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: (statsFor(history, id, "month") || {}).pts })).filter(r => r.v != null).sort((a, b) => b.v - a.v);
 
+  // Finish: a round on this phone is recorded straight away. A live round is finished for everyone
+  // (host, or anyone once it's been quiet for 6 hours); every player's account then records it.
   const save = () => {
+    if (live && !live.ended && liveDoc) { finishLive(); return; }
     const myId = live ? live.myId : "me";
     if (live && !myId) { setLive(null); setRound(null); setView("tabs"); setTab("home"); return; }
-    const t = totalsFor(round, myId);
-    setRecent(r => [{ course: round.course.name, when: "Today", gross: t.gross, net: round.useHcp ? t.net : t.gross, note: "Puntaro round" }, ...r]);
-    try {
-      const pc = puntCalc(round); const ids = round.playerIds;
-      const team = round.mode === "2v2" && round.teams ? teamRows(round, pc) : null;
-      let winners = [];
-      if (team) { const best = Math.max(...team.map(x => x.total)); const w = team.filter(x => x.total === best); if (w.length === 1) winners = ids.filter(id => round.teams[id] === w[0].k); }
-      else { const best = Math.max(...ids.map(id => pc[id].total)); winners = ids.filter(id => pc[id].total === best); }
-      const players = {};
-      // A joined phone only knows the host's player ids, so it keeps just its own result (as "me").
-      (live && myId !== "me" ? [myId] : ids).forEach(id => { players[live && myId !== "me" ? "me" : id] = { pts: pc[id].total, ntp: round.opts.ntp ? round.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0, win: winners.includes(id) }; });
-      setHistory(hs => [...hs, { at: Date.now(), course: round.course.name, players }]);
-    } catch (e) { /* stats are a bonus; never block saving */ }
-    retire(live, round);
+    record(live ? live.code : `r${Date.now()}`, round, roundPeople, myId, live).catch(() => note("Couldn't save that round. Check your connection and try again."));
     setLive(null); setRound(null); setView("tabs"); setTab("home");
   };
+  const finishLive = () => {
+    backend().then(b => b.finish(live.code, amHost())).catch(e => note(explain(e)));
+  };
+  // Record a finished live round in this account: fetch every bank call (all readable once it's finished).
+  const recordLive = async (lv, d) => {
+    if (!lv || !lv.myId) return;
+    if (finished.some(f => f.id === d.code)) return; // already in this account
+    const b = await backend(); const ids = d.base.playerIds; const shownAll = {};
+    await Promise.all(ids.flatMap(id => range18.map(h => b.getBank(d.code, id, h).then(v => { shownAll[bankKey(id, h)] = v; }).catch(() => { shownAll[bankKey(id, h)] = null; }))));
+    const r = docToRound({ ...d, done: true }, { bank: bankMap({ ...d, done: true }, shownAll, {}) });
+    Object.entries(dealt.current || {}).forEach(([h, v]) => { r.draws[h] = v; });
+    const ppl = Object.fromEntries(Object.entries(d.people).map(([k, v]) => [k, { id: k, ...v }]));
+    await record(d.code, r, ppl, lv.myId, lv);
+  };
+  const recording = useRef(false);
+  useEffect(() => {
+    if (!live || !liveDoc || !liveDoc.done || recording.current) return;
+    recording.current = true;
+    const lv = live;
+    recordLive(lv, liveDoc).then(() => {
+      setLive(l => (l && l.code === lv.code ? null : l)); setRound(r => (r && live && live.code === lv.code ? null : r));
+      setView(v => (v === "round" || v === "summary" ? "tabs" : v)); setTab("home");
+      note(lv.myId ? "Round finished. It's saved in your Recent rounds." : "Round finished.");
+    }).catch(() => note("Couldn't save the finished round. It'll try again next time you open the app.")).finally(() => { recording.current = false; });
+  }, [liveDoc && liveDoc.done]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Paused live rounds that were finished while you were away: record them and clear them out.
+  useEffect(() => {
+    const waiting = parked.filter(x => x.live && x.live.code);
+    if (!waiting.length) return;
+    backend().then(b => Promise.all(waiting.map(async x => {
+      const d = await b.get(x.live.code).catch(() => null);
+      if (d && d.done) { await recordLive(x.live, d); setParked(p => p.filter(y => y.id !== x.id)); }
+    }))).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabs = [["home", "Home", HomeIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon]];
+  const openRound = id => {
+    const rec = finished.find(f => f.id === id); if (!rec || !rec.round) return;
+    const r = parseJSON(rec.round, null); if (!r) return;
+    applyHoles(r.holes || null);
+    setOpenRec({ rec, round: r, people: parseJSON(rec.people, {}) }); setView("card");
+  };
+  // Live round footer on the summary: the host finishes it for everyone; others wait (or finish after 6 quiet hours).
+  const liveFooter = () => {
+    if (!live || live.ended || !liveDoc) return null;
+    const host = liveDoc.host === liveUid;
+    const quiet = liveDoc.hostAt && Date.now() - liveDoc.hostAt > 6 * 3600 * 1000; // the host's phone has been silent
+    const hostName = liveDoc.people.me ? liveDoc.people.me.name : "The host";
+    if (host || quiet) return (
+      <>
+        <p className="cap" style={{ textAlign: "center", marginBottom: 6 }}>{host ? "This finishes the live round for everyone and saves it to every player's account." : `Nothing from ${hostName}'s phone for 6 hours, so anyone in the round can finish it.`}</p>
+        <button className="cta" onClick={finishLive}>{host ? "Finish round" : "Finish for everyone"}</button>
+      </>
+    );
+    return (
+      <>
+        <p className="cap" style={{ textAlign: "center", marginBottom: 6 }}>{hostName} finishes the round for everyone. It's saved to your account automatically when they do.</p>
+        <button className="cta" disabled>Waiting for {hostName}</button>
+        <button className="chip" style={{ marginTop: 6, padding: "7px 0", textAlign: "center", width: "100%" }} onClick={() => { setView("tabs"); setTab("home"); }}>Back to Home</button>
+      </>
+    );
+  };
+  // Account actions
+  const signOut = async () => { flush(); try { await cloud.signOut(); } catch (e) { /* fine */ } location.reload(); };
+  const wipe = async () => {
+    flush();
+    const ids = await cloud.listMine("rounds").catch(() => []);
+    await Promise.all(ids.map(id => cloud.deleteMine(`rounds/${id}`)));
+    await cloud.deleteMine("state/now").catch(() => {});
+    await cloud.deleteMine("");
+  };
+  const startFresh = async () => { try { await wipe(); location.reload(); } catch (e) { note(explain(e)); } };
+  const deleteAccount = async () => {
+    try { await wipe(); } catch (e) { note(explain(e)); return; }
+    try { await cloud.deleteLogin(); await cloud.signOut().catch(() => {}); location.reload(); }
+    catch (e) { note(/requires-recent-login/.test((e && e.code) || "") ? "Your rounds and stats are deleted. To remove your login too, sign out, sign in again, then tap Delete account." : explain(e)); }
+  };
 
   const roundPeople = live && liveDoc ? { ...people, ...Object.fromEntries(Object.entries(liveDoc.people).map(([k, v]) => [k, { id: k, ...v }])) } : people;
   const can = live && liveDoc ? {
@@ -3219,8 +3388,7 @@ export default function App() {
       <style>{CSS}</style>
       <Celebrate fx={fx} />
       <TipSheet k={tipK} onClose={() => setTipK(null)} />
-      {splash && <Splash onDone={() => setSplash(false)} />}
-      {about && <AboutSheet onClose={() => setAbout(false)} onReset={resetDemo} />}
+      {about && <AboutSheet onClose={() => setAbout(false)} />}
       {askNew && round && (
         <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={() => setAskNew(false)}>
           <div className="sheet card" role="dialog" aria-label="Round in progress" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
@@ -3254,13 +3422,14 @@ export default function App() {
       {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
-      {view === "summary" && round && <Summary liveHost={!!(live && live.myId === "me" && !live.ended)} round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} />}
+      {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} footer={liveFooter()} />}
+      {view === "card" && openRec && <Summary record={openRec.rec} round={openRec.round} people={openRec.people} onBack={() => { setOpenRec(null); setView("tabs"); }} />}
       {view === "tabs" && (
         <>
           <div style={{ flex: 1 }}>
-            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
-            {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} />}
+            {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} />}
           </div>
           <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>
             {tabs.map(([k, l, I]) => (
@@ -3274,5 +3443,196 @@ export default function App() {
     </div>
     </TipCtx.Provider>
     </LiveCtx.Provider>
+  );
+}
+
+/* ───────────── ACCOUNTS ───────────── */
+const screen = { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", padding: "24px 16px", gap: 14, maxWidth: 430, margin: "0 auto" };
+
+function Loading({ text = "Loading your rounds…" }) {
+  return <div style={{ ...screen, alignItems: "center" }} role="status"><Tiles size={22} /><p className="cap" style={{ marginTop: 6 }}>{text}</p></div>;
+}
+
+function SignIn({ cloud, startErr }) {
+  const link = cloud && cloud.isEmailLink(START_URL) ? START_URL : null;
+  const stored = (() => { try { return localStorage.getItem(EMAIL_KEY) || ""; } catch (e) { return ""; } })();
+  const [email, setEmail] = useState(stored);
+  const [sent, setSent] = useState(false);
+  const [pasted, setPasted] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(startErr || "");
+  const okEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+  const finish = async (em, url) => {
+    if (!okEmail(em)) { setErr("Enter the email address you sent the link to."); return; }
+    setBusy(true); setErr("");
+    try { await cloud.finishEmailLink(em.trim(), url); try { window.history.replaceState(null, "", location.pathname); } catch (e) { /* fine */ } }
+    catch (e) { setErr(explain(e)); setBusy(false); }
+  };
+  useEffect(() => { if (link && stored) finish(stored, link); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const google = async () => { setBusy(true); setErr(""); try { await cloud.signInGoogle(); } catch (e) { setErr(explain(e)); setBusy(false); } };
+  const send = async () => {
+    if (!okEmail(email)) { setErr("Enter your email address."); return; }
+    setBusy(true); setErr("");
+    try { await cloud.sendEmailLink(email.trim()); setSent(true); } catch (e) { setErr(explain(e)); }
+    setBusy(false);
+  };
+  const usePasted = () => {
+    const url = pasted.trim();
+    if (!cloud.isEmailLink(url)) { setErr("That isn't a Puntaro sign-in link. Copy the whole link from the email."); return; }
+    finish(email, url);
+  };
+  return (
+    <div style={screen}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}><Tiles size={26} /></div>
+      {link && !stored ? (
+        <>
+          <h1 style={{ textAlign: "center" }}>Finish signing in</h1>
+          <p className="cap" style={{ textAlign: "center" }}>Confirm the email address you sent the link to.</p>
+          <input aria-label="Email address" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} style={{ ...inp, fontSize: 16 }} />
+          <button className="cta" disabled={busy} onClick={() => finish(email, link)}>{busy ? "Signing in…" : "Sign in"}</button>
+        </>
+      ) : link ? (
+        <Loading text="Signing you in…" />
+      ) : (
+        <>
+          <h1 style={{ textAlign: "center" }}>Sign in to play</h1>
+          <p className="cap" style={{ textAlign: "center" }}>Your rounds, scoresheets and stats are saved to your account, so they're safe and the same on any phone.</p>
+          <button className="cta" disabled={busy} onClick={google}>Continue with Google</button>
+          <div className="cap" style={{ textAlign: "center" }}>or</div>
+          {!sent ? (
+            <>
+              <input aria-label="Email address" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => { if (e.key === "Enter") send(); }} style={{ ...inp, fontSize: 16 }} />
+              <button className="chip" disabled={busy} style={{ padding: "9px 0", textAlign: "center" }} onClick={send}>Email me a sign-in link</button>
+              <p className="cap" style={{ textAlign: "center" }}>No password. We email you a link; tap it to sign in.</p>
+            </>
+          ) : (
+            <div className="card" style={{ padding: 12 }}>
+              <p style={{ fontWeight: 700 }}>Check your email</p>
+              <p className="cap" style={{ marginTop: 3 }}>We sent a sign-in link to {email.trim()}. Open it on this phone. Can't see it? Check junk.</p>
+              <p className="cap" style={{ marginTop: 9 }}>Using Puntaro from your iPhone home screen? Links open in Safari instead, so copy the link from the email (press and hold it) and paste it here:</p>
+              <input aria-label="Paste sign-in link" placeholder="Paste the link" value={pasted} onChange={e => setPasted(e.target.value)} style={{ ...inp, marginTop: 6 }} />
+              <button className="cta" style={{ marginTop: 6 }} disabled={busy || !pasted.trim()} onClick={usePasted}>Sign in</button>
+              <button className="chip" style={{ marginTop: 6, padding: "6px 0", textAlign: "center", width: "100%" }} onClick={() => { setSent(false); setPasted(""); }}>Use a different email</button>
+            </div>
+          )}
+        </>
+      )}
+      {err && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, textAlign: "center" }}>{err}</p>}
+    </div>
+  );
+}
+
+// What's on this phone from before accounts, ready to move into the account. Sample data is left behind.
+const DEMO_IDS = ["sam", "priya", "jake", "maya", "leo", "dani", "omar"];
+function phoneData() {
+  const s = loadAppState(); const courses = loadSaved();
+  if (!s && !courses.length) return null;
+  const hist = s && Array.isArray(s.history) ? s.history : [];
+  const realRecent = s && Array.isArray(s.recent) ? s.recent.filter(r => !r.sample) : [];
+  const playing = s && s.round && !s.round.sample ? s.round : null;
+  const parked = s && Array.isArray(s.parked) ? s.parked.filter(x => Date.now() - x.at < PARK_MS) : [];
+  if (!hist.length && !courses.length && !playing && !parked.length) return null;
+  const used = new Set(["me"]);
+  hist.forEach(h => Object.keys(h.players || {}).forEach(id => used.add(id)));
+  [playing, ...parked.map(x => x.round)].forEach(r => r && r.playerIds.forEach(id => used.add(id)));
+  const ppl = (s && s.people) || {};
+  const people = Object.fromEntries(Object.entries(ppl).filter(([id]) => used.has(id) || !DEMO_IDS.includes(id)));
+  const friendIds = (s && Array.isArray(s.friendIds) ? s.friendIds : []).filter(id => people[id]);
+  // Older saves kept a one-line summary (recent, newest first) and the stats (history, oldest first) separately.
+  const records = hist.map((h, i) => {
+    const r = realRecent.length === hist.length ? realRecent[hist.length - 1 - i] : null;
+    return { id: `imp${h.at || i}`, at: h.at || Date.now(), course: h.course || (r && r.course) || "Round", gross: r ? r.gross : null, net: r ? r.net : null, note: "From your phone", players: h.players || {}, round: null, people: null, hidden: false, live: null };
+  });
+  return { people, friendIds, courses, records, now: { round: playing, live: playing && s.live ? s.live : null, parked, trash: [] }, counts: { rounds: records.length, courses: courses.length, playing: !!playing || parked.length > 0 } };
+}
+const forgetPhoneData = () => { try { localStorage.removeItem(STATE_KEY); localStorage.removeItem(SAVED_KEY); } catch (e) { /* fine */ } };
+
+function ProfileSetup({ cloud, user, onDone }) {
+  const local = useState(phoneData)[0];
+  const guess = (user.name || "").trim().split(/\s+/);
+  const [first, setFirst] = useState(guess[0] || "");
+  const [last, setLast] = useState(guess.length > 1 ? guess[guess.length - 1] : "");
+  const [hi, setHi] = useState("");
+  const [bring, setBring] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const go = async () => {
+    const h = Number(hi);
+    if (!first.trim()) { setErr("Enter your first name."); return; }
+    if (hi.trim() === "" || Number.isNaN(h) || h < -10 || h > 54) { setErr("Handicap index should be between -10 and 54. Not sure? Use 18 for now and change it later."); return; }
+    setBusy(true); setErr("");
+    const me = { ...((local && bring && local.people.me) || {}), id: "me", name: "You", color: ME_COLOR, first: first.trim(), last: last.trim(), hi: Math.round(h * 10) / 10 };
+    const people = { ...(local && bring ? local.people : {}), me };
+    const profile = { first: me.first, last: me.last, hi: me.hi, email: user.email || "", createdAt: Date.now(), people: JSON.stringify(people), friendIds: local && bring ? local.friendIds : [], courses: JSON.stringify(local && bring ? local.courses : []) };
+    const now = local && bring ? { json: JSON.stringify(local.now), at: Date.now() } : null;
+    try {
+      await cloud.setMine("", profile, false);
+      if (now) await cloud.setMine("state/now", now, false);
+      if (local && bring) await Promise.all(local.records.map(r => cloud.setMine(`rounds/${r.id}`, r, false)));
+      forgetPhoneData(); // the account has it now; nothing stays on the phone
+      onDone(profile, now);
+    } catch (e) { setErr(explain(e)); setBusy(false); }
+  };
+  return (
+    <div style={screen}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}><Tiles size={22} /></div>
+      <h1 style={{ textAlign: "center" }}>Welcome to Puntaro</h1>
+      <p className="cap" style={{ textAlign: "center" }}>Signed in as {user.email || "you"}. A couple of things for your scorecard.</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <input aria-label="First name" placeholder="First name" maxLength={20} value={first} onChange={e => setFirst(e.target.value)} style={inp} />
+        <input aria-label="Last name" placeholder="Last name" maxLength={20} value={last} onChange={e => setLast(e.target.value)} style={inp} />
+      </div>
+      <div>
+        <input aria-label="Handicap index" inputMode="decimal" placeholder="Handicap index, e.g. 14.2" value={hi} onChange={e => setHi(e.target.value.replace(/[^0-9.\-]/g, "").slice(0, 5))} style={inp} />
+        <p className="cap" style={{ marginTop: 4 }}>Your handicap index. Only your last initial is ever shown to other players.</p>
+      </div>
+      {local && (
+        <div className="card" style={{ padding: 11, display: "flex", gap: 9, alignItems: "center" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700 }}>Bring this phone's rounds into your account</div>
+            <div className="cap">{[local.counts.rounds ? `${local.counts.rounds} finished round${local.counts.rounds > 1 ? "s" : ""} and stats` : null, local.counts.courses ? `${local.counts.courses} saved course${local.counts.courses > 1 ? "s" : ""}` : null, local.counts.playing ? "a round in progress" : null].filter(Boolean).join(", ")}. Either way, it's removed from the phone.</div>
+          </div>
+          <Toggle on={bring} onChange={setBring} />
+        </div>
+      )}
+      <button className="cta" disabled={busy} onClick={go}>{busy ? "Saving…" : "Let's play"}</button>
+      {err && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, textAlign: "center" }}>{err}</p>}
+    </div>
+  );
+}
+
+export default function App() {
+  const [splash, setSplash] = useState(true);
+  const [cloud, setCloud] = useState(null);
+  const [user, setUser] = useState(undefined); // undefined while checking
+  const [boot, setBoot] = useState(null); // { profile, now } | "loading" | { error }
+  const [finished, setFinished] = useState([]);
+  const [startErr, setStartErr] = useState("");
+  useEffect(() => {
+    let off = () => {};
+    backend().then(b => { setCloud(b); off = b.watchAuth(u => setUser(u)); }).catch(e => { setStartErr(explain(e)); setUser(null); });
+    return () => off();
+  }, []);
+  useEffect(() => {
+    if (!user || !cloud) { setBoot(null); setFinished([]); return undefined; }
+    let dead = false; setBoot("loading");
+    Promise.all([cloud.getMine(""), cloud.getMine("state/now")])
+      .then(([profile, now]) => { if (!dead) setBoot({ profile, now }); })
+      .catch(e => { if (!dead) setBoot({ error: explain(e) }); });
+    const off = cloud.watchMine("rounds", rows => { if (!dead) setFinished(rows); }, () => {});
+    return () => { dead = true; off(); };
+  }, [user && user.uid, cloud]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ready = !splash && user && boot && boot !== "loading" && !boot.error && boot.profile;
+  if (ready) return <Game key={user.uid} user={user} cloud={cloud} profile={boot.profile} now0={boot.now} finished={finished} />;
+  return (
+    <div className="sg dark">
+      <style>{CSS}</style>
+      {splash ? <Splash onDone={() => setSplash(false)} />
+        : user === undefined || boot === "loading" ? <Loading text={user === undefined ? "Starting up…" : "Loading your rounds…"} />
+        : !user ? <SignIn cloud={cloud} startErr={startErr} />
+        : boot && boot.error ? <div style={screen}><p role="alert" style={{ textAlign: "center" }}>{boot.error}</p><button className="cta" onClick={() => location.reload()}>Try again</button></div>
+        : <ProfileSetup cloud={cloud} user={user} onDone={(profile, now) => setBoot({ profile, now })} />}
+    </div>
   );
 }

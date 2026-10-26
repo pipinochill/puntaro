@@ -1,20 +1,30 @@
 rules_version = '2';
-// Puntaro live rounds.
-//   rounds/{PUNT-XXXXX}                 the shared round
+// Puntaro.
+//   users/{uid}/...                     your account: profile, round in progress, finished rounds. Yours alone.
+//   rounds/{PUNT-XXXXX}                 a live round, shared by the players in it
 //   rounds/{PUNT-XXXXX}/banks/{pid_h}   one secret bank call per player per hole
 // Bank calls stay secret until every joined player has moved past that hole (at[pid] > h),
 // and a player's own call locks the moment they move on.
+// A finished live round (done) is read-only for everyone and is never deleted.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Revealed = every joined (claimed) player has moved past hole h. Up to 8 players.
+    // Your account. Nobody else can read or change it.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Revealed = the round is finished, or every joined (claimed) player has moved past hole h. Up to 8 players.
     function movedOn(r, i, h) {
       return r.base.playerIds.size() <= i
         || r.claims.get(r.base.playerIds[i], null) == null
         || r.get('at', {}).get(r.base.playerIds[i], 0) > h;
     }
     function revealed(r, h) {
-      return movedOn(r, 0, h) && movedOn(r, 1, h) && movedOn(r, 2, h) && movedOn(r, 3, h)
+      return r.get('done', false) == true || movedOn(r, 0, h) && movedOn(r, 1, h) && movedOn(r, 2, h) && movedOn(r, 3, h)
         && movedOn(r, 4, h) && movedOn(r, 5, h) && movedOn(r, 6, h) && movedOn(r, 7, h);
     }
 
@@ -28,15 +38,25 @@ service cloud.firestore {
       function changed() { return after().diff(before()).affectedKeys(); }
       function touches(k) { return k in changed(); }
 
-      // Nobody can change the host, the code, the setup or the player list.
+      // Nobody can change the host, the code, the setup or the player list. The clock is the server's.
       function keepsSetup() {
         return after().host == before().host && after().code == before().code
-          && after().base == before().base && after().people == before().people;
+          && after().base == before().base && after().people == before().people
+          && after().updatedAt == request.time;
+      }
+      // hostAt: when the host's phone last wrote to the round. Only the host's writes move it.
+      function hostClock() {
+        return isHost() ? after().hostAt == request.time : after().hostAt == before().hostAt;
+      }
+      // Finishing: the host, or any player once the host's phone has been silent for 6 hours (say it died).
+      function finishes() {
+        return changed().hasOnly(['done', 'doneBy', 'updatedAt', 'hostAt']) && after().done == true && after().doneBy == me()
+          && (isHost() || (isMember() && request.time > before().hostAt + duration.value(6, 'h')));
       }
       function joinKeys() { return ['members', 'claims', 'who', 'updatedAt']; }
       function watchKeys() { return ['members', 'claims', 'at', 'who', 'updatedAt']; }
       function playKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt']; }
-      function hostKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'bk', 'scoring']; }
+      function hostKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'hostAt', 'bk', 'scoring']; }
 
       // Only ever add yourself to members.
       function joinsSelf() {
@@ -79,13 +99,16 @@ service cloud.firestore {
       allow list: if false; // no browsing other people's rounds
       allow create: if signedIn()
         && code.matches('PUNT-[A-Z0-9]{5}')
+        && after().updatedAt == request.time && after().hostAt == request.time
+        && after().get('done', false) == false
         && after().code == code
         && after().host == me()
         && after().scoring in ['each', 'one']
         && after().claims == {'me': me()}
         && after().members.keys().hasOnly([me()]) && after().members[me()] == true
         && after().get('at', {}).size() == 0;
-      allow update: if signedIn() && keepsSetup()
+      allow update: if signedIn() && keepsSetup() && hostClock() && before().get('done', false) == false && (finishes() || (
+        !touches('done') && !touches('doneBy')
         && (isMember() || changed().hasOnly(joinKeys()))
         && (isHost() ? changed().hasOnly(hostKeys())
             : before().scoring == 'each' ? changed().hasOnly(playKeys())
@@ -96,8 +119,8 @@ service cloud.firestore {
         && (!touches('ed') || keepsEdits())
         && (!touches('draws') || addsDraws())
         && (!touches('bk') || (before().scoring == 'one' && after().scoring == 'one'))
-        && (!touches('scoring') || after().scoring in ['each', 'one']);
-      allow delete: if signedIn() && isHost();
+        && (!touches('scoring') || after().scoring in ['each', 'one'])));
+      allow delete: if false; // finished rounds belong to everyone who played
 
       match /banks/{key} {
         function round() { return get(/databases/$(database)/documents/rounds/$(code)).data; }
@@ -114,13 +137,13 @@ service cloud.firestore {
           && request.resource.data.v is bool
           && request.resource.data.uid == request.auth.uid
           && round().scoring == 'each'
+          && round().get('done', false) == false
           && pid() in round().base.playerIds
           && round().get('members', {}).get(request.auth.uid, false) == true
           && (round().claims.get(pid(), null) == request.auth.uid
                 ? round().get('at', {}).get(pid(), 0) <= hole()            // your call, until you move on
                 : (round().claims.get(pid(), null) == null && !revealed(round(), hole()))); // a player with no phone
-        // The host clears these away when the round is finished.
-        allow delete: if signedIn() && round().host == request.auth.uid;
+        allow delete: if false;
       }
     }
   }

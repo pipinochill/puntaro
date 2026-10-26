@@ -7,16 +7,17 @@ A points-only golf side game that runs alongside your normal comp. Web app, inst
 
 Course names and locations come from OpenStreetMap contributors (ODbL). Slope and rating are entered by the player. Not official Golf Australia data.
 
-## Live rounds (Firebase)
+## Accounts and live rounds (Firebase)
 
-`src/live.js` holds the Firebase config and the sync code. The Firebase SDK is loaded from gstatic at runtime (no npm needed) and cached by the service worker for offline play.
+Everything is stored in Firebase: each player's account (`users/{uid}`: profile, round in progress, finished
+rounds) and live rounds (`rounds/{code}`). The phone only keeps Firestore's temporary offline cache, cleared on
+sign-out. `src/live.js` holds the Firebase config, sign-in and sync code; the SDK loads from gstatic at runtime.
 
 One-time Firebase console setup (project `puntaro`):
-1. Authentication → Sign-in method → enable **Anonymous**.
-2. Authentication → Settings → Authorized domains → add `pipinochill.github.io`.
-3. Firestore Database → Create database → location `australia-southeast1` (Sydney), production mode.
-4. Firestore → Rules → paste `firestore.rules` → Publish.
+1. Authentication → Sign-in method: enable **Google**, and **Email/Password** with **Email link (passwordless sign-in)** on. Anonymous is no longer used.
+2. Authentication → Settings → Authorized domains: `pipinochill.github.io`.
+3. Firestore Database → Create database (if not done) → `australia-southeast1` (Sydney), production mode.
+4. Firestore → Rules → paste `firestore.rules` → Publish. Re-publish whenever it changes.
 
-Re-publish the rules whenever `firestore.rules` changes. Bank calls in "everyone scores" live in `rounds/{code}/banks/{pid_h}` and stay unreadable until every joined player has moved past that hole.
-
-Optional clean-up: in the Firebase console, Firestore → TTL policies → add a policy on collection group `rounds`, field `expireAt`. Live rounds are then deleted 30 days after they start.
+Finished live rounds are kept for everyone who played and are read-only. Bank calls in "everyone scores"
+live in `rounds/{code}/banks/{pid_h}` and stay unreadable until every joined player has moved past that hole.
