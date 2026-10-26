@@ -27,7 +27,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.61";
+const APP_VERSION = "0.62";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -844,32 +844,32 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap');
 .sg{--ink:#1B1C1A;--muted:#55524A;--chalk:#F1EADB;--card:#FBF6EA;--sel:#D3DACB;--night:#1B1C1A;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C9C0A8;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
 .sg.dark{--ink:#EDE8DD;--muted:#B3AEA2;--chalk:#1B1C1A;--card:#252724;--sel:#2C4033;--night:#454841;--pine:#4F7A5A;--fair:#7FA886;--lime:#E0C799;--red:#CC5A3E;--bogey:#CC5A3E;--line:#383A35;--track:#1B1C1A;--head1:#2C4536;--head2:#27402F;--grid:rgba(232,227,214,.03);--on-bg:#C69C6D;--on-fg:#1B1C1A;}
-.sg{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;font-weight:500;font-size:14px;line-height:1.28;letter-spacing:0;color:var(--ink);background-color:var(--chalk);
+.sg{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;font-weight:500;font-size:13px;line-height:1.28;letter-spacing:0;color:var(--ink);background-color:var(--chalk);
  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:8px 8px;
  font-variant-numeric:tabular-nums;max-width:430px;margin:0 auto;min-height:100vh;position:relative;display:flex;flex-direction:column;}
 .sg *{box-sizing:border-box;border-radius:0 !important;}
 .sg *{font-synthesis:none;}
 .sg h1,.sg h2,.sg h3,.sg p{margin:0;}
 .sg h1,.sg h2,.sg h3,.sg .px,.sg .cta{font-weight:700 !important;letter-spacing:0 !important;}
-.sg .px{font-family:'Silkscreen','Pixelify Sans',ui-monospace,monospace;}
-.sg h1{font-size:22px !important;line-height:1.15 !important;}
-.sg h2,.sg .h2{font-size:16px !important;line-height:1.2 !important;}
-.sg h3{font-size:14px !important;line-height:1.2 !important;}
+.sg .px{font-family:'Pixelify Sans','Silkscreen',ui-monospace,monospace;font-weight:600 !important;}
+.sg h1{font-size:20px !important;line-height:1.15 !important;}
+.sg h2,.sg .h2{font-size:15px !important;line-height:1.2 !important;}
+.sg h3{font-size:13px !important;line-height:1.2 !important;}
 .sg button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;-webkit-tap-highlight-color:transparent;}
 .sg button:focus-visible{outline:3px solid var(--water);outline-offset:2px;}
 .sg svg{shape-rendering:crispEdges;}
 .sg svg *{stroke-linecap:square;stroke-linejoin:miter;}
 .stripes{background:repeating-linear-gradient(90deg,var(--head1) 0 32px,var(--head2) 32px 64px);border-bottom:4px solid var(--night);color:var(--hi);}
 .card{background:var(--card);border:3px solid var(--night);box-shadow:3px 3px 0 var(--night);}
-.sg .pill{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;font-weight:600;font-size:12px;color:var(--dk);border:2px solid var(--night);}
+.sg .pill{display:inline-flex;align-items:center;gap:5px;padding:1px 6px;font-weight:600;font-size:11.5px;color:var(--dk);border:2px solid var(--night);}
 .sg .stripes .pill{color:var(--hi);}
-.sg .chip{border:2px solid var(--night);background:var(--card);color:var(--ink);padding:4px 9px;font-weight:600;font-size:13px;white-space:nowrap;box-shadow:2px 2px 0 var(--night);}
+.sg .chip{border:2px solid var(--night);background:var(--card);color:var(--ink);padding:4px 8px;font-weight:600;font-size:12.5px;white-space:nowrap;box-shadow:2px 2px 0 var(--night);}
 .sg .chip.on{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg);box-shadow:none;transform:translate(2px,2px);}
-.sg .cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;padding:10px;font-size:16px !important;background:var(--pine);color:#F4F0E6;border:3px solid var(--night);box-shadow:0 4px 0 var(--night);}
+.sg .cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;padding:9px;font-size:15px !important;background:var(--pine);color:#F4F0E6;border:3px solid var(--night);box-shadow:0 4px 0 var(--night);}
 .sg.dark .cta{background:var(--on-bg);color:var(--on-fg);}
 .sg .cta:active{transform:translateY(5px);box-shadow:none;}
 .sg .cta:disabled{opacity:.4;cursor:not-allowed;}
-.cap{font-size:12.5px;color:var(--muted);line-height:1.28;}
+.cap{font-size:12px;color:var(--muted);line-height:1.28;}
 .sg .chip:disabled{opacity:.45;cursor:not-allowed;}
 .sg fieldset:disabled button{opacity:.4;cursor:not-allowed;}
 .seg{display:flex;flex-wrap:wrap;gap:6px;}
@@ -1078,7 +1078,7 @@ function ScoreMark({ v, par, size = 50 }) {
   const g = "var(--fair)", r = "var(--red)", m = "var(--mint)", w = "var(--card)";
   const layers = d <= -2 ? [[46, g], [41, w], [36, g], [31, m]] : d === -1 ? [[41, g], [36, m]] : d === 1 ? [[41, r], [36, w]] : d >= 2 ? [[46, r], [41, w], [36, r], [31, w]] : [];
   const birdie = d < 0;
-  const num = <span key={v} className="pop px" style={{ fontSize: 20, lineHeight: 1, color: d > 0 ? "var(--red)" : d < 0 ? "var(--dk)" : "var(--ink)" }}>{v}</span>;
+  const num = <span key={v} className="pop px" style={{ fontSize: 19, lineHeight: 1, color: d > 0 ? "var(--red)" : d < 0 ? "var(--dk)" : "var(--ink)" }}>{v}</span>;
   const art = layers.reduceRight((child, [sz, bg]) => (
     <div style={{ width: sz, height: sz, background: bg, clipPath: birdie ? CH : "none", display: "grid", placeItems: "center" }}>{child}</div>
   ), num);
@@ -2508,7 +2508,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
     api.setScore(id, h, val);
   };
   const StepBtn = ({ onClick, label, children, plus }) => (
-    <button onClick={onClick} aria-label={label} style={{ width: 40, height: 40, border: "3px solid var(--night)", display: "grid", placeItems: "center", background: plus ? "var(--pine)" : "var(--chalk)", color: plus ? "#F4F0E6" : "var(--ink)", flex: "none" }}>{children}</button>
+    <button onClick={onClick} aria-label={label} style={{ width: 38, height: 38, border: "3px solid var(--night)", display: "grid", placeItems: "center", background: plus ? "var(--pine)" : "var(--chalk)", color: plus ? "#F4F0E6" : "var(--ink)", flex: "none" }}>{children}</button>
   );
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -2522,13 +2522,13 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-          <button onClick={() => api.setHole(Math.max(0, h - 1))} aria-label="Previous hole" disabled={h === 0} style={{ width: 42, height: 42, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 0 ? 0.35 : 1 }}><ChevronLeft size={26} /></button>
+          <button onClick={() => api.setHole(Math.max(0, h - 1))} aria-label="Previous hole" disabled={h === 0} style={{ width: 38, height: 38, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 0 ? 0.35 : 1 }}><ChevronLeft size={26} /></button>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.9 }}>{round.course.name}</div>
-            <div className="px" aria-label={`Hole ${h + 1}`} style={{ fontSize: 38, lineHeight: 1, margin: "3px 0 4px" }}>{h + 1}</div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Par {PAR[h]} · Index {SI[h]}</div>
+            <div className="px" aria-label={`Hole ${h + 1}`} style={{ fontSize: 34, lineHeight: 1, margin: "2px 0 3px" }}>{h + 1}</div>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>Par {PAR[h]} · Index {SI[h]}</div>
           </div>
-          <button onClick={goNext} aria-label="Next hole" disabled={h === 17} style={{ width: 42, height: 42, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 17 ? 0.35 : 1 }}><ChevronRight size={26} /></button>
+          <button onClick={goNext} aria-label="Next hole" disabled={h === 17} style={{ width: 38, height: 38, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 17 ? 0.35 : 1 }}><ChevronRight size={26} /></button>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 11 }}>
           {range18.map(i => (
@@ -2547,8 +2547,8 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
           <div key={n.key} role="status" style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px", border: "3px solid var(--night)", background: n.urgent ? "var(--red)" : "var(--flag)", color: n.urgent ? "#fff" : "var(--dk)" }}>
             <div style={{ flex: "none", width: 28, display: "grid", placeItems: "center" }}><Sprite name={n.icon} size={n.isize} className={n.urgent ? "flick" : ""} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14.5, lineHeight: 1.2 }}>{n.title}</div>
-              <div style={{ fontSize: 13, lineHeight: 1.28 }}>{n.text}</div>
+              <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.2 }}>{n.title}</div>
+              <div style={{ fontSize: 12, lineHeight: 1.28 }}>{n.text}</div>
             </div>
             {n.action && <button className="chip" onClick={n.action[1]} style={{ flex: "none", padding: "6px 9px", fontSize: 13, color: "var(--ink)" }}>{n.action[0]}</button>}
           </div>
@@ -2563,10 +2563,10 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
           const bust = pc && pc[id].bustAt[h]; const hot = pc && !bust && v != null && pc[id].mult > 1;
           return (
             <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, padding: "6px 7px 6px 9px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
-              <Avatar p={people[id]} size={32} />
+              <Avatar p={people[id]} size={30} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 10, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
-                <div className="cap" style={{ fontSize: 13, fontWeight: 600 }}>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 10, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
+                <div className="cap" style={{ fontSize: 12, fontWeight: 600 }}>
                   {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
                   {can.enteredBy && v != null && can.enteredBy(id, h) && <span>{` · by ${can.enteredBy(id, h)}`}</span>}
