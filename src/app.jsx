@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, createContext, useContext } from "react";
-import { backend, newCode, cleanCode, joinLink, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain, EMAIL_KEY } from "./live.js";
+import { backend, newCode, cleanCode, joinLink, inviteLink, newRefCode, cleanRef, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain, EMAIL_KEY } from "./live.js";
 import { makeDecoder, cameraProblem } from "./scan.js";
 import { qrPath } from "./qr.js";
 
@@ -24,7 +24,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.50";
+const APP_VERSION = "0.51";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -45,8 +45,20 @@ const loadAppState = () => { try { const s = JSON.parse(localStorage.getItem(STA
 const SAVED_KEY = "puntaro.courses.v1";
 const loadSaved = () => { try { const v = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
 const START_URL = (() => { try { return location.href; } catch (e) { return ""; } })();
+// A join code or invite code from the link that opened the app. Kept until used, because signing in with an
+// email link reopens the app on a fresh page without them.
+const JOIN_KEY = "puntaro.pendingJoin", REF_KEY = "puntaro.pendingRef";
+const stash = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { /* fine */ } };
+const unstash = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const PENDING_JOIN = (() => {
-  try { const q = new URLSearchParams(location.search).get("join"); if (q == null) return null; window.history.replaceState(null, "", location.pathname); return cleanCode(q) || ""; } catch (e) { return null; }
+  try {
+    const q = new URLSearchParams(location.search);
+    const ref = cleanRef(q.get("ref")); if (ref && !unstash(REF_KEY)) stash(REF_KEY, ref); // the first invite counts
+    const j = q.get("join");
+    if (q.has("join") || q.has("ref")) window.history.replaceState(null, "", location.pathname);
+    if (j != null) { const c = cleanCode(j) || ""; stash(JOIN_KEY, c || null); return c; }
+    const kept = unstash(JOIN_KEY); return kept ? kept : null;
+  } catch (e) { return null; }
 })();
 const parseJSON = (t, fallback) => { try { const v = JSON.parse(t); return v == null ? fallback : v; } catch (e) { return fallback; } };
 const ME_COLOR = "#4F7A5A";
@@ -2736,7 +2748,45 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
   );
 }
 
-function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, onSignOut, onStartFresh, onDeleteAccount }) {
+const displayName = p => `${(p.first || p.name || "").trim()}${p.last ? ` ${p.last.trim()[0].toUpperCase()}.` : ""}`.slice(0, 30) || "A Puntaro player";
+
+// Your own invite link, and who signed up with it.
+function InviteCard({ myRef, makeRef, cloud }) {
+  const [joins, setJoins] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  useEffect(() => { if (myRef) cloud.listJoins(myRef).then(setJoins).catch(() => setJoins([])); }, [myRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  const get = async () => { setBusy(true); setMsg(""); try { await makeRef(); } catch (e) { setMsg(explain(e)); } setBusy(false); };
+  const share = async () => {
+    const url = inviteLink(myRef);
+    try { if (navigator.share) { await navigator.share({ title: "Puntaro", text: "Play Puntaro with me: a side game for your round. Bank it or bust.", url }); return; } } catch (e) { return; }
+    try { await navigator.clipboard.writeText(url); setMsg("Link copied"); setTimeout(() => setMsg(""), 1800); } catch (e) { setMsg(url); }
+  };
+  return (
+    <div className="card" style={{ padding: 12 }}>
+      <div className="cap" style={{ fontWeight: 600 }}>Invite friends</div>
+      {!myRef ? (
+        <>
+          <p className="cap" style={{ marginTop: 3 }}>Get your own invite link. Anyone who signs up with it shows up here.</p>
+          <button className="cta" style={{ marginTop: 8 }} disabled={busy} onClick={get}>{busy ? "Making your link…" : "Get my invite link"}</button>
+        </>
+      ) : (
+        <>
+          <div className="px" style={{ marginTop: 5, fontSize: 13, wordBreak: "break-all" }}>{inviteLink(myRef).replace(/^https?:\/\//, "")}</div>
+          <button className="cta" style={{ marginTop: 8 }} onClick={share}>Share my invite link</button>
+          <p className="cap" style={{ marginTop: 6 }}>Your live round QR codes and links count too.</p>
+          <div style={{ marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 7 }}>
+            <div style={{ fontWeight: 700 }}>{joins == null ? "Checking who's joined…" : joins.length === 0 ? "No one has joined with your link yet" : `${joins.length} joined with your link`}</div>
+            {joins && joins.length > 0 && <div className="cap" style={{ marginTop: 2 }}>{joins.sort((a, b) => (b.at || 0) - (a.at || 0)).map(j => j.name).join(", ")}</div>}
+          </div>
+        </>
+      )}
+      {msg && <p className="cap" role="status" style={{ marginTop: 5, fontWeight: 600 }}>{msg}</p>}
+    </div>
+  );
+}
+
+function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, onSignOut, onStartFresh, onDeleteAccount, myRef, makeRef, cloud }) {
   const me = people.me;
   const [ask, setAsk] = useState(null); // "fresh" | "delete"
   const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(36, Math.max(-2, v)) * 10) / 10 } }));
@@ -2749,6 +2799,7 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
         <div><h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.8 }}>You</h1><p style={{ opacity: 0.8 }}>Season stats</p></div>
       </div>
       <div style={{ padding: 12, display: "grid", gap: 11 }}>
+        <InviteCard myRef={myRef} makeRef={makeRef} cloud={cloud} />
         <div className="card" style={{ padding: "8px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
           <div><div style={{ fontWeight: 700, fontSize: 13 }}>Dark mode</div><div className="cap">Easier on the eyes on the course at dusk.</div></div>
           <Toggle on={dark} onChange={setDark} />
@@ -2958,12 +3009,12 @@ function LiveStartSheet({ state, onClose }) {
   );
 }
 
-function LiveSheet({ code, doc, uid, onClose, onScoring, onRelease, onLeave }) {
-  const qr = qrPath(joinLink(code));
+function LiveSheet({ code, doc, uid, onClose, onScoring, onRelease, onLeave, refCode }) {
+  const qr = qrPath(joinLink(code, refCode));
   const [copied, setCopied] = useState(false);
   const host = doc && doc.host === uid;
   const share = async () => {
-    const url = joinLink(code);
+    const url = joinLink(code, refCode);
     try { if (navigator.share) { await navigator.share({ title: "Join my Puntaro round", text: `Join my round with code ${code}`, url }); return; } } catch (e) { return; }
     try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch (e) { /* fine */ }
   };
@@ -3027,6 +3078,18 @@ function Game({ user, cloud, profile, now0, finished }) {
   const recent = finished.filter(r => !r.hidden).sort((a, b) => b.at - a.at).map(r => ({ id: r.id, course: r.course, when: fmtDay(r.at), gross: r.gross, net: r.net, note: r.note, hasCard: !!r.round }));
   const history = finished.map(r => ({ at: r.at, course: r.course, players: r.players || {} }));
   const [openRec, setOpenRec] = useState(null);
+  // Your invite code. Accounts made before invites get one the first time they open the Invite card.
+  const [myRef, setMyRef] = useState(profile.refCode || null);
+  useEffect(() => { stash(REF_KEY, null); }, []); // already signed up: an invite link no longer counts
+  const makeRef = async () => {
+    if (myRef) return myRef;
+    for (let k = 0; k < 4; k++) {
+      const code = newRefCode(people.me.first);
+      try { await cloud.createRef(code, displayName(people.me)); await cloud.setMine("", { refCode: code }, true); setMyRef(code); return code; }
+      catch (e) { if (!/permission/.test((e && e.code) || "")) throw e; } // taken: try another
+    }
+    throw new Error("Couldn't make an invite code. Try again.");
+  };
   const [fx, setFx] = useState(null);
   const [tipK, setTipK] = useState(null);
   const celebrate = (kind, text, sub, badge) => { const key = Date.now() + Math.random(); setFx({ key, kind, text, sub, badge }); setTimeout(() => setFx(f => (f && f.key === key ? null : f)), 1500); };
@@ -3402,9 +3465,9 @@ function Game({ user, cloud, profile, now0, finished }) {
           </div>
         </div>
       )}
-      {joinCode != null && !splash && <JoinSheet initial={joinCode} onClose={() => setJoinCode(null)} onJoined={joined} />}
+      {joinCode != null && !splash && <JoinSheet initial={joinCode} onClose={() => { stash(JOIN_KEY, null); setJoinCode(null); }} onJoined={(...a) => { stash(JOIN_KEY, null); joined(...a); }} />}
       {liveSheet && !live && liveStart && <LiveStartSheet state={liveStart} onClose={() => { setLiveSheet(false); setLiveStart(null); }} />}
-      {liveSheet && live && <LiveSheet code={live.code} doc={liveDoc} uid={liveUid} onClose={() => setLiveSheet(false)} onScoring={v => push([[["scoring"], v]])} onRelease={pid => push([[["claims", pid], DELETE]])} onLeave={leaveLive} />}
+      {liveSheet && live && <LiveSheet refCode={myRef} code={live.code} doc={liveDoc} uid={liveUid} onClose={() => setLiveSheet(false)} onScoring={v => push([[["scoring"], v]])} onRelease={pid => push([[["claims", pid], DELETE]])} onLeave={leaveLive} />}
       {liveNotes.length > 0 && <div role="status" style={{ position: "fixed", left: 0, right: 0, top: 10, maxWidth: 430, margin: "0 auto", zIndex: 45, padding: "0 12px", pointerEvents: "none", display: "grid", gap: 6 }}>{liveNotes.map(n => <div key={n.id} style={{ background: "var(--flag)", color: "var(--dk)", fontWeight: 700, fontSize: 13, padding: "7px 10px", border: "3px solid var(--night)" }}>{n.t}</div>)}</div>}
       {liveErr && view === "round" && <div role="status" style={{ position: "fixed", left: 0, right: 0, bottom: 74, maxWidth: 430, margin: "0 auto", zIndex: 25, padding: "0 12px", pointerEvents: "none" }}><div className="cap" style={{ background: "var(--dk)", color: "#EDE8DD", padding: "6px 9px", border: "2px solid var(--night)" }}>{liveErr}</div></div>}
       {del && (
@@ -3429,7 +3492,7 @@ function Game({ user, cloud, profile, now0, finished }) {
           <div style={{ flex: 1 }}>
             {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
-            {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} />}
+            {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
           </div>
           <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>
             {tabs.map(([k, l, I]) => (
@@ -3549,6 +3612,11 @@ const forgetPhoneData = () => { try { localStorage.removeItem(STATE_KEY); localS
 
 function ProfileSetup({ cloud, user, onDone }) {
   const local = useState(phoneData)[0];
+  const [inviter, setInviter] = useState(null); // { code, name }
+  useEffect(() => {
+    const code = unstash(REF_KEY); if (!code) return;
+    cloud.getRef(code).then(r => { if (r && r.owner !== user.uid) setInviter({ code, name: r.name }); }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const guess = (user.name || "").trim().split(/\s+/);
   const [first, setFirst] = useState(guess[0] || "");
   const [last, setLast] = useState(guess.length > 1 ? guess[guess.length - 1] : "");
@@ -3563,12 +3631,17 @@ function ProfileSetup({ cloud, user, onDone }) {
     setBusy(true); setErr("");
     const me = { ...((local && bring && local.people.me) || {}), id: "me", name: "You", color: ME_COLOR, first: first.trim(), last: last.trim(), hi: Math.round(h * 10) / 10 };
     const people = { ...(local && bring ? local.people : {}), me };
-    const profile = { first: me.first, last: me.last, hi: me.hi, email: user.email || "", createdAt: Date.now(), people: JSON.stringify(people), friendIds: local && bring ? local.friendIds : [], courses: JSON.stringify(local && bring ? local.courses : []) };
+    // Your own invite code (first name + 4 characters); retried if it's taken.
+    let refCode = null;
+    for (let k = 0; k < 4 && !refCode; k++) { const c = newRefCode(me.first); try { await cloud.createRef(c, displayName(me)); refCode = c; } catch (e) { /* taken or offline */ } }
+    const profile = { first: me.first, last: me.last, hi: me.hi, email: user.email || "", createdAt: Date.now(), refCode, referredBy: inviter ? inviter.code : null, people: JSON.stringify(people), friendIds: local && bring ? local.friendIds : [], courses: JSON.stringify(local && bring ? local.courses : []) };
     const now = local && bring ? { json: JSON.stringify(local.now), at: Date.now() } : null;
     try {
       await cloud.setMine("", profile, false);
       if (now) await cloud.setMine("state/now", now, false);
       if (local && bring) await Promise.all(local.records.map(r => cloud.setMine(`rounds/${r.id}`, r, false)));
+      if (inviter) await cloud.addJoin(inviter.code, displayName(me)).catch(() => {}); // counts for whoever invited you
+      stash(REF_KEY, null);
       forgetPhoneData(); // the account has it now; nothing stays on the phone
       onDone(profile, now);
     } catch (e) { setErr(explain(e)); setBusy(false); }
@@ -3578,6 +3651,7 @@ function ProfileSetup({ cloud, user, onDone }) {
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}><Tiles size={22} /></div>
       <h1 style={{ textAlign: "center" }}>Welcome to Puntaro</h1>
       <p className="cap" style={{ textAlign: "center" }}>Signed in as {user.email || "you"}. A couple of things for your scorecard.</p>
+      {inviter && <p style={{ textAlign: "center", fontWeight: 700 }}>Invited by {inviter.name}</p>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <input aria-label="First name" placeholder="First name" maxLength={20} value={first} onChange={e => setFirst(e.target.value)} style={inp} />
         <input aria-label="Last name" placeholder="Last name" maxLength={20} value={last} onChange={e => setLast(e.target.value)} style={inp} />

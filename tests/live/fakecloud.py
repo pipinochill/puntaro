@@ -47,6 +47,8 @@ window.__puntaroLiveBackend = {
   getMine: p => call('__fc_uget', p), setMine: (p, d, m = true) => call('__fc_uset', p, d, m), deleteMine: p => call('__fc_udel', p),
   listMine: async p => (await call('__fc_ulist', p)).map(x => x.id),
   watchMine: (p, cb) => poll(() => call('__fc_ulist', p), cb),
+  getRef: c => call('__fc_getref', c), createRef: (c, n) => call('__fc_mkref', c, n), addJoin: (c, n) => call('__fc_addjoin', c, n),
+  listJoins: c => call('__fc_joins', c),
   create: (c, d) => call('__fc_create', c, d), get: c => call('__fc_get', c), update: (c, p, host) => call('__fc_update', c, p, !!host),
   setIfAbsent: (c, p, v, e, host) => call('__fc_sia', c, p, v, e || [], !!host), finish: (c, host) => call('__fc_finish', c, !!host),
   putBank: (c, i, h, v) => call('__fc_putbank', c, i, h, v), getBank: (c, i, h) => call('__fc_getbank', c, i, h),
@@ -88,7 +90,9 @@ class Cloud:
             p, d, m = json.loads(p), json.loads(d), json.loads(m)
             if me is None: return self._no('signed out')
             k = upath(me, p)
-            self.docs[k] = {**self.docs.get(k, {}), **d} if m else d
+            new = {**self.docs.get(k, {}), **d} if m else d
+            if p == '' and not R.user_update(self.docs.get(k), new, me, me): return self._no('profile referredBy')
+            self.docs[k] = new
             return self._ok()
         async def udel(me, p):
             p = json.loads(p)
@@ -105,6 +109,16 @@ class Cloud:
             path, op, data = json.loads(path), json.loads(op), json.loads(data)
             parts = path.split('/')
             if parts[0] == 'users' and not R.user_doc(parts[1], me): return self._no('raw ' + op + ' ' + path)
+            if parts[0] == 'users' and op == 'set' and len(parts) == 2 and not R.user_update(self.docs.get(path), data, me, parts[1]): return self._no('raw referredBy')
+            if parts[0] == 'refs':
+                ref = self.docs.get(f'refs/{parts[1]}')
+                if len(parts) == 2 and op != 'get': return self._no('raw ref ' + op)
+                if len(parts) == 4:
+                    if op == 'get' and not R.join_read(ref, me): return self._no('raw join read')
+                    if op == 'delete': return self._no('raw join delete')
+                    if op == 'set':
+                        if path in self.docs: return self._no('raw join overwrite')
+                        if not R.join_create(ref, self.docs.get(f'users/{me}'), parts[3], {**(data or {}), '_code': parts[1]}, me, (data or {}).get('at')): return self._no('raw join create')
             if op == 'get': return self._ok(copy.deepcopy(self.docs.get(path)))
             if op == 'set': self.docs[path] = data; return self._ok()
             if op == 'delete': self.docs.pop(path, None); return self._ok()
@@ -150,7 +164,25 @@ class Cloud:
             key = f'{i}_{h}'; d = self.docs.get(f'rounds/{code}/banks/{key}'); r = self.docs.get(f'rounds/{code}')
             if me is None or r is None or not R.bank_get(r, key, d, me): return self._no('bank read ' + key)
             return self._ok(None if d is None else d['v'])
-        for n, f in [('__fc_raw', raw), ('__fc_uget', uget), ('__fc_uset', uset), ('__fc_udel', udel), ('__fc_ulist', ulist), ('__fc_dellogin', dellogin),
+        async def getref(me, code):
+            code = json.loads(code)
+            if me is None: return self._no('signed out')
+            return self._ok(copy.deepcopy(self.docs.get(f'refs/{code}')))
+        async def mkref(me, code, name):
+            code, name = json.loads(code), json.loads(name); k = f'refs/{code}'; t = self.now()
+            d = {'owner': me, 'name': name, 'createdAt': t}
+            if k in self.docs or not R.ref_create(code, d, me, t): return self._no('ref create ' + code)
+            self.docs[k] = d; return self._ok()
+        async def addjoin(me, code, name):
+            code, name = json.loads(code), json.loads(name); k = f'refs/{code}/joins/{me}'; t = self.now()
+            if k in self.docs or not R.join_create(self.docs.get(f'refs/{code}'), self.docs.get(f'users/{me}'), me, {'name': name, 'at': t, '_code': code}, me, t): return self._no('join ' + code)
+            self.docs[k] = {'name': name, 'at': t}; return self._ok()
+        async def joins(me, code):
+            code = json.loads(code)
+            if not R.join_read(self.docs.get(f'refs/{code}'), me): return self._no('joins read ' + code)
+            pre = f'refs/{code}/joins/'
+            return self._ok([{'id': k[len(pre):], **v} for k, v in self.docs.items() if k.startswith(pre)])
+        for n, f in [('__fc_getref', getref), ('__fc_mkref', mkref), ('__fc_addjoin', addjoin), ('__fc_joins', joins), ('__fc_raw', raw), ('__fc_uget', uget), ('__fc_uset', uset), ('__fc_udel', udel), ('__fc_ulist', ulist), ('__fc_dellogin', dellogin),
                      ('__fc_create', create), ('__fc_get', get), ('__fc_update', update), ('__fc_sia', sia), ('__fc_finish', finish),
                      ('__fc_putbank', putbank), ('__fc_getbank', getbank)]:
             await c.expose_function(n, f)

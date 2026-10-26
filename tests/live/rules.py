@@ -98,3 +98,21 @@ def round_delete(r, uid):
 def user_doc(path_uid, uid):
     """users/{uid}/** : yours alone."""
     return uid is not None and path_uid == uid
+
+def user_update(before, after, uid, path_uid):
+    """users/{uid} profile: yours alone; referredBy can't change after sign-up."""
+    if uid is None or uid != path_uid: return False
+    if before is None: return True
+    return (after or {}).get('referredBy') == before.get('referredBy')
+
+def ref_create(code, data, uid, now):
+    return (uid is not None and re.fullmatch(r'[a-z]{1,10}-[a-z0-9]{4}', code) is not None and set(data) <= {'owner', 'name', 'createdAt'}
+            and data.get('owner') == uid and isinstance(data.get('name'), str) and len(data['name']) <= 30 and data.get('createdAt') == now)
+
+def join_read(ref, uid):
+    return uid is not None and ref is not None and ref.get('owner') == uid
+
+def join_create(ref, user, path_uid, data, uid, now):
+    return (uid is not None and path_uid == uid and ref is not None and ref.get('owner') != uid
+            and (user or {}).get('referredBy', '') == data.get('_code') and set(data) - {'_code'} <= {'name', 'at'}
+            and isinstance(data.get('name'), str) and len(data['name']) <= 30 and data.get('at') == now)

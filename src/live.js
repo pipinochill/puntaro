@@ -24,7 +24,17 @@ export const cleanCode = raw => {
 };
 // Sentinel for "remove this field" in update pairs.
 export const DELETE = { __delete: true };
-export const joinLink = code => `${location.origin}${location.pathname}?join=${encodeURIComponent(code)}`;
+export const appLink = () => `${location.origin}${location.pathname}`;
+// ref: the sharer's invite code, so a new player who signs up from this link counts as theirs.
+export const joinLink = (code, ref) => `${appLink()}?join=${encodeURIComponent(code)}${ref ? `&ref=${encodeURIComponent(ref)}` : ""}`;
+export const inviteLink = ref => `${appLink()}?ref=${encodeURIComponent(ref)}`;
+// Invite codes: first name plus 4 characters, e.g. pierre-7k3q.
+const REF_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";
+export const newRefCode = first => {
+  const base = String(first || "player").toLowerCase().normalize("NFKD").replace(/[^a-z]/g, "").slice(0, 10) || "player";
+  return `${base}-${Array.from({ length: 4 }, () => REF_CHARS[Math.floor(Math.random() * REF_CHARS.length)]).join("")}`;
+};
+export const cleanRef = raw => { const t = String(raw || "").toLowerCase().trim(); return /^[a-z]{1,10}-[a-z0-9]{4}$/.test(t) ? t : null; };
 
 /* ---------- round <-> document ---------- */
 const BASE_KEYS = ["course", "holes", "mode", "teams", "playerIds", "games", "useHcp", "hcp", "opts", "drawSeed", "stake", "split"];
@@ -167,6 +177,12 @@ async function firebaseBackend() {
     deleteMine: p => F.deleteDoc(userRef(p)),
     watchMine: (p, cb, onErr) => F.onSnapshot(userCol(p), q => cb(q.docs.map(d => ({ id: d.id, ...d.data() }))), onErr),
     listMine: async p => (await F.getDocs(userCol(p))).docs.map(d => d.id),
+
+    /* invites: refs/{code} = { owner, name }, refs/{code}/joins/{uid} = new players who signed up from it */
+    getRef: async code => { const s = await F.getDoc(F.doc(db, "refs", code)); return s.exists() ? s.data() : null; },
+    createRef: (code, name) => F.setDoc(F.doc(db, "refs", code), { owner: me(), name, createdAt: F.serverTimestamp() }),
+    addJoin: (code, name) => F.setDoc(F.doc(db, "refs", code, "joins", me()), { name, at: F.serverTimestamp() }),
+    listJoins: async code => (await F.getDocs(F.collection(db, "refs", code, "joins"))).docs.map(d => ({ id: d.id, name: d.data().name, at: d.data().at && d.data().at.toMillis ? d.data().at.toMillis() : null })),
 
     /* live rounds */
     create: (code, data) => F.setDoc(ref(code), { ...data, updatedAt: F.serverTimestamp(), hostAt: F.serverTimestamp() }),

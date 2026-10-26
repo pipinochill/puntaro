@@ -19,5 +19,8 @@ One-time Firebase console setup (project `puntaro`):
 3. Firestore Database → Create database (if not done) → `australia-southeast1` (Sydney), production mode.
 4. Firestore → Rules → paste `firestore.rules` → Publish. Re-publish whenever it changes.
 
+Invite codes: `refs/{code}` (owner, display name) and `refs/{code}/joins/{uid}` (new players who signed up from that code).
+To see who brought in whom, browse `refs` in the Firestore console.
+
 Finished live rounds are kept for everyone who played and are read-only. Bank calls in "everyone scores"
 live in `rounds/{code}/banks/{pid_h}` and stay unreadable until every joined player has moved past that hole.

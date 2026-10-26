@@ -16,3 +16,4 @@ Serve the app over http, not file:// (headless Chromium sometimes starts a file:
     python $T/parked.py       $APP /tmp $T   # round-in-progress warning, paused rounds (15)
     python $T/scanner.py      $APP /tmp $T   # live start-up and scan to join with a fake camera (14)
     python $T/edited.py       $APP /tmp $T   # "edited" marks, what goes online (8)
+    python $T/invites.py      $APP /tmp $T   # invite links, crediting who brought people in, gaming attempts (26)
