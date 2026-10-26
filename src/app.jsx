@@ -25,7 +25,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.57";
+const APP_VERSION = "0.58";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -76,7 +76,7 @@ const PEOPLE = {
 };
 // Real totals come from saved rounds: history = [{ at, players: { id: { pts, ntp, win } } }]
 const statsFor = (history, id, period) => {
-  const d0 = new Date(); const start = period === "month" ? new Date(d0.getFullYear(), d0.getMonth(), 1).getTime() : new Date(d0.getFullYear(), 0, 1).getTime();
+  const d0 = new Date(); const start = period === "all" ? 0 : period === "month" ? new Date(d0.getFullYear(), d0.getMonth(), 1).getTime() : new Date(d0.getFullYear(), 0, 1).getTime();
   const rs = (history || []).filter(x => x.at >= start && x.players && x.players[id]);
   if (!rs.length) return null;
   const sum = k => rs.reduce((a, x) => a + (x.players[id][k] || 0), 0);
@@ -2178,8 +2178,8 @@ function AboutSheet({ onClose }) {
           <p><b>New and still being tested:</b> live rounds. Everyone follows the round on their own phone, joining by QR code or join code. Choose one scorer, or everyone enters their own score with bank calls kept secret until the group moves on.</p>
           <p><b>New:</b> accounts. Sign in with Google or an email link, and your rounds, scoresheets and stats are saved to your account in the cloud, the same on any phone.</p>
           <p><b>New:</b> handicaps for players without one. Pick what you usually shoot for a starting estimate (marked EST). After 3 live rounds with at least one other player on their own phone, {APP_NAME} works out your handicap from your scores the World Handicap System way (marked APP): it drops straight after a good round but rises by no more than 1.0 a round. Rounds scored on your own don't count. Handicaps you type in are left alone.</p>
-          <p><b>Not yet:</b> linking friends' accounts, so the friends table shows their stats from rounds on their own phones.</p>
-          <p><b>Your data:</b> stored with Google Firebase, in your account, where only you can see it. Your phone keeps a temporary offline copy so scoring works with no signal; signing out clears it. You can wipe or delete your account from the Me tab.</p>
+          <p><b>New:</b> friends. Anyone who signs up from your link is your friend straight away; otherwise share your friend code or QR and they accept. Friends see each other's handicap and stats, and you can pick them for a round. Unfriend any time.</p>
+          <p><b>Your data:</b> stored with Google Firebase, in your account, where only you can see it. Your friends see a small card: your first name, last initial, handicap and stats. Your phone keeps a temporary offline copy so scoring works with no signal; signing out clears it. You can wipe or delete your account from the Me tab.</p>
           <p><b>Live rounds:</b> the round (course, players' first names, last initials and handicaps, scores) is shared with the players in it. Anyone with the join code can see it. Bank calls stay hidden until they're revealed. Finished live rounds are kept for everyone who played, even if one player deletes theirs.</p>
           <p><b>Samples:</b> the sample courses are made up, for trying the app.</p>
           <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia. {APP_NAME} handicaps (EST and APP) are not official GA handicaps, and official handicaps can't be verified yet.</p>
@@ -2874,82 +2874,223 @@ function PersonForm({ cta, onSubmit }) {
   );
 }
 
-function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
+const shareLink = async (url, text, setMsg) => {
+  try { if (navigator.share) { await navigator.share({ title: "Puntaro", text, url }); return; } } catch (e) { return; }
+  try { await navigator.clipboard.writeText(url); setMsg("Link copied"); setTimeout(() => setMsg(""), 1800); } catch (e) { setMsg(url); }
+};
+
+// Your friend code and QR; add a mate by their code or by scanning their QR; or add a player who doesn't use the app.
+function AddFriendSheet({ people, friendIds, setFriendIds, myRef, makeRef, onFind, onSend, onAddFriend, onClose }) {
+  const [code, setCode] = useState("");
+  const [found, setFound] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const qr = myRef ? qrPath(inviteLink(myRef)) : null;
+  const find = async c => { setErr(""); setFound(null); setMsg(""); setBusy(true); try { setFound(await onFind(c)); } catch (e) { setErr(e.message || explain(e)); } setBusy(false); };
+  const send = async () => {
+    setBusy(true); setErr("");
+    try { const r = await onSend(found); setMsg(r === "accepted" ? `You and ${found.name} are now friends.` : `Request sent to ${found.name}. You'll be friends once they accept.`); setFound(null); setCode(""); }
+    catch (e) { setErr(/permission/.test((e && e.code) || "") ? "Couldn't send that. You may already be friends." : explain(e)); }
+    setBusy(false);
+  };
+  const sample = ["dani", "omar"].filter(id => people[id] && !friendIds.includes(id));
+  return (
+    <Sheet title="Add a friend" onClose={onClose}>
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ padding: 10, background: "var(--chalk)", border: "3px solid var(--night)", display: "grid", justifyItems: "center", gap: 6, textAlign: "center" }}>
+          <div className="cap" style={{ fontWeight: 600 }}>Your friend code</div>
+          {myRef ? (
+            <>
+              <div className="px" aria-label="Your friend code" style={{ fontSize: 22, letterSpacing: 1 }}>{myRef}</div>
+              <svg viewBox={`0 0 ${qr.n} ${qr.n}`} width="150" height="150" role="img" aria-label="Your friend QR code" shapeRendering="crispEdges" style={{ background: "#fff", display: "block" }}><path d={qr.d} fill="#14150F" /></svg>
+              <div className="cap">A mate scans this, or types your code. Anyone new who signs up from your link becomes your friend straight away.</div>
+              <button className="chip" onClick={() => shareLink(inviteLink(myRef), "Be my friend on Puntaro, a side game for your round.", setMsg)} style={{ padding: "7px 14px" }}>Share my link</button>
+            </>
+          ) : <button className="cta" disabled={busy} onClick={async () => { setBusy(true); try { await makeRef(); } catch (e) { setErr(explain(e)); } setBusy(false); }}>Get my friend code</button>}
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 5 }}>Add a mate by their code</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input aria-label="Friend code" placeholder="e.g. nic-7k2m" value={code} onChange={e => setCode(e.target.value)} autoCapitalize="none" autoCorrect="off" style={{ ...inp, flex: 1, minWidth: 0 }} />
+            <button className="chip" disabled={busy || !code.trim()} onClick={() => find(code)} style={{ padding: "0 14px" }}>Find</button>
+          </div>
+          <button className="chip" onClick={() => { setErr(""); setScanning(true); }} style={{ width: "100%", marginTop: 7, padding: "8px 0", textAlign: "center" }}>Scan their QR code</button>
+        </div>
+        {found && (
+          <div className="card" style={{ padding: 10, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{found.name}</div><div className="cap">{found.friend ? "Already your friend." : `Code ${found.code}`}</div></div>
+            {!found.friend && <button className="cta" style={{ width: "auto", minHeight: 40, padding: "6px 12px", fontSize: "14px" }} disabled={busy} onClick={send}>Send friend request</button>}
+          </div>
+        )}
+        {err && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
+        {msg && <p role="status" style={{ fontWeight: 700 }}>{msg}</p>}
+        <div style={{ borderTop: "2px solid var(--line)", paddingTop: 10 }}>
+          <button className="chip" aria-expanded={offline} onClick={() => setOffline(o => !o)} style={{ width: "100%", padding: "8px 0", textAlign: "center" }}>{offline ? "Hide" : "Add a player who doesn't use the app"}</button>
+          {offline && (
+            <div style={{ marginTop: 10 }}>
+              <PersonForm cta="Add player" onSubmit={p => { onAddFriend(p); onClose(); }} />
+              {sample.length > 0 && <div className="cap" style={{ margin: "12px 0 4px", fontWeight: 600 }}>Sample golfers (demo)</div>}
+              {sample.map(id => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
+                  <Avatar p={people[id]} size={28} />
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}</div></div>
+                  <button onClick={() => setFriendIds(f => [...f, id])} className="chip">Add</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {scanning && <ScanSheet parse={refFromQr} aim="Point at the QR code on your mate's Add a friend screen." wrongHint="That isn't a Puntaro friend code. Ask your mate to open Friends, then Add." onClose={() => setScanning(false)} onCode={c => { setScanning(false); setCode(c); find(c); }} onFail={m => { setScanning(false); setErr(m); }} />}
+    </Sheet>
+  );
+}
+
+// Opened a mate's invite link or friend QR while already signed up: offer a friend request.
+function FriendAsk({ who, onSend, onClose }) {
+  const [state, setState] = useState(""); const [err, setErr] = useState("");
+  return (
+    <Sheet title="Add a friend" onClose={onClose}>
+      {!state ? (
+        <>
+          <p style={{ fontWeight: 600 }}>Send {who.name} a friend request?</p>
+          <p className="cap" style={{ marginTop: 3 }}>You'll be friends once they accept: you'll see each other's stats and can pick each other for rounds.</p>
+          {err && <p className="cap" role="alert" style={{ color: "var(--red)", marginTop: 6 }}>{err}</p>}
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <button className="chip" onClick={onClose} style={{ flex: 1, padding: "9px 0", textAlign: "center" }}>Not now</button>
+            <button className="chip on" onClick={async () => { try { setState(await onSend()); } catch (e) { setErr(explain(e)); } }} style={{ flex: 1, padding: "9px 0", textAlign: "center" }}>Send friend request</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p role="status" style={{ fontWeight: 700 }}>{state === "accepted" ? `You and ${who.name} are now friends.` : `Request sent to ${who.name}.`}</p>
+          <button className="cta" style={{ marginTop: 10 }} onClick={onClose}>Done</button>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+// Someone's profile: handicap and stats. Friends with accounts show their own stats; other players, the rounds you've played together.
+function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose }) {
+  const p = people[id]; const [ask, setAsk] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  if (!p) return null;
+  const linked = !!p.uid;
+  const st = k => (linked ? (card && card.stats && card.stats[k]) || null : statsFor(history, id, k));
+  return (
+    <Sheet title={linked ? (card && card.name) || p.name : `${p.name}${p.last ? ` ${p.last}` : ""}`} onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Avatar p={p} size={52} />
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>HCP {fmtHcp(p)}</div>
+          <div className="cap">{linked ? "Puntaro friend. Stats from all their rounds." : "Player without the app. Stats from rounds you've played together."}</div>
+        </div>
+      </div>
+      {[["month", "This month"], ["season", "This season"], ["all", "All time"]].map(([k, l]) => {
+        const s = st(k);
+        return (
+          <div key={k} style={{ marginTop: 10 }}>
+            <div className="cap" style={{ fontWeight: 700 }}>{l}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 6, marginTop: 4 }}>
+              {[["Rounds", s ? s.rounds : 0], ["Wins", s ? s.wins : 0], ["NTPs", s ? s.ntp : 0], ["Avg pts", s && s.pts != null ? s.pts.toFixed(1) : "–"]].map(([n, v]) => (
+                <div key={n} className="card" style={{ padding: "6px 8px", boxShadow: "2px 2px 0 var(--night)" }}><div className="px" style={{ fontSize: 18 }}>{v}</div><div className="cap">{n}</div></div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {err && <p className="cap" role="alert" style={{ color: "var(--red)", marginTop: 8 }}>{err}</p>}
+      <div style={{ marginTop: 14 }}>
+        {!ask ? <button className="chip" onClick={() => setAsk(true)} style={{ width: "100%", padding: "9px 0", textAlign: "center", color: "var(--red)" }}>{linked ? "Unfriend" : "Remove from friends"}</button> : (
+          <div className="card" style={{ padding: 10, boxShadow: "none" }}>
+            <div style={{ fontWeight: 700 }}>{linked ? `Unfriend ${p.name}?` : `Remove ${p.name}?`}</div>
+            <div className="cap" style={{ marginTop: 2 }}>{linked ? "You'll both drop off each other's friends list. Rounds you've played together stay." : "They'll come off your friends list. Rounds you've played together stay."}</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <button className="chip" onClick={() => setAsk(false)} style={{ flex: 1, padding: "8px 0", textAlign: "center" }}>Keep</button>
+              <button className="chip" disabled={busy} onClick={async () => { setBusy(true); try { await (linked ? onUnfriend(p.uid) : onRemove(id)); onClose(); } catch (e) { setErr(explain(e)); setBusy(false); } }} style={{ flex: 1, padding: "8px 0", textAlign: "center", background: "var(--red)", color: "#fff" }}>{linked ? "Unfriend" : "Remove"}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friendCards = {}, requests = [], onAccept, onDecline, onFind, onSend, onUnfriend, myRef, makeRef }) {
   const [metric, setMetric] = useState("pts");
   const [period, setPeriod] = useState("month");
   const [sheet, setSheet] = useState(false);
-  const [copied, setCopied] = useState("");
-  const val = (id, k) => { const s = statsFor(history, id, period); return s ? s[k] : null; };
-  const rows = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: val(id, metric) })).sort((a, b) => (a.v == null) - (b.v == null) || b.v - a.v);
-  const sample = ["dani", "omar"].filter(id => people[id] && !friendIds.includes(id));
-  const copyLink = async () => {
-    const url = typeof location !== "undefined" ? location.href.split("#")[0] : "";
-    try { await navigator.clipboard.writeText(url); setCopied("Link copied"); } catch (e) { setCopied(url || "Couldn't copy"); }
-    setTimeout(() => setCopied(""), 2500);
+  const [open, setOpen] = useState(null);
+  const [busy, setBusy] = useState("");
+  const val = (id, k) => {
+    const p = people[id];
+    const s = p && p.uid ? ((friendCards[p.uid] || {}).stats || {})[period] : statsFor(history, id, period);
+    return s ? s[k] : null;
   };
-
+  const rows = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: val(id, metric) })).sort((a, b) => (a.v == null) - (b.v == null) || b.v - a.v);
+  const act = async (id, f) => { setBusy(id); try { await f(id); } catch (e) { /* the list updates itself */ } setBusy(""); };
   return (
     <div style={{ paddingBottom: 19 }}>
-      <div className="stripes" style={{ padding: "23px 16px 20px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -1 }}>Friends</h1>
-        <button onClick={() => setSheet(true)} style={{ background: "var(--flag)", color: "var(--dk)", borderRadius: 999, padding: "7px 12px", fontWeight: 800, display: "flex", gap: 5, alignItems: "center" }}><UserPlus size={18} />Add</button>
+      <div className="stripes" style={{ padding: "20px 16px 18px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <h1>Friends</h1>
+        <button onClick={() => setSheet(true)} style={{ background: "var(--flag)", color: "var(--dk)", border: "3px solid var(--night)", padding: "6px 12px", fontWeight: 700, display: "flex", gap: 5, alignItems: "center" }}><UserPlus size={18} />Add</button>
       </div>
-      <div style={{ padding: 12 }}>
+      <div style={{ padding: 12, display: "grid", gap: 10 }}>
+        {requests.length > 0 && (
+          <div className="card" style={{ padding: 10 }}>
+            <div style={{ fontWeight: 700 }}>Friend requests</div>
+            {requests.map(r => {
+              const c = friendCards[r.id];
+              return (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderTop: "1px solid var(--line)", marginTop: 6 }}>
+                  <Avatar p={{ name: r.name, first: c ? c.first : r.name, last: c ? c.li : "", color: (c && c.color) || "#5E6B66" }} size={30} />
+                  <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700 }}>{r.name}</div>{c && <div className="cap">HCP {fmtHcp(c)}</div>}</div>
+                  <button className="chip" disabled={busy === r.id} onClick={() => act(r.id, onDecline)}>Decline</button>
+                  <button className="chip on" disabled={busy === r.id} onClick={() => act(r.id, onAccept)} aria-label={`Accept ${r.name}`}>Accept</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 6 }}>
           {[["month", "This month"], ["season", "This season"]].map(([k, l]) => (
             <button key={k} className={`chip ${period === k ? "on" : ""}`} onClick={() => setPeriod(k)} style={{ flex: 1, padding: "5px 0", textAlign: "center" }}>{l}</button>
           ))}
         </div>
-        <p className="cap" style={{ margin: "9px 2px" }}>Tap a column to sort. Avg pts is your average Puntaro points per round, scored net so every handicap competes level. Totals come from rounds you finish and save in this app. Nothing yet shows a dash.</p>
+        <p className="cap">Tap a player for their profile. Friends with Puntaro accounts show stats from all their rounds; others, the rounds you've played together.</p>
         <div className="card" style={{ padding: "3px 11px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) repeat(4, 46px)", gap: 4, alignItems: "center", padding: "8px 0", borderBottom: "2px solid var(--night)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr) repeat(4, 44px)", gap: 4, alignItems: "center", padding: "8px 0", borderBottom: "2px solid var(--night)" }}>
             <span /><span className="cap">Player</span>
             {METRICS.map(x => (
               <button key={x.id} onClick={() => setMetric(x.id)} aria-pressed={metric === x.id} className="cap" style={{ textAlign: "right", fontWeight: 700, color: metric === x.id ? "var(--fair)" : "var(--muted)", textDecoration: metric === x.id ? "underline" : "none" }}>{x.label}{metric === x.id ? " ▾" : ""}</button>
             ))}
           </div>
           {rows.map((r, i) => (
-            <div key={r.id} style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) repeat(4, 46px)", gap: 4, alignItems: "center", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+            <button key={r.id} onClick={() => r.id !== "me" && setOpen(r.id)} aria-label={r.id === "me" ? "You" : `View ${people[r.id].name}`} style={{ width: "100%", textAlign: "left", display: "grid", gridTemplateColumns: "24px minmax(0,1fr) repeat(4, 44px)", gap: 4, alignItems: "center", padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
               <div style={{ display: "grid", placeItems: "center", fontWeight: 800, color: "var(--muted)" }}>
                 {i === 0 && r.v != null ? <Sprite name="crown" size={2} /> : i + 1}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
                 <Avatar p={people[r.id]} size={28} />
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[r.id].name}</div>
-                  <div className="cap" style={{ fontSize: 10 }}>HCP {fmtHcp(people[r.id])}</div>
+                  <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[r.id].name}{people[r.id].uid && <span className="pill" style={{ marginLeft: 5, padding: "0 4px", fontSize: 10, background: "var(--mint)" }}>APP</span>}</div>
+                  <div className="cap" style={{ fontSize: 11 }}>HCP {fmtHcp(people[r.id])}</div>
                 </div>
               </div>
               {METRICS.map(x => {
                 const v = val(r.id, x.id);
                 return <div key={x.id} style={{ textAlign: "right", fontWeight: metric === x.id ? 800 : 600, color: metric === x.id ? "var(--ink)" : "var(--muted)" }}>{v == null ? "–" : x.fmt(v)}</div>;
               })}
-            </div>
+            </button>
           ))}
         </div>
+        {friendIds.length === 0 && <p className="cap" style={{ textAlign: "center" }}>No friends yet. Tap Add to share your code or scan a mate's.</p>}
       </div>
-
-      {sheet && (
-        <Sheet title="Add a friend" onClose={() => setSheet(false)}>
-          <PersonForm cta="Add friend" onSubmit={p => { onAddFriend(p); setSheet(false); }} />
-          <button onClick={copyLink} className="chip" style={{ width: "100%", marginTop: 10, padding: "8px 0", display: "flex", justifyContent: "center", alignItems: "center", gap: 6 }}>
-            <LinkIcon size={16} />{copied || "Copy a link to this app to send a mate"}
-          </button>
-          {sample.length > 0 && (
-            <>
-              <div className="cap" style={{ margin: "14px 0 5px", fontWeight: 600 }}>Sample golfers (demo)</div>
-              {sample.map(id => (
-                <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
-                  <Avatar p={people[id]} size={30} />
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}</div></div>
-                  <button onClick={() => setFriendIds(f => [...f, id])} className="chip">Add</button>
-                </div>
-              ))}
-            </>
-          )}
-          <p className="cap" style={{ marginTop: 12 }}>Searching for real golfers and syncing scores between phones needs sign-in. That comes later.</p>
-        </Sheet>
-      )}
+      {sheet && <AddFriendSheet people={people} friendIds={friendIds} setFriendIds={setFriendIds} myRef={myRef} makeRef={makeRef} onFind={onFind} onSend={onSend} onAddFriend={onAddFriend} onClose={() => setSheet(false)} />}
+      {open && <ProfileSheet id={open} people={people} history={history} card={people[open] && people[open].uid ? friendCards[people[open].uid] : null} onUnfriend={onUnfriend} onRemove={id => setFriendIds(f => f.filter(x => x !== id))} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -3162,7 +3303,9 @@ function JoinSheet({ initial, onClose, onJoined }) {
 }
 
 // Full-screen camera that looks for a Puntaro join QR code.
-function ScanSheet({ onClose, onCode, onFail }) {
+const joinFromQr = text => { try { return cleanCode(new URL(text).searchParams.get("join")); } catch (e) { return cleanCode(text); } };
+const refFromQr = text => { try { return cleanRef(new URL(text).searchParams.get("ref")); } catch (e) { return cleanRef(text); } };
+function ScanSheet({ onClose, onCode, onFail, parse = joinFromQr, aim = "Point at the QR code on the host's screen.", wrongHint = "That QR code isn't a Puntaro round. Scan the code on the host's LIVE screen." }) {
   const video = useRef(null);
   const [hint, setHint] = useState("Starting the camera…");
   useEffect(() => {
@@ -3175,17 +3318,16 @@ function ScanSheet({ onClose, onCode, onFail }) {
         if (stop) return;
         const v = video.current; v.srcObject = stream; v.setAttribute("playsinline", ""); await v.play().catch(() => {});
         const decode = await makeDecoder();
-        setHint("Point at the QR code on the host's screen.");
+        setHint(aim);
         let wrong = 0;
         const tick = async () => {
           if (stop) return;
           try {
             const text = await decode(v, canvas);
             if (text) {
-              let code = null;
-              try { code = cleanCode(new URL(text).searchParams.get("join")); } catch (e) { code = cleanCode(text); }
+              const code = parse(text);
               if (code) { SFX.tap(); onCode(code); return; }
-              if (++wrong > 3) setHint("That QR code isn't a Puntaro round. Scan the code on the host's LIVE screen.");
+              if (++wrong > 3) setHint(wrongHint);
             }
           } catch (e) { /* try the next frame */ }
           timer = setTimeout(tick, 120);
@@ -3299,7 +3441,12 @@ function Game({ user, cloud, profile, now0, finished }) {
   const hcpDiffs = finished.filter(f => f.witnessed && typeof f.diff === "number").sort((a, b) => a.at - b.at).map(f => f.diff);
   // Your invite code. Accounts made before invites get one the first time they open the Invite card.
   const [myRef, setMyRef] = useState(profile.refCode || null);
-  useEffect(() => { stash(REF_KEY, null); }, []); // already signed up: an invite link no longer counts
+  // Already signed up: an invite link (or a live round QR) from someone becomes a friend request offer instead.
+  const [friendAsk, setFriendAsk] = useState(null); // { owner, name, code } offered after opening someone's link
+  useEffect(() => {
+    const code = unstash(REF_KEY); stash(REF_KEY, null);
+    if (code && code !== profile.refCode) cloud.getRef(code).then(r => { if (r && r.owner !== user.uid) setFriendAsk({ owner: r.owner, name: r.name, code }); }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const makeRef = async () => {
     if (myRef) return myRef;
     for (let k = 0; k < 4; k++) {
@@ -3309,6 +3456,66 @@ function Game({ user, cloud, profile, now0, finished }) {
     }
     throw new Error("Couldn't make an invite code. Try again.");
   };
+  /* ---- Friends with accounts ---- */
+  const [friendList, setFriendList] = useState([]); // [{ id: uid, via }]
+  const [friendCards, setFriendCards] = useState({}); // uid -> their profile card
+  const [requests, setRequests] = useState([]); // [{ id: uid, name }] waiting for you to accept
+  useEffect(() => {
+    if (!cloud.watchFriends) return undefined;
+    const a = cloud.watchFriends(setFriendList, () => {}); const b = cloud.watchRequests(setRequests, () => {});
+    return () => { a && a(); b && b(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const cardWatch = useRef({});
+  useEffect(() => {
+    const want = new Set([...friendList.map(f => f.id), ...requests.map(r => r.id)]);
+    Object.keys(cardWatch.current).forEach(u => { if (!want.has(u)) { cardWatch.current[u](); delete cardWatch.current[u]; } });
+    want.forEach(u => { if (!cardWatch.current[u]) cardWatch.current[u] = cloud.watchProfile(u, c => setFriendCards(m => ({ ...m, [u]: c })), () => {}); });
+  }, [friendList, requests]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => Object.values(cardWatch.current).forEach(f => f()), []);
+  // Friends with accounts join your players list (id u_<uid>), so you can pick them for a round.
+  useEffect(() => {
+    const ids = friendList.filter(f => friendCards[f.id]).map(f => `u_${f.id}`);
+    setPeople(p => {
+      let changed = false; const n = { ...p };
+      friendList.forEach(f => {
+        const c = friendCards[f.id]; if (!c) return;
+        const v = { id: `u_${f.id}`, uid: f.id, name: c.first || c.name || "Friend", last: c.li || "", hi: typeof c.hi === "number" ? c.hi : 18, hk: c.hk || "", color: c.color || "#5E6B66" };
+        if (JSON.stringify(p[v.id]) !== JSON.stringify(v)) { n[v.id] = v; changed = true; }
+      });
+      return changed ? n : p;
+    });
+    setFriendIds(f => {
+      const keep = f.filter(id => !id.startsWith("u_") || ids.includes(id));
+      const add = ids.filter(id => !keep.includes(id));
+      return add.length || keep.length !== f.length ? [...keep, ...add] : f;
+    });
+  }, [friendList, friendCards]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Your own card, for your friends: name, colour, handicap and stats. Only rewritten when it changes.
+  const cardSent = useRef("");
+  useEffect(() => {
+    if (!cloud.setProfile) return undefined;
+    const me = people.me;
+    const card = { name: displayName(me), first: (me.first || "").slice(0, 20), li: (me.last || "").trim().slice(0, 1).toUpperCase(), color: me.color || ME_COLOR, hi: me.hi, hk: me.hk || "", ref: myRef || "",
+      stats: Object.fromEntries(["month", "season", "all"].map(k => [k, statsFor(history, "me", k)])) };
+    const j = JSON.stringify(card); if (j === cardSent.current) return undefined;
+    const t = setTimeout(() => { cloud.setProfile(card).then(() => { cardSent.current = j; }).catch(() => {}); }, 1200);
+    return () => clearTimeout(t);
+  }, [people.me, history.length, myRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  const findFriendCode = async raw => {
+    const code = cleanRef(raw);
+    if (!code) throw new Error("That doesn't look like a friend code. It's a name and four letters or numbers, like pierre-7k2m.");
+    const r = await cloud.getRef(code);
+    if (!r) throw new Error("No one has that code. Check it with your mate.");
+    if (r.owner === user.uid) throw new Error("That's your own code. Send it to a mate instead.");
+    return { owner: r.owner, name: r.name, code, friend: friendList.some(f => f.id === r.owner) };
+  };
+  const sendFriendRequest = async who => {
+    const mine = requests.find(r => r.id === who.owner);
+    if (mine) { await cloud.acceptRequest(who.owner); return "accepted"; } // they'd already asked you: that's a yes from both
+    if (await cloud.hasRequested(who.owner)) return "sent"; // already waiting on them
+    await cloud.sendRequest(who.owner, displayName(people.me)); return "sent";
+  };
+  const unfriend = uid => cloud.unfriend(uid);
   const [fx, setFx] = useState(null);
   const [tipK, setTipK] = useState(null);
   const [moment, setMoment] = useState(null); const momentT = useRef(null);
@@ -3678,6 +3885,8 @@ function Game({ user, cloud, profile, now0, finished }) {
   };
   const startFresh = async () => { try { await wipe(); location.reload(); } catch (e) { note(explain(e)); } };
   const deleteAccount = async () => {
+    // Deleting your account also ends your friendships and removes the card your friends see.
+    if (cloud.unfriend) { await Promise.all(friendList.map(f => cloud.unfriend(f.id).catch(() => {}))); await cloud.deleteProfile().catch(() => {}); }
     try { await wipe(); } catch (e) { note(explain(e)); return; }
     try { await cloud.deleteLogin(); await cloud.signOut().catch(() => {}); location.reload(); }
     catch (e) { note(/requires-recent-login/.test((e && e.code) || "") ? "Your rounds and stats are deleted. To remove your login too, sign out, sign in again, then tap Delete account." : explain(e)); }
@@ -3702,6 +3911,7 @@ function Game({ user, cloud, profile, now0, finished }) {
       <style>{CSS}</style>
       <Celebrate fx={fx} />
       <Moment m={moment} onDone={() => setMoment(null)} />
+      {friendAsk && !friendList.some(f => f.id === friendAsk.owner) && <FriendAsk who={friendAsk} onSend={() => sendFriendRequest(friendAsk)} onClose={() => setFriendAsk(null)} />}
       <TipSheet k={tipK} onClose={() => setTipK(null)} />
       {about && <AboutSheet onClose={() => setAbout(false)} />}
       {askNew && round && (
@@ -3743,13 +3953,13 @@ function Game({ user, cloud, profile, now0, finished }) {
         <>
           <div style={{ flex: 1 }}>
             {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
-            {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} />}
+            {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => cloud.acceptRequest(id)} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
             {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
           </div>
           <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>
             {tabs.map(([k, l, I]) => (
               <button key={k} onClick={() => setTab(k)} aria-current={tab === k} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 0", borderRadius: 16, background: tab === k ? "var(--sel)" : "transparent", color: tab === k ? "var(--ink)" : "var(--muted)", fontWeight: 700, fontSize: 11 }}>
-                <I size={22} />{l}
+                <span style={{ position: "relative", display: "grid" }}><I size={22} />{k === "friends" && requests.length > 0 && <span aria-label={`${requests.length} friend request${requests.length > 1 ? "s" : ""}`} style={{ position: "absolute", top: -4, right: -9, minWidth: 16, height: 16, padding: "0 3px", background: "var(--red)", color: "#fff", fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center" }}>{requests.length}</span>}</span>{l}
               </button>
             ))}
           </nav>
@@ -3867,7 +4077,7 @@ function ProfileSetup({ cloud, user, onDone }) {
   const [inviter, setInviter] = useState(null); // { code, name }
   useEffect(() => {
     const code = unstash(REF_KEY); if (!code) return;
-    cloud.getRef(code).then(r => { if (r && r.owner !== user.uid) setInviter({ code, name: r.name }); }).catch(() => {});
+    cloud.getRef(code).then(r => { if (r && r.owner !== user.uid) setInviter({ code, name: r.name, owner: r.owner }); }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const guess = (user.name || "").trim().split(/\s+/);
   const [first, setFirst] = useState(guess[0] || "");
@@ -3892,7 +4102,10 @@ function ProfileSetup({ cloud, user, onDone }) {
       await cloud.setMine("", profile, false);
       if (now) await cloud.setMine("state/now", now, false);
       if (local && bring) await Promise.all(local.records.map(r => cloud.setMine(`rounds/${r.id}`, r, false)));
-      if (inviter) await cloud.addJoin(inviter.code, displayName(me)).catch(() => {}); // counts for whoever invited you
+      if (inviter) {
+        await cloud.addJoin(inviter.code, displayName(me)).catch(() => {}); // counts for whoever invited you
+        if (cloud.befriendInviter) await cloud.befriendInviter(inviter.code, inviter.owner).catch(() => {}); // and you're friends straight away
+      }
       stash(REF_KEY, null);
       forgetPhoneData(); // the account has it now; nothing stays on the phone
       onDone(profile, now);
@@ -3903,7 +4116,7 @@ function ProfileSetup({ cloud, user, onDone }) {
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}><Tiles size={22} /></div>
       <h1 style={{ textAlign: "center" }}>Welcome to Puntaro</h1>
       <p className="cap" style={{ textAlign: "center" }}>Signed in as {user.email || "you"}. A couple of things for your scorecard.</p>
-      {inviter && <p style={{ textAlign: "center", fontWeight: 700 }}>Invited by {inviter.name}</p>}
+      {inviter && <p style={{ textAlign: "center", fontWeight: 700 }}>Invited by {inviter.name}. You'll be friends straight away.</p>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <input aria-label="First name" placeholder="First name" maxLength={20} value={first} onChange={e => setFirst(e.target.value)} style={inp} />
         <input aria-label="Last name" placeholder="Last name" maxLength={20} value={last} onChange={e => setLast(e.target.value)} style={inp} />

@@ -2,6 +2,8 @@ rules_version = '2';
 // Puntaro.
 //   users/{uid}/...                     your account: profile, round in progress, finished rounds. Yours alone.
 //   refs/{code}, refs/{code}/joins/{uid} invite codes, and the new players who signed up from each one
+//   profiles/{uid}                      the card your friends see (name, handicap, stats)
+//   friends/{uid}/list/{uid}, requests/{to}/in/{from}  friendships and friend requests
 //   rounds/{PUNT-XXXXX}                 a live round, shared by the players in it
 //   rounds/{PUNT-XXXXX}/banks/{pid_h}   one secret bank call per player per hole
 // Bank calls stay secret until every joined player has moved past that hole (at[pid] > h),
@@ -43,6 +45,52 @@ service cloud.firestore {
           && request.resource.data.at == request.time;
         allow update, delete: if false;
       }
+    }
+
+    // ---- Friends ----
+    function authed() { return request.auth != null; }
+    function areFriends(a, b) { return exists(/databases/$(database)/documents/friends/$(a)/list/$(b)); }
+    function asked(to, from) { return exists(/databases/$(database)/documents/requests/$(to)/in/$(from)); }
+    // `me` signed up from `owner`'s invite code (the code named in the friendship).
+    function invitedBy(me, owner, code) {
+      return code is string && code.matches('[a-z]{1,10}-[a-z0-9]{4}')
+        && exists(/databases/$(database)/documents/refs/$(code))
+        && get(/databases/$(database)/documents/refs/$(code)).data.owner == owner
+        && get(/databases/$(database)/documents/users/$(me)).data.get('referredBy', '') == code;
+    }
+
+    // The card your friends see. Only you write it; you, your friends and anyone you've sent a request to can read it.
+    match /profiles/{uid} {
+      allow read: if authed() && (request.auth.uid == uid || areFriends(uid, request.auth.uid) || asked(request.auth.uid, uid));
+      allow create, update: if authed() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'first', 'li', 'color', 'hi', 'hk', 'ref', 'stats', 'updatedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 30
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if authed() && request.auth.uid == uid;
+    }
+
+    // A friend request from `from` to `to`. Either of them can see it or take it back; nobody can change it.
+    match /requests/{to}/in/{from} {
+      allow read: if authed() && (request.auth.uid == to || request.auth.uid == from);
+      allow create: if authed() && request.auth.uid == from && from != to && !areFriends(to, from)
+        && request.resource.data.keys().hasOnly(['name', 'at'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 30
+        && request.resource.data.at == request.time;
+      allow delete: if authed() && (request.auth.uid == to || request.auth.uid == from);
+      allow update: if false;
+    }
+
+    // Friendships live in both people's lists. You can add one only by accepting their request,
+    // or because you signed up from their invite. Either of you can end it.
+    match /friends/{uid}/list/{fid} {
+      allow read: if authed() && request.auth.uid == uid;
+      allow create: if authed() && uid != fid
+        && request.resource.data.keys().hasOnly(['since', 'via'])
+        && request.resource.data.since == request.time && request.resource.data.via is string
+        && ((request.auth.uid == uid && (asked(uid, fid) || areFriends(fid, uid) || invitedBy(uid, fid, request.resource.data.via)))
+          || (request.auth.uid == fid && (asked(fid, uid) || invitedBy(fid, uid, request.resource.data.via))));
+      allow delete: if authed() && (request.auth.uid == uid || request.auth.uid == fid);
+      allow update: if false;
     }
 
     // Revealed = the round is finished, or every joined (claimed) player has moved past hole h. Up to 8 players.

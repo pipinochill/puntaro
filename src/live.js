@@ -184,6 +184,38 @@ async function firebaseBackend() {
     addJoin: (code, name) => F.setDoc(F.doc(db, "refs", code, "joins", me()), { name, at: F.serverTimestamp() }),
     listJoins: async code => (await F.getDocs(F.collection(db, "refs", code, "joins"))).docs.map(d => ({ id: d.id, name: d.data().name, at: d.data().at && d.data().at.toMillis ? d.data().at.toMillis() : null })),
 
+    /* friends
+       profiles/{uid}                 the card your friends see: name, colour, handicap, stats
+       friends/{uid}/list/{friendUid} who you're friends with; each friendship is written to both lists
+       requests/{to}/in/{from}        a friend request waiting to be accepted */
+    setProfile: data => F.setDoc(F.doc(db, "profiles", me()), { ...data, updatedAt: F.serverTimestamp() }),
+    deleteProfile: () => F.deleteDoc(F.doc(db, "profiles", me())),
+    watchProfile: (uid, cb, onErr) => F.onSnapshot(F.doc(db, "profiles", uid), s => cb(s.exists() ? s.data() : null), onErr),
+    watchFriends: (cb, onErr) => F.onSnapshot(F.collection(db, "friends", me(), "list"), q => cb(q.docs.map(d => ({ id: d.id, via: d.data().via || "" }))), onErr),
+    watchRequests: (cb, onErr) => F.onSnapshot(F.collection(db, "requests", me(), "in"), q => cb(q.docs.map(d => ({ id: d.id, name: d.data().name || "" }))), onErr),
+    sendRequest: (to, name) => F.setDoc(F.doc(db, "requests", to, "in", me()), { name, at: F.serverTimestamp() }),
+    hasRequested: async to => { try { return (await F.getDoc(F.doc(db, "requests", to, "in", me()))).exists(); } catch (e) { return false; } },
+    acceptRequest: from => {
+      const b = F.writeBatch(db), u = me();
+      b.set(F.doc(db, "friends", u, "list", from), { since: F.serverTimestamp(), via: "request" });
+      b.set(F.doc(db, "friends", from, "list", u), { since: F.serverTimestamp(), via: "request" });
+      b.delete(F.doc(db, "requests", u, "in", from));
+      return b.commit();
+    },
+    declineRequest: from => F.deleteDoc(F.doc(db, "requests", me(), "in", from)),
+    // You signed up from their invite: you're friends straight away.
+    befriendInviter: (code, owner) => {
+      const b = F.writeBatch(db), u = me();
+      b.set(F.doc(db, "friends", u, "list", owner), { since: F.serverTimestamp(), via: code });
+      b.set(F.doc(db, "friends", owner, "list", u), { since: F.serverTimestamp(), via: code });
+      return b.commit();
+    },
+    unfriend: fid => {
+      const b = F.writeBatch(db), u = me();
+      b.delete(F.doc(db, "friends", u, "list", fid)); b.delete(F.doc(db, "friends", fid, "list", u));
+      return b.commit();
+    },
+
     /* live rounds */
     create: (code, data) => F.setDoc(ref(code), { ...data, updatedAt: F.serverTimestamp(), hostAt: F.serverTimestamp() }),
     get: async code => { const s = await F.getDoc(ref(code)); return s.exists() ? s.data() : null; },

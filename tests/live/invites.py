@@ -46,7 +46,7 @@ async def main():
         await A.get_by_role('button', name='Home', exact=True).click(); await A.wait_for_timeout(300)
         await A.get_by_role('button', name='Start a round').click(); await A.wait_for_timeout(300)
         if await A.get_by_role('button', name='Start a new round').count(): await A.get_by_role('button', name='Start a new round').click(); await A.wait_for_timeout(300)
-        check('A brand-new account starts with just you, so Tee off waits for a second player', await A.get_by_role('button', name='Tee off').is_disabled())
+        check('Nic signed up from Pierre\'s link, so he\'s already one of Pierre\'s players', await A.get_by_text('Nic', exact=True).count() >= 1 and not await A.get_by_role('button', name='Tee off').is_disabled())
         await A.get_by_role('button', name='+ Guest').click(); await A.wait_for_timeout(300)
         await A.get_by_label('Name', exact=True).fill('Mitch'); await A.get_by_label('Last name').fill('Nair'); await fc.fill_hcp(A, '19')
         await A.get_by_role('button', name='Add to round').click(); await A.wait_for_timeout(300)

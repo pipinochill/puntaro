@@ -116,3 +116,33 @@ def join_create(ref, user, path_uid, data, uid, now):
     return (uid is not None and path_uid == uid and ref is not None and ref.get('owner') != uid
             and (user or {}).get('referredBy', '') == data.get('_code') and set(data) - {'_code'} <= {'name', 'at'}
             and isinstance(data.get('name'), str) and len(data['name']) <= 30 and data.get('at') == now)
+
+# ---- friends (mirrors the Friends block of firestore.rules) ----
+def are_friends(docs, a, b): return f'friends/{a}/list/{b}' in docs
+def asked(docs, to, frm): return f'requests/{to}/in/{frm}' in docs
+def invited_by(docs, me, owner, code):
+    if not isinstance(code, str) or re.fullmatch(r'[a-z]{1,10}-[a-z0-9]{4}', code) is None: return False
+    ref = docs.get(f'refs/{code}')
+    return ref is not None and ref.get('owner') == owner and (docs.get(f'users/{me}') or {}).get('referredBy', '') == code
+
+def profile_read(docs, uid, auth):
+    return auth is not None and (auth == uid or are_friends(docs, uid, auth) or asked(docs, auth, uid))
+PROFILE_KEYS = {'name', 'first', 'li', 'color', 'hi', 'hk', 'ref', 'stats', 'updatedAt'}
+def profile_write(uid, data, auth, now):
+    return (auth is not None and auth == uid and set(data) <= PROFILE_KEYS and isinstance(data.get('name'), str)
+            and len(data['name']) <= 30 and data.get('updatedAt') == now)
+
+def request_read(to, frm, auth): return auth is not None and auth in (to, frm)
+def request_create(docs, to, frm, data, auth, now):
+    return (auth is not None and auth == frm and frm != to and not are_friends(docs, to, frm) and set(data) <= {'name', 'at'}
+            and isinstance(data.get('name'), str) and len(data['name']) <= 30 and data.get('at') == now)
+def request_delete(to, frm, auth): return auth is not None and auth in (to, frm)
+
+def friend_read(uid, auth): return auth is not None and auth == uid
+def friend_create(docs, uid, fid, data, auth, now):
+    if auth is None or uid == fid or not set(data) <= {'since', 'via'} or data.get('since') != now or not isinstance(data.get('via'), str): return False
+    via = data['via']
+    if auth == uid: return asked(docs, uid, fid) or are_friends(docs, fid, uid) or invited_by(docs, uid, fid, via)
+    if auth == fid: return asked(docs, fid, uid) or invited_by(docs, fid, uid, via)
+    return False
+def friend_delete(uid, fid, auth): return auth is not None and auth in (uid, fid)

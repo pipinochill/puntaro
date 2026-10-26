@@ -53,6 +53,17 @@ window.__puntaroLiveBackend = {
   setIfAbsent: (c, p, v, e, host) => call('__fc_sia', c, p, v, e || [], !!host), finish: (c, host) => call('__fc_finish', c, !!host),
   putBank: (c, i, h, v) => call('__fc_putbank', c, i, h, v), getBank: (c, i, h) => call('__fc_getbank', c, i, h),
   watch: (c, cb) => poll(() => call('__fc_get', c), cb),
+  setProfile: d => call('__fc_setprofile', d),
+  deleteProfile: () => call('__fc_delprofile'),
+  watchProfile: (u, cb, err) => poll(() => call('__fc_getprofile', u).catch(e => { if (err) err(e); return '__denied'; }).then(v => v === '__denied' ? null : v), cb),
+  watchFriends: cb => poll(() => call('__fc_friends'), cb),
+  watchRequests: cb => poll(() => call('__fc_requests'), cb),
+  sendRequest: (to, name) => call('__fc_sendreq', to, name),
+  hasRequested: to => call('__fc_hasreq', to),
+  acceptRequest: f => call('__fc_accept', f),
+  declineRequest: f => call('__fc_decline', f),
+  befriendInviter: (code, owner) => call('__fc_befriend', code, owner),
+  unfriend: f => call('__fc_unfriend', f),
 };
 })();"""
 
@@ -119,6 +130,18 @@ class Cloud:
                     if op == 'set':
                         if path in self.docs: return self._no('raw join overwrite')
                         if not R.join_create(ref, self.docs.get(f'users/{me}'), parts[3], {**(data or {}), '_code': parts[1]}, me, (data or {}).get('at')): return self._no('raw join create')
+            t = self.now()
+            if parts[0] == 'profiles':
+                if op == 'get' and not R.profile_read(self.docs, parts[1], me): return self._no('raw profile read')
+                if op == 'set' and not R.profile_write(parts[1], {**(data or {}), 'updatedAt': t}, me, t): return self._no('raw profile write')
+            if parts[0] == 'requests':
+                if op == 'get' and not R.request_read(parts[1], parts[3], me): return self._no('raw request read')
+                if op == 'set' and (path in self.docs or not R.request_create(self.docs, parts[1], parts[3], {**(data or {}), 'at': t}, me, t)): return self._no('raw request create')
+                if op == 'delete' and not R.request_delete(parts[1], parts[3], me): return self._no('raw request delete')
+            if parts[0] == 'friends':
+                if op == 'get' and not R.friend_read(parts[1], me): return self._no('raw friends read')
+                if op == 'set' and (path in self.docs or not R.friend_create(self.docs, parts[1], parts[3], {**(data or {}), 'since': t}, me, t)): return self._no('raw friend create')
+                if op == 'delete' and not R.friend_delete(parts[1], parts[3], me): return self._no('raw friend delete')
             if op == 'get': return self._ok(copy.deepcopy(self.docs.get(path)))
             if op == 'set': self.docs[path] = data; return self._ok()
             if op == 'delete': self.docs.pop(path, None); return self._ok()
@@ -182,6 +205,62 @@ class Cloud:
             if not R.join_read(self.docs.get(f'refs/{code}'), me): return self._no('joins read ' + code)
             pre = f'refs/{code}/joins/'
             return self._ok([{'id': k[len(pre):], **v} for k, v in self.docs.items() if k.startswith(pre)])
+        # ---- friends
+        def fl(a, b): return f'friends/{a}/list/{b}'
+        def batch(me, ops):
+            # Like a Firestore batch: every write is checked against the state before the batch, then all apply.
+            t = self.now(); pre = self.docs
+            for op, path, data in ops:
+                parts = path.split('/')
+                if parts[0] == 'friends':
+                    if op == 'set' and not R.friend_create(pre, parts[1], parts[3], {**data, 'since': t}, me, t): return self._no('friend ' + path)
+                    if op == 'delete' and not R.friend_delete(parts[1], parts[3], me): return self._no('unfriend ' + path)
+                if parts[0] == 'requests' and op == 'delete' and not R.request_delete(parts[1], parts[3], me): return self._no('request delete')
+            for op, path, data in ops:
+                if op == 'set': self.docs[path] = {**data, 'since': t}
+                else: self.docs.pop(path, None)
+            return self._ok()
+        async def setprofile(me, d):
+            d = json.loads(d); t = self.now(); d = {**d, 'updatedAt': t}
+            if not R.profile_write(me, d, me, t): return self._no('profile write')
+            self.docs[f'profiles/{me}'] = d; return self._ok()
+        async def delprofile(me):
+            if me is None: return self._no('signed out')
+            self.docs.pop(f'profiles/{me}', None); return self._ok()
+        async def getprofile(me, u):
+            u = json.loads(u)
+            if not R.profile_read(self.docs, u, me): return self._no('profile read ' + u)
+            return self._ok(copy.deepcopy(self.docs.get(f'profiles/{u}')))
+        async def friends(me):
+            if me is None: return self._no('signed out')
+            pre = f'friends/{me}/list/'
+            return self._ok(sorted([{'id': k[len(pre):], 'via': v.get('via', '')} for k, v in self.docs.items() if k.startswith(pre)], key=lambda x: x['id']))
+        async def requests(me):
+            if me is None: return self._no('signed out')
+            pre = f'requests/{me}/in/'
+            return self._ok(sorted([{'id': k[len(pre):], 'name': v.get('name', '')} for k, v in self.docs.items() if k.startswith(pre)], key=lambda x: x['id']))
+        async def sendreq(me, to, name):
+            to, name = json.loads(to), json.loads(name); t = self.now(); d = {'name': name, 'at': t}
+            if not R.request_create(self.docs, to, me, d, me, t): return self._no('request create')
+            self.docs[f'requests/{to}/in/{me}'] = d; return self._ok()
+        async def hasreq(me, to):
+            to = json.loads(to); return self._ok(f'requests/{to}/in/{me}' in self.docs)
+        async def accept(me, f):
+            f = json.loads(f)
+            return batch(me, [('set', fl(me, f), {'via': 'request'}), ('set', fl(f, me), {'via': 'request'}), ('delete', f'requests/{me}/in/{f}', None)])
+        async def decline(me, f):
+            f = json.loads(f)
+            if not R.request_delete(me, f, me): return self._no('decline')
+            self.docs.pop(f'requests/{me}/in/{f}', None); return self._ok()
+        async def befriend(me, code, owner):
+            code, owner = json.loads(code), json.loads(owner)
+            return batch(me, [('set', fl(me, owner), {'via': code}), ('set', fl(owner, me), {'via': code})])
+        async def unfriend(me, f):
+            f = json.loads(f)
+            return batch(me, [('delete', fl(me, f), None), ('delete', fl(f, me), None)])
+        for n, f in [('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
+                     ('__fc_hasreq', hasreq), ('__fc_accept', accept), ('__fc_decline', decline), ('__fc_befriend', befriend), ('__fc_unfriend', unfriend)]:
+            await c.expose_function(n, f)
         for n, f in [('__fc_getref', getref), ('__fc_mkref', mkref), ('__fc_addjoin', addjoin), ('__fc_joins', joins), ('__fc_raw', raw), ('__fc_uget', uget), ('__fc_uset', uset), ('__fc_udel', udel), ('__fc_ulist', ulist), ('__fc_dellogin', dellogin),
                      ('__fc_create', create), ('__fc_get', get), ('__fc_update', update), ('__fc_sia', sia), ('__fc_finish', finish),
                      ('__fc_putbank', putbank), ('__fc_getbank', getbank)]:
