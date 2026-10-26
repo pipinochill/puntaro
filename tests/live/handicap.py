@@ -5,7 +5,7 @@ from playwright.async_api import async_playwright
 sys.path.insert(0, sys.argv[3]); import rules, fakecloud as fc
 URL, OUT = sys.argv[1], sys.argv[2]; res = []
 def check(n, ok, d=''): ok = bool(ok); res.append(ok); print(('PASS ' if ok else 'FAIL ') + n + (f'  [{d}]' if d and not ok else ''))
-HCP = sys.argv[4] if len(sys.argv) > 4 else '/home/claude/puntaro/src/hcp.js'
+import os; HCP = os.path.abspath(sys.argv[4] if len(sys.argv) > 4 else os.path.join(os.path.dirname(__file__), '../../src/hcp.js'))
 def whs(diffs):  # the app's own maths, run in node
     out = subprocess.run(['node', '-e', f"import('{HCP}').then(m=>console.log(JSON.stringify(m.indexFrom({json.dumps(diffs)}))))"], capture_output=True, text=True)
     return json.loads(out.stdout)
