@@ -66,7 +66,7 @@ async def phone(b, name):
         await ctx.expose_function(n, f)
     pg = await ctx.new_page(); errs = []
     pg.on('pageerror', lambda e: errs.append(f'{name}: {e}'))
-    await pg.goto('file://' + SRC); await pg.wait_for_timeout(700)
+    await pg.goto((SRC if SRC.startswith('http') else 'file://' + SRC)); await pg.wait_for_timeout(700)
     for _ in range(3):
         if await pg.locator('.splash').count(): await pg.locator('.splash').dispatch_event('pointerdown'); await pg.wait_for_timeout(400)
     return pg, errs
@@ -99,7 +99,7 @@ async def main():
         await A.get_by_role('button', name='Close').first.click()
 
         # ---- Sam joins by the link the QR encodes; Priya joins by typing the code
-        await B.goto('file://' + SRC + f'?join={code}'); await B.wait_for_timeout(700)
+        await B.goto((SRC if SRC.startswith('http') else 'file://' + SRC) + f'?join={code}'); await B.wait_for_timeout(700)
         for _ in range(3):
             if await B.locator('.splash').count(): await B.locator('.splash').dispatch_event('pointerdown'); await B.wait_for_timeout(400)
         await B.wait_for_timeout(600)

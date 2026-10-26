@@ -24,7 +24,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.44";
+const APP_VERSION = "0.45";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -2438,7 +2438,7 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
   );
 }
 
-function Summary({ round, people, onSave, onBack }) {
+function Summary({ round, people, onSave, onBack, liveHost }) {
   const comp = round.playerIds.map(id => ({ id, ...totalsFor(round, id) })).sort((a, b) => (round.useHcp ? a.netPar - b.netPar : a.grossPar - b.grossPar));
   const hasPunt = round.games.includes("punt");
   const pc = puntCalc(round);
@@ -2550,6 +2550,7 @@ function Summary({ round, people, onSave, onBack }) {
         ))}
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
+        {liveHost && <p className="cap" style={{ textAlign: "center", marginBottom: 6 }}>Saving ends the live round for everyone. Their phones keep their own copy.</p>}
         <button className="cta" onClick={onSave}>Save round</button>
       </div>
     </div>
@@ -2970,12 +2971,32 @@ export default function App() {
   // Paused rounds: a round that a new one replaced. { id, at, round, live } kept for PARK_MS.
   const [parked, setParked] = useState(() => { const s = loadAppState(); return s && Array.isArray(s.parked) ? s.parked.filter(x => Date.now() - x.at < PARK_MS) : []; });
   const [askNew, setAskNew] = useState(false);
+  // Clean-up: when a live round this phone hosted is finished for good, remove it from Firebase.
+  // (Players' phones keep their own copy.) Only the host's phone holds the "me" seat.
+  const retire = (lv, r) => { if (lv && lv.code && lv.myId === "me" && !lv.ended && r) backend().then(b => b.endRound(lv.code, r.playerIds)).catch(() => {}); };
+  // Rounds that ran out of time while the app was closed.
+  const lapsed = useRef(null);
+  if (lapsed.current === null) {
+    const s0 = loadAppState() || {}; const t0 = Date.now();
+    lapsed.current = [
+      ...(Array.isArray(s0.trash) ? s0.trash.filter(x => x.kind === "round" && t0 - x.at >= TRASH_MS).map(x => [x.live, x.item]) : []),
+      ...(Array.isArray(s0.parked) ? s0.parked.filter(x => t0 - x.at >= PARK_MS).map(x => [x.live, x.round]) : []),
+    ];
+  }
+  useEffect(() => { lapsed.current.forEach(([lv, r]) => retire(lv, r)); lapsed.current = []; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { localStorage.setItem(STATE_KEY, JSON.stringify({ round, recent, trash, people, friendIds, history, live, parked })); } catch (e) { /* private mode: fine */ } }, [round, recent, trash, people, friendIds, history, live, parked]);
   useEffect(() => {
     if (!parked.length) return undefined;
-    const id = setInterval(() => setParked(p => { const k = p.filter(x => Date.now() - x.at < PARK_MS); return k.length === p.length ? p : k; }), 60000);
+    const id = setInterval(() => setParkTick(Date.now()), 30000);
     return () => clearInterval(id);
   }, [parked.length]);
+  const [parkTick, setParkTick] = useState(0);
+  useEffect(() => {
+    const gone = parked.filter(x => Date.now() - x.at >= PARK_MS);
+    if (!gone.length) return;
+    setParked(p => p.filter(x => !gone.some(g => g.id === x.id)));
+    gone.forEach(x => retire(x.live, x.round));
+  }, [parkTick]); // eslint-disable-line react-hooks/exhaustive-deps
   // Put the round in progress (if any) to one side so it can be picked up again.
   const park = () => { if (!round) return; const at = Date.now(); setParked(p => [{ id: at, at, round, live }, ...p].slice(0, 5)); };
   const resumeParked = x => {
@@ -2990,9 +3011,15 @@ export default function App() {
   const ready = () => armed.current; // a click only counts after a fresh press on the sheet, so the finger lifting after a hold is ignored
   useEffect(() => {
     if (!trash.length) return undefined;
-    const id = setInterval(() => { const n = Date.now(); setNow(n); setTrash(t => { const k = t.filter(x => n - x.at < TRASH_MS); return k.length === t.length ? t : k; }); }, 1000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [trash.length]);
+  useEffect(() => {
+    const gone = trash.filter(x => now - x.at >= TRASH_MS);
+    if (!gone.length) return;
+    setTrash(t => t.filter(x => !gone.some(g => g.id === x.id)));
+    gone.forEach(x => { if (x.kind === "round") retire(x.live, x.item); });
+  }, [now]); // eslint-disable-line react-hooks/exhaustive-deps
   const confirmDelete = () => {
     const at = Date.now();
     if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, live, at }, ...t]); setRound(null); setLive(null); }
@@ -3021,7 +3048,11 @@ export default function App() {
       if (dead) return;
       setLiveUid(b.uid);
       off = b.watch(live.code, d => {
-        if (!d) return; // not created yet, or removed: keep the local copy
+        if (!d) {
+          // Not created yet, or the host has finished and removed it: keep the local copy.
+          if (prevDoc.current) { prevDoc.current = null; setLive(l => (l && !l.ended ? { ...l, ended: true } : l)); note("The host has finished this live round. Your copy stays on this phone."); }
+          return;
+        }
         setLiveErr(""); applyHoles(d.base.holes || null);
         const was = prevDoc.current; prevDoc.current = d;
         if (was && was.scoring !== d.scoring) note(`${d.people.me ? d.people.me.name : "The host"} switched to ${d.scoring === "one" ? "one scorer" : "everyone scores"}.`);
@@ -3084,9 +3115,9 @@ export default function App() {
     }
   }, [liveDoc, shown, round && round.hole]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const push = (pairs, quiet) => { if (!live) return Promise.resolve(); return backend().then(b => b.update(live.code, pairs)).catch(() => { if (!quiet) setLiveErr("Offline. Scores you enter are saved and will sync when you're back."); }); };
+  const push = (pairs, quiet) => { if (!live || live.ended) return Promise.resolve(); return backend().then(b => b.update(live.code, pairs)).catch(() => { if (!quiet) setLiveErr("Offline. Scores you enter are saved and will sync when you're back."); }); };
   // Moving on locks your bank call for the hole you left. Never goes backwards.
-  const moveOn = h => { if (live && live.myId && liveDoc && h > ((liveDoc.at || {})[live.myId] || 0)) push([[["at", live.myId], Math.min(18, h)], [["who"], live.myId]]); };
+  const moveOn = h => { if (live && !live.ended && live.myId && liveDoc && h > ((liveDoc.at || {})[live.myId] || 0)) push([[["at", live.myId], Math.min(18, h)], [["who"], live.myId]]); };
   const nextEvent = (x, k) => ({ ...Object.fromEntries(Object.entries(x || {}).filter(([e]) => (x && x[k]) || !(CLASH[k] || []).includes(e))), [k]: !(x && x[k]) });
   const [liveStart, setLiveStart] = useState(null); // { busy } while creating, { err } if it failed
   const startLive = async (r, cfg) => {
@@ -3124,7 +3155,7 @@ export default function App() {
     },
     setBank: (id, h, v) => {
       if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } }
-      if (live && liveDoc && liveDoc.scoring === "each") {
+      if (live && !live.ended && liveDoc && liveDoc.scoring === "each") {
         // Secret call: stored where only this phone can read it until the reveal.
         setLive(l => ({ ...l, mine: { ...(l.mine || {}), [bankKey(id, h)]: v } }));
         backend().then(b => b.putBank(live.code, id, h, v)).catch(() => setLiveErr("That bank call didn't save. It may be locked, or you're offline."));
@@ -3165,6 +3196,7 @@ export default function App() {
       (live && myId !== "me" ? [myId] : ids).forEach(id => { players[live && myId !== "me" ? "me" : id] = { pts: pc[id].total, ntp: round.opts.ntp ? round.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0, win: winners.includes(id) }; });
       setHistory(hs => [...hs, { at: Date.now(), course: round.course.name, players }]);
     } catch (e) { /* stats are a bonus; never block saving */ }
+    retire(live, round);
     setLive(null); setRound(null); setView("tabs"); setTab("home");
   };
 
@@ -3222,7 +3254,7 @@ export default function App() {
       {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
-      {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} />}
+      {view === "summary" && round && <Summary liveHost={!!(live && live.myId === "me" && !live.ended)} round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} />}
       {view === "tabs" && (
         <>
           <div style={{ flex: 1 }}>

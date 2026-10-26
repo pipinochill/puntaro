@@ -26,7 +26,8 @@ async def phone(b):
     pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     return pg, errs
 async def open_app(pg, q=''):
-    await pg.goto('file://' + SRC + q); await pg.wait_for_timeout(700)
+    await pg.wait_for_timeout(1000)  # let storage finish saving, as it would before a person reopens the app
+    await pg.goto((SRC if SRC.startswith('http') else 'file://' + SRC) + q); await pg.wait_for_timeout(700)
     for _ in range(3):
         if await pg.locator('.splash').count(): await pg.locator('.splash').dispatch_event('pointerdown'); await pg.wait_for_timeout(400)
     await pg.wait_for_timeout(300)
@@ -34,6 +35,7 @@ state = lambda pg: pg.evaluate("JSON.parse(localStorage.getItem('puntaro.state.v
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(); A, ea = await phone(b)
+        A.set_default_timeout(8000); global PG; PG = A
         await open_app(A)
         st = await state(A); demo_scores = json.dumps(st['round']['scores']); demo_course = st['round']['course']['name']
         await A.get_by_role('button', name='Start a round').click(); await A.wait_for_timeout(400)
@@ -55,6 +57,10 @@ async def main():
         check('Teeing off pauses the old round instead of deleting it', len(st['parked']) == 1 and json.dumps(st['parked'][0]['round']['scores']) == demo_scores)
         await A.get_by_role('button', name='You plus one').click(); await A.wait_for_timeout(200)
         await open_app(A)
+        _st = await state(A); _n1 = await A.get_by_text('Paused rounds').count(); _n2 = await A.get_by_text('23h 59m left').count() + await A.get_by_text('24h 0m left').count()
+        if not (_n1 == 1 and _n2 == 1):
+            print('DBG parked', len(_st.get('parked') or []), 'labels', _n1, _n2, 'splash', await A.locator('.splash').count())
+            print('DBG body', (await A.inner_text('body'))[:700].replace('\n', ' | ')); await A.screenshot(path=f'{OUT}/flake.png', full_page=True)
         check('Home lists it under Paused rounds with time left', await A.get_by_text('Paused rounds').count() == 1 and await A.get_by_text('23h 59m left').count() + await A.get_by_text('24h 0m left').count() == 1)
         await A.screenshot(path=f'{OUT}/p_home.png', full_page=True)
         await A.get_by_role('button', name='Resume', exact=True).first.click(); await A.wait_for_timeout(500)
@@ -100,4 +106,15 @@ async def main():
         check('Resuming the live round re-follows it', st['live'] and st['live']['code'] == code and st['live']['myId'] == 'sam')
         print('page errors:', ea + eh); print(f'{sum(res)}/{len(res)} passed')
         await b.close()
-asyncio.run(main())
+async def guarded():
+    try:
+        await main()
+    except Exception as e:
+        print('CRASH', str(e).split('\n')[0])
+        try:
+            st = await PG.evaluate("JSON.parse(localStorage.getItem('puntaro.state.v1'))")
+            print('STATE parked:', [(x['round']['course']['name'], x['round']['hole'], bool(x.get('live'))) for x in (st.get('parked') or [])], 'live:', st.get('live'), 'round:', st['round'] and st['round']['course']['name'])
+            print('BODY:', (await PG.inner_text('body'))[:500].replace('\n', ' | '))
+            await PG.screenshot(path=f'{OUT}/flake.png', full_page=True)
+        except Exception as e2: print('dump failed', e2)
+asyncio.run(guarded())

@@ -1,20 +1,17 @@
 # Live round tests
 
-`secret_banks.py` drives three phones (plus a stranger) through a live round in headless Chromium,
-against a stand-in database that enforces `rules.py`, a line-for-line Python copy of `firestore.rules`.
-It also attacks the database directly, the way someone with developer tools could.
+Each suite drives simulated phones in headless Chromium against a stand-in database that enforces
+`rules.py`, a line-for-line Python copy of `firestore.rules`, and attacks it directly the way someone
+with developer tools could. Keep `rules.py` in step with `firestore.rules` whenever the rules change.
 
-    pip install playwright && python -m playwright install chromium
-    python tests/live/secret_banks.py "$PWD/index.html" /tmp tests/live
+Serve the app over http, not file://. Headless Chromium sometimes starts a file:// page with empty
+localStorage after a reload, which looks like lost data but is a browser quirk.
 
-Keep `rules.py` in step with `firestore.rules` whenever the rules change.
-
-`parked.py` covers the round-in-progress warning and Paused rounds (24-hour keep, resume, expiry, delete and restore, live rounds).
-
-    python tests/live/parked.py "$PWD/index.html" /tmp tests/live
-
-`scanner.py` covers starting a live round (and the reasons shown when Firebase says no), the LIVE badge, and scanning to join with a fake camera fed a tilted, blurred video of the QR code. It needs OpenCV (`pip install opencv-python`).
-
-    python tests/live/scanner.py "$PWD/index.html" /tmp "$PWD/tests/live"
-
-`edited.py` checks that "edited" only marks changes to finished holes, and what player details go online.
+    pip install playwright opencv-python && python -m playwright install chromium
+    python -m http.server 8777 --bind 127.0.0.1 &
+    APP=http://127.0.0.1:8777/index.html
+    python tests/live/secret_banks.py $APP /tmp tests/live   # secret bank calls, 42 checks incl. 25 attacks
+    python tests/live/parked.py       $APP /tmp tests/live   # round-in-progress warning, paused rounds
+    python tests/live/scanner.py      $APP /tmp "$PWD/tests/live"  # live start-up, scan to join (fake camera)
+    python tests/live/edited.py       $APP /tmp tests/live   # "edited" marks, what goes online
+    python tests/live/cleanup.py      $APP /tmp tests/live   # host removes finished live rounds

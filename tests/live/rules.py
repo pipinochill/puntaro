@@ -77,3 +77,9 @@ def bank_write(r, key, data, uid):
     c = (r.get('claims') or {}).get(pid)
     if c == uid: return (r.get('at') or {}).get(pid, 0) <= h
     return c is None and not revealed(r, h)
+
+def bank_delete(r, uid):
+    return r is not None and r.get('host') == uid
+
+def round_delete(r, uid):
+    return r is not None and r.get('host') == uid

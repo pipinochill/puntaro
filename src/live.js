@@ -150,6 +150,11 @@ async function firebaseBackend() {
       let cur = s.data(); for (const k of path) cur = cur == null ? undefined : cur[String(k)];
       if (cur == null) { const args = [fp(path), value]; extra.forEach(([p, v]) => args.push(fp(p), val(v))); args.push(fp(["updatedAt"]), F.serverTimestamp()); tx.update(ref(code), ...args); }
     }),
+    // Host only: remove a finished round. Bank calls go first, because their rules check the round.
+    endRound: async (code, ids) => {
+      await Promise.all(ids.flatMap(id => Array.from({ length: 18 }, (_, h) => F.deleteDoc(bankRef(code, id, h)).catch(() => {}))));
+      await F.deleteDoc(ref(code));
+    },
     putBank: (code, id, h, v) => F.setDoc(bankRef(code, id, h), { pid: id, h, v, uid }),
     // true / false = the call; null = no call made. Throws if it's still secret.
     getBank: async (code, id, h) => { const s = await F.getDoc(bankRef(code, id, h)); return s.exists() ? !!s.data().v : null; },

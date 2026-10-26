@@ -49,7 +49,8 @@ async def phone(b, extra='', perms=True):
     return ctx, pg, errs
 
 async def open_app(pg, q=''):
-    await pg.goto('file://' + SRC + q); await pg.wait_for_timeout(700)
+    await pg.wait_for_timeout(1000)  # let storage finish saving, as it would before a person reopens the app
+    await pg.goto((SRC if SRC.startswith('http') else 'file://' + SRC) + q); await pg.wait_for_timeout(700)
     for _ in range(3):
         if await pg.locator('.splash').count(): await pg.locator('.splash').dispatch_event('pointerdown'); await pg.wait_for_timeout(400)
     await pg.wait_for_timeout(300)
