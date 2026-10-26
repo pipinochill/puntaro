@@ -27,6 +27,8 @@ def seed_round(uid, n, diff, witnessed=True, days_ago=10):
 async def play_live_round(H, S, code):
     """Host keeps score for both for 18 holes (one scorer): Pierre one over par each hole, Nic par."""
     for h in range(18):
+        for _ in range(3):  # big moments from the last hole: tap through them first
+            if await H.locator('.moment').count(): await H.locator('.moment').click(); await H.wait_for_timeout(250)
         await H.get_by_role('button', name='Pierre plus one').click(); await H.wait_for_timeout(60)
         await H.get_by_role('button', name='Pierre plus one').click(); await H.wait_for_timeout(60)
         await H.get_by_role('button', name='Nic plus one').click(); await H.wait_for_timeout(60)
