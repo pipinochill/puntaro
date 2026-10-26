@@ -72,7 +72,7 @@ async def main():
         await A.get_by_role('button', name='Resume scoring').click(); await A.wait_for_timeout(300)
         for _ in range(16):
             await A.get_by_role('button', name='You plus one').click(); await A.get_by_role('button', name='Tom plus one').click()
-            if await A.get_by_text('Pick nearest the pin first').count(): await A.get_by_role('button', name='Nobody').first.click()
+            if await A.get_by_role('button', name='Nobody hit the green').count(): await A.get_by_role('button', name='Nobody').first.click()
             nxt = A.get_by_role('button', name='Next hole').last
             if await A.get_by_role('button', name='Finish round').count(): break
             await nxt.click(); await A.wait_for_timeout(150)

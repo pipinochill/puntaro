@@ -25,7 +25,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.54";
+const APP_VERSION = "0.55";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1125,6 +1125,55 @@ Object.assign(TIPS, {
   penfx: ["Penalty points", "Points taken out of the pot by a penalty logged this hole: lost ball, wet one or four putt."],
 });
 
+/* Nearest the pin: big, at the top of a par 3, and asked for before leaving the hole. */
+function NtpPick({ round, people, ids, h, api, disabled, onPicked }) {
+  const v = round.ntp[h];
+  const pick = id => { if (disabled) return; if (v !== id && id !== "none") SFX.ntp(); else HAPTIC.buzz(15); api.setNtp(h, id); if (onPicked) onPicked(id); };
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: ids.length > 4 ? "1fr 1fr 1fr" : "1fr 1fr", gap: 7 }}>
+        {ids.map(id => (
+          <button key={id} onClick={() => pick(id)} disabled={disabled} aria-label={`Nearest the pin: ${people[id].name}`} aria-pressed={v === id} className={`chip ${v === id ? "on" : ""}`}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", minHeight: 52, opacity: v && v !== id ? 0.45 : 1, textAlign: "left" }}>
+            <Avatar p={people[id]} size={32} />
+            <span style={{ fontWeight: 800, fontSize: 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[id].name}</span>
+          </button>
+        ))}
+      </div>
+      <button onClick={() => pick("none")} disabled={disabled} aria-pressed={v === "none"} className={`chip ${v === "none" ? "on" : ""}`} style={{ width: "100%", marginTop: 7, padding: "9px 0", textAlign: "center", fontWeight: 700 }}>Nobody hit the green</button>
+    </div>
+  );
+}
+function NtpCard({ round, people, ids, h, api, disabled }) {
+  const v = round.ntp[h];
+  const [open, setOpen] = useState(!v);
+  useEffect(() => { setOpen(!v); }, [v, h]);
+  return (
+    <div style={{ border: "3px solid var(--night)", background: "var(--flag)", color: "var(--dk)", padding: "8px 9px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: open ? 8 : 0 }}>
+        <Sprite name="flag" size={3} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.1 }}><Tip k="ntp">Par 3: nearest the pin</Tip></div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.2 }}>{v ? (v === "none" ? "No one found the green. No points this hole." : "Closest ball earns +3.") : disabled ? "The scorer picks who was closest." : "Closest ball earns +3. Who was it?"}</div>
+        </div>
+        {v && !open && !disabled && <button className="chip" onClick={() => setOpen(true)} style={{ padding: "2px 9px", fontSize: 12, color: "var(--ink)" }}>Change</button>}
+      </div>
+      {open && <NtpPick round={round} people={people} ids={ids} h={h} api={api} disabled={disabled} onPicked={() => setOpen(false)} />}
+      {people[v] && !open && (
+        <div className="ntpwin" key={`${h}-${v}`} role="status">
+          <div className="flagp"><Sprite name="flag" size={4} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="cap" style={{ color: "#C7D6BF" }}>Nearest the pin</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{people[v].name} {v === "me" ? "stick" : "sticks"} it close</div>
+          </div>
+          <div className="plus">+3</div>
+          <Burst colors={BURST_B} n={14} reach={60} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PickRow({ label, hint, ids, people, value, onPick, extra, tip }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "8px 0" }}>
@@ -1287,7 +1336,7 @@ function MiniBoard({ title, sub, rows, people }) {
 }
 
 /* ───────────── GAME PANELS (live round) ───────────── */
-function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
+function GamePanel({ gid, round, people, h, api }) {
   const can = useContext(LiveCtx);
   const [open, setOpen] = useState(null);
   const [zoom, setZoom] = useState(null);
@@ -1306,26 +1355,6 @@ function GamePanel({ gid, round, people, h, api, nudge = 0 }) {
     return (
       <div>
         <p className="cap">Net Stableford points drop into your pot. Bank to lock them in, but banking resets your streak. A net double bogey or worse busts the pot. Three net pars or better in a row doubles your points, five in a row triples them.</p>
-        {round.opts.ntp && PAR[h] === 3 && (
-          <div className="card" style={{ marginTop: 6, padding: "2px 8px 6px", boxShadow: "3px 3px 0 var(--night)" }}>
-            <PickRow label="Nearest the pin" tip="ntp" hint="Closest to the pin wins +3." ids={ids} people={people} value={round.ntp[h]} onPick={id => { if (round.ntp[h] !== id) SFX.ntp(); api.setNtp(h, id); }} extra={
-              <button className={`chip ${round.ntp[h] === "none" ? "on" : ""}`} aria-pressed={round.ntp[h] === "none"} onClick={() => api.setNtp(h, "none")} style={{ padding: "2px 7px", fontSize: 12 }}>Nobody</button>
-            } />
-            {nudge > 0 && !round.ntp[h] && <p key={nudge} role="alert" className="shk" style={{ color: "var(--red)", fontWeight: 700, padding: "0 0 6px" }}>Pick who was nearest the pin, or tap Nobody, before moving on.</p>}
-            {round.ntp[h] === "none" && <p className="cap" style={{ paddingBottom: 6 }}>No one found the pin. No points this hole.</p>}
-            {people[round.ntp[h]] && (
-              <div className="ntpwin" key={`${h}-${round.ntp[h]}`} role="status">
-                <div className="flagp"><Sprite name="flag" size={4} /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="cap" style={{ color: "#C7D6BF" }}>Nearest the pin</div>
-                  <div style={{ fontWeight: 700, fontSize: 16 }}>{people[round.ntp[h]].name} {round.ntp[h] === "me" ? "stick" : "sticks"} it close</div>
-                </div>
-                <div className="plus">+3</div>
-                <Burst colors={BURST_B} n={14} reach={60} />
-              </div>
-            )}
-          </div>
-        )}
         {can.live && can.scoring === "each" && <p className="cap" style={{ marginTop: 6 }}><b>Bank calls are secret.</b> Yours locks when you move to the next hole. Everyone's is revealed once the whole group has moved on.</p>}
         <div>
           {ids.map((id, i) => {
@@ -2335,10 +2364,12 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
   const cardsHere = !!pc && round.opts.cards && cardHole(h) && !!round.draws[h];
   const showReveal = cardsHere && (!round.seen[h] || again);
   const nextIsCard = !!pc && round.opts.cards && h < 17 && cardHole(h + 1) && !round.draws[h + 1];
-  const [nudge, setNudge] = useState(0);
-  const ntpMissing = !!pc && round.opts.ntp && PAR[h] === 3 && !round.ntp[h];
-  const blocked = () => { if (!ntpMissing) return false; setNudge(n => n + 1); SFX.down(); return true; };
-  const goNext = () => { if (blocked()) return; if (nextIsCard) { HAPTIC.buzz(15); setLastCall(true); } else { HAPTIC.buzz(20); api.setHole(Math.min(17, h + 1)); } };
+  const ntpHole = !!pc && round.opts.ntp && PAR[h] === 3;
+  const ntpMissing = ntpHole && !round.ntp[h] && can.score();
+  // Leaving a par 3 with no nearest-the-pin pick: ask first, then carry on where they were going.
+  const [ntpAsk, setNtpAsk] = useState(null);
+  const blocked = then => { if (!ntpMissing) return false; HAPTIC.buzz(30); setNtpAsk({ then }); return true; };
+  const goNext = () => { if (blocked("next")) return; if (nextIsCard) { HAPTIC.buzz(15); setLastCall(true); } else { HAPTIC.buzz(20); api.setHole(Math.min(17, h + 1)); } };
   // A new hole starts at the top of the page, so it's obvious the hole changed and its notices are seen.
   const firstHole = useRef(true);
   useEffect(() => {
@@ -2347,7 +2378,6 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
   }, [h]);
   /* heads-up strips at the top of the hole, for the scorer to read out */
   const notices = [];
-  if (pc && round.opts.ntp && PAR[h] === 3) notices.push({ key: "ntp", icon: "flag", isize: 2, title: "Par 3: nearest the pin", text: "Closest ball earns +3. Pick the winner, or Nobody, before you move on." });
   if (pc && round.opts.cards && cardHole(h) && !round.draws[h] && can.live && !can.canDeal(h)) notices.push({ key: "wait", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards coming`, text: `Cards are dealt once everyone has moved on to this hole and the last bank calls are revealed.${can.waitingOn && can.waitingOn(h).length ? ` Waiting for ${can.waitingOn(h).join(", ")} to move on.` : ""}` });
   if (cardsHere) notices.push({ key: "cards", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards are out`, text: "Everyone drew a blessing or a curse. Banks from the last hole are locked.", action: ["Show cards", () => setAgain(true)] });
   if (nextIsCard) notices.push({ key: "bank", icon: "c_vault", isize: 2, urgent: true, title: `Next hole is the ${SI[h + 1] === 1 ? "hardest" : "easiest"}: last chance to bank`, text: "Everyone draws a card at the tee, then banks lock. Ask each player now.", action: ["Review banks", () => setLastCall(true)] });
@@ -2393,7 +2423,7 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 11 }}>
           {range18.map(i => (
-            <button key={i} onClick={() => (i === h + 1 ? goNext() : i > h && blocked() ? null : api.setHole(i))} aria-label={`Go to hole ${i + 1}`} style={{ width: 17, height: 24, display: "grid", placeItems: "center" }}>
+            <button key={i} onClick={() => (i === h + 1 ? goNext() : i > h && blocked(i) ? null : api.setHole(i))} aria-label={`Go to hole ${i + 1}`} style={{ width: 17, height: 24, display: "grid", placeItems: "center" }}>
               <span style={{ width: i === h ? 13 : 9, height: i === h ? 13 : 9, borderRadius: "50%", background: holeDone(round, i) ? "var(--flag)" : "rgba(255,255,255,.28)", boxShadow: i === h ? "0 0 0 2px #fff" : "none" }} />
             </button>
           ))}
@@ -2401,6 +2431,7 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
       </div>
 
       <div style={{ padding: "9px 12px 75px", display: "grid", gap: 6, alignContent: "start" }}>
+        {ntpHole && <NtpCard key={h} round={round} people={people} ids={ids} h={h} api={api} disabled={!can.score()} />}
         {notices.length > 0 && (
         <div style={{ position: "sticky", top: 0, zIndex: 6, display: "grid", gap: 6, padding: "6px 0", background: "var(--chalk)", borderBottom: "2px solid var(--night)" }}>
         {notices.map(n => (
@@ -2453,7 +2484,7 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
               </div>
             )}
             <div className="card" style={{ padding: 12, marginTop: 9 }}>
-              <GamePanel key={gtab} gid={gtab} round={round} people={people} h={h} api={api} nudge={nudge} />
+              <GamePanel key={gtab} gid={gtab} round={round} people={people} h={h} api={api} />
             </div>
           </div>
         )}
@@ -2462,10 +2493,22 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
 
       <div style={{ position: "sticky", bottom: 0, marginTop: "auto", padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
         {h < 17
-          ? <button className="cta" onClick={goNext} style={ntpMissing ? { opacity: 0.55 } : undefined}>{ntpMissing ? "Pick nearest the pin first" : "Next hole"}{!ntpMissing && <ChevronRight size={22} />}</button>
-          : <button className="cta" style={{ background: "var(--flag)", color: "var(--dk)", opacity: ntpMissing ? 0.55 : 1 }} onClick={() => { if (!blocked()) onFinish(); }}>{ntpMissing ? "Pick nearest the pin first" : "Finish round"}</button>}
+          ? <button className="cta" onClick={goNext}>Next hole<ChevronRight size={22} /></button>
+          : <button className="cta" style={{ background: "var(--flag)", color: "var(--dk)" }} onClick={() => { if (!blocked("finish")) onFinish(); }}>Finish round</button>}
       </div>
       {showReveal && <CardReveal key={h} round={round} people={people} h={h} onDone={() => { api.markSeen(h); setAgain(false); }} />}
+      {ntpAsk && ntpMissing && (
+        <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 31, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.65)" }} onClick={() => setNtpAsk(null)}>
+          <div className="sheet card" role="dialog" aria-label="Nearest the pin" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Sprite name="flag" size={3} /><h2 className="h2">Who was nearest the pin?</h2></div>
+            <p className="cap" style={{ margin: "3px 0 10px" }}>Hole {h + 1} is a par 3. Closest tee shot earns +3. Pick before moving on.</p>
+            <NtpPick round={round} people={people} ids={ids} h={h} api={api} onPicked={() => {
+              const t = ntpAsk.then; setNtpAsk(null);
+              setTimeout(() => { if (t === "finish") onFinish(); else if (t === "next") { if (nextIsCard) setLastCall(true); else api.setHole(Math.min(17, h + 1)); } else if (typeof t === "number") api.setHole(t); }, 450);
+            }} />
+          </div>
+        </div>
+      )}
       {lastCall && nextIsCard && (
         <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.65)" }} onClick={() => setLastCall(false)}>
           <div className="sheet card" role="dialog" aria-label="Last chance to bank" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "88vh", overflowY: "auto" }}>

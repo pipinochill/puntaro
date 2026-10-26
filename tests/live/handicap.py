@@ -5,7 +5,7 @@ from playwright.async_api import async_playwright
 sys.path.insert(0, sys.argv[3]); import rules, fakecloud as fc
 URL, OUT = sys.argv[1], sys.argv[2]; res = []
 def check(n, ok, d=''): ok = bool(ok); res.append(ok); print(('PASS ' if ok else 'FAIL ') + n + (f'  [{d}]' if d and not ok else ''))
-import os; HCP = os.path.abspath(sys.argv[4] if len(sys.argv) > 4 else os.path.join(os.path.dirname(__file__), '../../src/hcp.js'))
+HCP = sys.argv[4] if len(sys.argv) > 4 else '/home/claude/puntaro/src/hcp.js'
 def whs(diffs):  # the app's own maths, run in node
     out = subprocess.run(['node', '-e', f"import('{HCP}').then(m=>console.log(JSON.stringify(m.indexFrom({json.dumps(diffs)}))))"], capture_output=True, text=True)
     return json.loads(out.stdout)
@@ -30,7 +30,7 @@ async def play_live_round(H, S, code):
         await H.get_by_role('button', name='Pierre plus one').click(); await H.wait_for_timeout(60)
         await H.get_by_role('button', name='Pierre plus one').click(); await H.wait_for_timeout(60)
         await H.get_by_role('button', name='Sam plus one').click(); await H.wait_for_timeout(60)
-        if await H.get_by_text('Pick nearest the pin first').count(): await H.get_by_role('button', name='Nobody').first.click(); await H.wait_for_timeout(100)
+        if await H.get_by_role('button', name='Nobody hit the green').count(): await H.get_by_role('button', name='Nobody').first.click(); await H.wait_for_timeout(100)
         if h == 17: break
         await H.get_by_role('button', name='Next hole').last.click(); await H.wait_for_timeout(200)
         if await H.get_by_role('button', name='Draw the cards').count(): await H.get_by_role('button', name='Draw the cards').click(); await H.wait_for_timeout(300)

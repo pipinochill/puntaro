@@ -18,5 +18,6 @@ Serve the app over http, not file:// (headless Chromium sometimes starts a file:
     python $T/edited.py       $APP /tmp $T   # "edited" marks, what goes online (8)
     python $T/invites.py      $APP /tmp $T   # invite links, crediting who brought people in, gaming attempts (26)
     python $T/cards_haptics.py $APP /tmp $T   # cards always come up (even offline), new holes start at the top, vibration (11)
+    python $T/ntp.py          $APP /tmp $T   # nearest the pin picker at the top, pop-up before leaving a par 3 (7)
     python $T/handicap.py     $APP /tmp $T src/hcp.js  # estimates, EST/APP tags, Puntaro handicap from witnessed rounds (22)
     node tests/live/hcp_unit.mjs                       # handicap maths: differentials, WHS table, slow up (18)
