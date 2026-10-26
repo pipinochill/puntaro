@@ -21,5 +21,6 @@ Serve the app over http, not file:// (headless Chromium sometimes starts a file:
     python $T/ntp.py          $APP /tmp $T   # nearest the pin picker at the top, pop-up before leaving a par 3 (7)
     python $T/moments.py      $APP /tmp $T   # moments play on leaving a hole: good screen then bad; stamps on the row (23)
     python $T/friends.py      $APP /tmp $T   # friends: invite, code + accept, decline, profiles, unfriend, attacks (34)
+    python $T/gaps.py         $APP /tmp $T   # a blank earlier hole doesn't freeze anyone's game (4)
     python $T/handicap.py     $APP /tmp $T src/hcp.js  # estimates, EST/APP tags, Puntaro handicap from witnessed rounds (22)
     node tests/live/hcp_unit.mjs                       # handicap maths: differentials, WHS table, slow up (18)

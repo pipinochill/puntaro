@@ -27,7 +27,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.62";
+const APP_VERSION = "0.63";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -602,7 +602,16 @@ function puntCalc(r, upTo = 18) {
     ids.forEach(id => {
       const st = S[id];
       if (!st.alive) return;
-      if (r.scores[id][h] == null) { st.alive = false; return; }
+      if (r.scores[id][h] == null) {
+        // A hole left blank with later holes scored: count it as no score (no points, streak broken) and keep going,
+        // so a gap can't freeze someone's game (and stop them busting) for the rest of the round.
+        let later = false; for (let k = h + 1; k < 18; k++) if (r.scores[id][k] != null) { later = true; break; }
+        if (!later) { st.alive = false; return; }
+        st.streak = 0; st.log[h] = "No score entered: no points, streak reset";
+        if (r.bank[id][h] && st.pot > 0) { st.banked += st.pot; st.pot = 0; st.log[h] += `, banked`; }
+        st.potAt[h] = st.pot; st.streakAt[h] = 0; st.gapAt = st.gapAt || []; st.gapAt.push(h);
+        return;
+      }
       played.push(id);
       const card = r.opts.cards && r.draws[h] ? r.draws[h][id] || null : null;
       const evs = (r.events[id] && r.events[id][h]) || {};
@@ -841,7 +850,7 @@ function buildRound(cfg, people, seed) {
 /* ───────────── SMALL PARTS ───────────── */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Jersey+15&family=IBM+Plex+Sans:wght@500;600;700&display=swap');
 .sg{--ink:#1B1C1A;--muted:#55524A;--chalk:#F1EADB;--card:#FBF6EA;--sel:#D3DACB;--night:#1B1C1A;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C9C0A8;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
 .sg.dark{--ink:#EDE8DD;--muted:#B3AEA2;--chalk:#1B1C1A;--card:#252724;--sel:#2C4033;--night:#454841;--pine:#4F7A5A;--fair:#7FA886;--lime:#E0C799;--red:#CC5A3E;--bogey:#CC5A3E;--line:#383A35;--track:#1B1C1A;--head1:#2C4536;--head2:#27402F;--grid:rgba(232,227,214,.03);--on-bg:#C69C6D;--on-fg:#1B1C1A;}
 .sg{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;font-weight:500;font-size:13px;line-height:1.28;letter-spacing:0;color:var(--ink);background-color:var(--chalk);
@@ -851,7 +860,7 @@ const CSS = `
 .sg *{font-synthesis:none;}
 .sg h1,.sg h2,.sg h3,.sg p{margin:0;}
 .sg h1,.sg h2,.sg h3,.sg .px,.sg .cta{font-weight:700 !important;letter-spacing:0 !important;}
-.sg .px{font-family:'Pixelify Sans','Silkscreen',ui-monospace,monospace;font-weight:600 !important;}
+.sg .px{font-family:'Jersey 15','Pixelify Sans',ui-monospace,monospace;font-weight:400 !important;letter-spacing:.02em !important;}
 .sg h1{font-size:20px !important;line-height:1.15 !important;}
 .sg h2,.sg .h2{font-size:15px !important;line-height:1.2 !important;}
 .sg h3{font-size:13px !important;line-height:1.2 !important;}
@@ -1078,7 +1087,7 @@ function ScoreMark({ v, par, size = 50 }) {
   const g = "var(--fair)", r = "var(--red)", m = "var(--mint)", w = "var(--card)";
   const layers = d <= -2 ? [[46, g], [41, w], [36, g], [31, m]] : d === -1 ? [[41, g], [36, m]] : d === 1 ? [[41, r], [36, w]] : d >= 2 ? [[46, r], [41, w], [36, r], [31, w]] : [];
   const birdie = d < 0;
-  const num = <span key={v} className="pop px" style={{ fontSize: 19, lineHeight: 1, color: d > 0 ? "var(--red)" : d < 0 ? "var(--dk)" : "var(--ink)" }}>{v}</span>;
+  const num = <span key={v} className="pop px" style={{ fontSize: 23, lineHeight: 1, color: d > 0 ? "var(--red)" : d < 0 ? "var(--dk)" : "var(--ink)" }}>{v}</span>;
   const art = layers.reduceRight((child, [sz, bg]) => (
     <div style={{ width: sz, height: sz, background: bg, clipPath: birdie ? CH : "none", display: "grid", placeItems: "center" }}>{child}</div>
   ), num);
@@ -1471,14 +1480,14 @@ function GamePanel({ gid, round, people, h, api }) {
                 {bust && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                     <Sprite name="skull" size={4} className="flick" />
-                    <div className="px blink" style={{ fontSize: 16 }}>BUST!</div>
+                    <div className="px blink" style={{ fontSize: 19 }}>BUST!</div>
                     <div style={{ marginLeft: "auto", fontWeight: 700 }}>{bust.lost + (bust.kept || 0) === 0 ? "Pot was empty" : `Lost ${bust.lost}${bust.kept ? `, kept ${bust.kept}` : ""}`}</div>
                   </div>
                 )}
                 {hot && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
                     {Array.from({ length: s.mult }).map((_, k) => <Sprite key={k} name="flame" size={4} className="flick" />)}
-                    <div className="px" style={{ fontSize: 15 }}><Tip k="mult">x{s.mult} streak</Tip></div>
+                    <div className="px" style={{ fontSize: 21 }}><Tip k="mult">x{s.mult} streak</Tip></div>
                     <div className="cap" style={{ marginLeft: "auto" }}>{s.streak} in a row</div>
                   </div>
                 )}
@@ -2525,7 +2534,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
           <button onClick={() => api.setHole(Math.max(0, h - 1))} aria-label="Previous hole" disabled={h === 0} style={{ width: 38, height: 38, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 0 ? 0.35 : 1 }}><ChevronLeft size={26} /></button>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.9 }}>{round.course.name}</div>
-            <div className="px" aria-label={`Hole ${h + 1}`} style={{ fontSize: 34, lineHeight: 1, margin: "2px 0 3px" }}>{h + 1}</div>
+            <div className="px" aria-label={`Hole ${h + 1}`} style={{ fontSize: 50, lineHeight: .9, margin: "2px 0 2px" }}>{h + 1}</div>
             <div style={{ fontWeight: 700, fontSize: 13 }}>Par {PAR[h]} · Index {SI[h]}</div>
           </div>
           <button onClick={goNext} aria-label="Next hole" disabled={h === 17} style={{ width: 38, height: 38, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 17 ? 0.35 : 1 }}><ChevronRight size={26} /></button>
@@ -2573,9 +2582,11 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                   {can.edited && v != null && can.edited(id, h) && <span>{" · edited"}</span>}
                 </div>
                 {v != null && (v === 1 && PAR[h] > 2 || v - PAR[h] <= -1) && <span className="pill px" style={{ background: v === 1 && PAR[h] > 2 ? "#CFE6C9" : v - PAR[h] <= -2 ? "#8EC5E8" : "#BFE0F2", padding: "1px 6px", fontSize: 11, marginTop: 3, marginRight: 4 }}>{v === 1 && PAR[h] > 2 ? "HOLE IN ONE" : v - PAR[h] <= -3 ? "ALBATROSS" : v - PAR[h] === -2 ? "EAGLE" : "BIRDIE"}</span>}
+                {(() => { const gap = round.scores[id].slice(0, h).findIndex(x => x == null); return gap >= 0 && t.thru > 0 ? <div className="cap" role="note" style={{ color: bust ? "#fff" : "var(--red)", fontWeight: 700 }}>No score on hole {gap + 1}. <button onClick={() => api.setHole(gap)} style={{ textDecoration: "underline", fontWeight: 700, color: "inherit" }}>Fill it in</button></div> : null; })()}
                 {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</Tip></span>}
-                {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 14 }}>BUST</span></div>}
-                {hot && <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>{Array.from({ length: pc[id].mult }).map((_, k) => <Sprite key={k} name="flame" size={3} className="flick" />)}<span className="px" style={{ fontSize: 14 }}>x{pc[id].mult}</span></div>}
+                {pc && v != null && !bust && /Safety net saved/.test(pc[id].log[h] || "") && <span className="pill px" style={{ background: "var(--mint)", padding: "1px 6px", fontSize: 13, marginTop: 3 }}>SAFETY NET SAVED THE POT</span>}
+                {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 17 }}>BUST</span></div>}
+                {hot && <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>{Array.from({ length: pc[id].mult }).map((_, k) => <Sprite key={k} name="flame" size={3} className="flick" />)}<span className="px" style={{ fontSize: 17 }}>x{pc[id].mult}</span></div>}
               </div>
               {rowFx[id] && <div className="rowstamp" key={rowFx[id].key}><StampMark small word={rowFx[id].word} sub={rowFx[id].sub} color={rowFx[id].color} tilt={-8} /></div>}
               <StepBtn onClick={() => bump(id, -1)} label={`${people[id].name} minus one`}><Minus size={22} /></StepBtn>
@@ -2697,7 +2708,7 @@ function Scorecard({ round, people }) {
                   return (
                     <div key={id} style={{ ...cell, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
                       <span style={{ display: "inline-grid", placeItems: "center", minWidth: 20, height: 20, fontWeight: 700, color: d < 0 ? "var(--fair)" : d > 0 ? "var(--red)" : "var(--ink)", border: v == null ? "none" : d < 0 ? "2px solid var(--fair)" : d > 0 ? "2px solid var(--red)" : "none", borderRadius: d < 0 ? "50%" : 0 }}>{v == null ? "·" : v}</span>
-                      {(bank || bust) && <span className="px" style={{ fontSize: 9, color: bust ? "var(--red)" : "var(--fair)" }}>{bust ? "X" : "B"}</span>}
+                      {(bank || bust) && <span className="px" style={{ fontSize: 11, color: bust ? "var(--red)" : "var(--fair)" }}>{bust ? "X" : "B"}</span>}
                     </div>
                   );
                 })}
@@ -2941,7 +2952,7 @@ function AddFriendSheet({ people, friendIds, setFriendIds, myRef, makeRef, onFin
           <div className="cap" style={{ fontWeight: 600 }}>Your friend code</div>
           {myRef ? (
             <>
-              <div className="px" aria-label="Your friend code" style={{ fontSize: 22, letterSpacing: 1 }}>{myRef}</div>
+              <div className="px" aria-label="Your friend code" style={{ fontSize: 26, letterSpacing: 1 }}>{myRef}</div>
               <svg viewBox={`0 0 ${qr.n} ${qr.n}`} width="150" height="150" role="img" aria-label="Your friend QR code" shapeRendering="crispEdges" style={{ background: "#fff", display: "block" }}><path d={qr.d} fill="#14150F" /></svg>
               <div className="cap">A mate scans this, or types your code. Anyone new who signs up from your link becomes your friend straight away.</div>
               <button className="chip" onClick={() => shareLink(inviteLink(myRef), "Be my friend on Puntaro, a side game for your round.", setMsg)} style={{ padding: "7px 14px" }}>Share my link</button>
@@ -3033,7 +3044,7 @@ function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose
             <div className="cap" style={{ fontWeight: 700 }}>{l}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 6, marginTop: 4 }}>
               {[["Rounds", s ? s.rounds : 0], ["Wins", s ? s.wins : 0], ["NTPs", s ? s.ntp : 0], ["Avg pts", s && s.pts != null ? s.pts.toFixed(1) : "–"]].map(([n, v]) => (
-                <div key={n} className="card" style={{ padding: "6px 8px", boxShadow: "2px 2px 0 var(--night)" }}><div className="px" style={{ fontSize: 18 }}>{v}</div><div className="cap">{n}</div></div>
+                <div key={n} className="card" style={{ padding: "6px 8px", boxShadow: "2px 2px 0 var(--night)" }}><div className="px" style={{ fontSize: 22 }}>{v}</div><div className="cap">{n}</div></div>
               ))}
             </div>
           </div>
@@ -3158,7 +3169,7 @@ function InviteCard({ myRef, makeRef, cloud }) {
         </>
       ) : (
         <>
-          <div className="px" style={{ marginTop: 5, fontSize: 13, wordBreak: "break-all" }}>{inviteLink(myRef).replace(/^https?:\/\//, "")}</div>
+          <div className="px" style={{ marginTop: 5, fontSize: 16, wordBreak: "break-all" }}>{inviteLink(myRef).replace(/^https?:\/\//, "")}</div>
           <button className="cta" style={{ marginTop: 8 }} onClick={share}>Share my invite link</button>
           <p className="cap" style={{ marginTop: 6 }}>Your live round QR codes and links count too.</p>
           <div style={{ marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 7 }}>
@@ -3424,7 +3435,7 @@ function LiveSheet({ code, doc, uid, onClose, onScoring, onRelease, onLeave, ref
           <svg viewBox={`0 0 ${qr.n} ${qr.n}`} width="196" height="196" role="img" aria-label={`QR code to join ${code}`} shapeRendering="crispEdges" style={{ background: "#fff", display: "block" }}>
             <path d={qr.d} fill="#14150F" />
           </svg>
-          <div className="px" style={{ fontSize: 26, letterSpacing: 3 }}>{code}</div>
+          <div className="px" style={{ fontSize: 31, letterSpacing: 3 }}>{code}</div>
         </div>
         <button className="cta" style={{ marginTop: 9 }} onClick={share}>{copied ? "Link copied" : "Share invite link"}</button>
         <p className="cap" style={{ marginTop: 6, textAlign: "center" }}>Need it again later? Tap the red LIVE button on the scoring screen, or on Home.</p>
