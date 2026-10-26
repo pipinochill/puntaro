@@ -19,7 +19,7 @@ Serve the app over http, not file:// (headless Chromium sometimes starts a file:
     python $T/invites.py      $APP /tmp $T   # invite links, crediting who brought people in, gaming attempts (26)
     python $T/cards_haptics.py $APP /tmp $T   # cards always come up (even offline), new holes start at the top, vibration (11)
     python $T/ntp.py          $APP /tmp $T   # nearest the pin picker at the top, pop-up before leaving a par 3 (7)
-    python $T/moments.py      $APP /tmp $T   # big moments with 8-bit art, stamps on the row, daylight default (13)
+    python $T/moments.py      $APP /tmp $T   # moments play on leaving a hole: good screen then bad; stamps on the row (23)
     python $T/friends.py      $APP /tmp $T   # friends: invite, code + accept, decline, profiles, unfriend, attacks (34)
     python $T/handicap.py     $APP /tmp $T src/hcp.js  # estimates, EST/APP tags, Puntaro handicap from witnessed rounds (22)
     node tests/live/hcp_unit.mjs                       # handicap maths: differentials, WHS table, slow up (18)

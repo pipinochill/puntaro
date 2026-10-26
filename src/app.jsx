@@ -25,7 +25,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.59";
+const APP_VERSION = "0.60";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1306,8 +1306,34 @@ function StampMark({ word, sub, color, tilt = -7, small }) {
     </div>
   );
 }
+const PLAYED = new Map(); // "round seed:hole" -> what was celebrated, so going back and forward doesn't replay it
+const GOOD = {
+  ace: { rank: 6, art: "ace", word: "HOLE IN ONE!", label: "Hole in one", color: "#B84A32", bg: "#CFE6C9", tilt: -5, sound: "ace" },
+  albatross: { rank: 5, art: "eagle", word: "ALBATROSS!", label: "Albatross", color: "#1F4E79", bg: "#8EC5E8", tilt: -5, sound: "eagle" },
+  eagle: { rank: 4, art: "eagle", word: "EAGLE!", label: "Eagle", color: "#1F4E79", bg: "#8EC5E8", tilt: 6, sound: "eagle" },
+  birdie: { rank: 3, art: "bird", word: "BIRDIE!", label: "Birdie", color: "#2F4A3A", bg: "#BFE0F2", tilt: -7, sound: "birdie" },
+  fire: { rank: 2, art: "flames", word: "ON FIRE", label: "On fire x3", color: "#B84A32", bg: "#FFFDF7", tilt: -6, sound: "mult" },
+  roll: { rank: 1, art: "flames", word: "ON A ROLL", label: "On a roll x2", color: "#B84A32", bg: "#FFFDF7", tilt: -6, sound: "mult" },
+};
+function holeScreens({ good, bad }, hh, people) {
+  const nm = id => (people[id] ? people[id].name : "Someone");
+  const out = [];
+  if (good.length) {
+    const g = [...good].sort((a, b) => GOOD[b.kind].rank - GOOD[a.kind].rank); const top = GOOD[g[0].kind];
+    const who = [...new Set(g.map(e => e.id))];
+    out.push({ ...top, sub: who.length === 1 ? `${nm(who[0]).toUpperCase()}${g[0].x ? ` x${g[0].x}` : ""}` : `${nm(g[0].id).toUpperCase()} +${who.length - 1} MORE`,
+      caption: g.length === 1 && g[0].kind === "ace" ? [`A hole in one on hole ${hh + 1}! Drinks are on ${nm(g[0].id)}.`]
+        : [`Hole ${hh + 1}`, ...g.map(e => `${GOOD[e.kind].label}: ${nm(e.id)}`)] });
+  }
+  if (bad.length) {
+    out.push({ art: "pot", word: bad.length > 1 ? "BUSTS" : "BUST", color: "#B84A32", bg: "#F2B8A8", tilt: -9, sound: "bust",
+      sub: bad.length === 1 ? `${nm(bad[0].id).toUpperCase()} −${bad[0].lost}` : bad.length === 2 ? bad.map(e => nm(e.id).toUpperCase()).join(" & ") : `${bad.length} PLAYERS`,
+      caption: [`Hole ${hh + 1}: net double bogey`, ...bad.map(e => `${nm(e.id)} −${e.lost}${e.kept ? ` (cushion keeps ${e.kept})` : ""}`), "Banked points are safe."] });
+  }
+  return out;
+}
 /* A big moment: art, a stamp and confetti over the round. Tap to carry on; it also goes by itself. */
-function Moment({ m, onDone }) {
+function Moment({ m, more, onDone }) {
   if (!m) return null;
   return (
     <div className="moment" key={m.key} role="alertdialog" aria-label={`${m.word} ${m.sub || ""}`} onClick={onDone}>
@@ -1316,7 +1342,7 @@ function Moment({ m, onDone }) {
         {m.art && <div className="mart"><PixelArt k={m.art} px={m.art === "pot" ? 9 : 10} /></div>}
         <div className="mstamp"><StampMark word={m.word} sub={m.sub} color={m.color} tilt={m.tilt} /></div>
       </div>
-      {m.caption && <div className="mcap"><div>{m.caption}</div><div className="cap" style={{ marginTop: 6, fontWeight: 600 }}>Tap to carry on</div></div>}
+      {m.caption && <div className="mcap">{(Array.isArray(m.caption) ? m.caption : [m.caption]).map((l, i) => <div key={i} style={i === 0 && Array.isArray(m.caption) && m.caption.length > 1 ? { fontWeight: 700 } : null}>{l}</div>)}<div className="cap" style={{ marginTop: 6, fontWeight: 600 }}>{more ? "Tap for the next one" : "Tap to carry on"}</div></div>}
     </div>
   );
 }
@@ -2435,7 +2461,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   // Leaving a par 3 with no nearest-the-pin pick: ask first, then carry on where they were going.
   const [ntpAsk, setNtpAsk] = useState(null);
   const blocked = then => { if (!ntpMissing) return false; HAPTIC.buzz(30); setNtpAsk({ then }); return true; };
-  const goNext = () => { if (blocked("next")) return; if (nextIsCard) { HAPTIC.buzz(15); setLastCall(true); } else { HAPTIC.buzz(20); api.setHole(Math.min(17, h + 1)); } };
+  const goNext = () => { if (blocked("next")) return; if (nextIsCard) { HAPTIC.buzz(15); celebrateHole(h); setLastCall(true); } else { HAPTIC.buzz(20); api.setHole(Math.min(17, h + 1)); } };
   // A new hole starts at the top of the page, so it's obvious the hole changed and its notices are seen.
   const firstHole = useRef(true);
   useEffect(() => {
@@ -2447,35 +2473,33 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   if (pc && round.opts.cards && cardHole(h) && !round.draws[h] && can.live && !can.canDeal(h)) notices.push({ key: "wait", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards coming`, text: `Cards are dealt once everyone has moved on to this hole and the last bank calls are revealed.${can.waitingOn && can.waitingOn(h).length ? ` Waiting for ${can.waitingOn(h).join(", ")} to move on.` : ""}` });
   if (cardsHere) notices.push({ key: "cards", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards are out`, text: "Everyone drew a blessing or a curse. Banks from the last hole are locked.", action: ["Show cards", () => setAgain(true)] });
   if (nextIsCard) notices.push({ key: "bank", icon: "c_vault", isize: 2, urgent: true, title: `Next hole is the ${SI[h + 1] === 1 ? "hardest" : "easiest"}: last chance to bank`, text: "Everyone draws a card at the tee, then banks lock. Ask each player now.", action: ["Review banks", () => setLastCall(true)] });
+  /* Big moments play when you leave a hole, for the final scores: all the good news on one screen, then the bad. */
+  const holeEvents = hh => {
+    const good = [], bad = [];
+    if (!pc) return { good, bad };
+    ids.forEach(id => {
+      const v = round.scores[id][hh]; if (v == null) return;
+      const st = pc[id]; const sc = v - PAR[hh]; const bu = st.bustAt[hh];
+      if (bu && bu.lost + (bu.kept || 0) > 0) bad.push({ id, kind: "bust", lost: bu.lost, kept: bu.kept || 0 });
+      const k = v === 1 && PAR[hh] > 2 ? "ace" : sc <= -3 ? "albatross" : sc === -2 ? "eagle" : sc === -1 ? "birdie" : null;
+      if (k) good.push({ id, kind: k });
+      const m = st.multAt[hh] || 0, pm = hh > 0 && st.multAt[hh - 1] ? st.multAt[hh - 1] : 1;
+      if (!bu && m > 1 && m > pm) good.push({ id, kind: m >= 3 ? "fire" : "roll", x: m });
+    });
+    return { good, bad };
+  };
+  const celebrateHole = hh => {
+    const ev = holeEvents(hh); const key = `${round.drawSeed}:${hh}`; const sig = JSON.stringify(ev);
+    if (PLAYED.get(key) === sig) return; PLAYED.set(key, sig);
+    if (ev.good.length || ev.bad.length) api.moments(holeScreens(ev, hh, people));
+  };
+  const prevH = useRef(h);
+  useEffect(() => { if (h > prevH.current) celebrateHole(prevH.current); prevH.current = h; }, [h]); // eslint-disable-line react-hooks/exhaustive-deps
   const bump = (id, d) => {
     const cur = round.scores[id][h];
     const val = cur == null ? PAR[h] : Math.min(12, Math.max(1, cur + d));
-    try {
-      const nr = { ...round, scores: { ...round.scores, [id]: round.scores[id].map((x, i) => (i === h ? val : x)) } };
-      const a = puntCalc(round)[id], b = puntCalc(nr)[id];
-      const sc = val - PAR[h];
-      const NAME = people[id].name.toUpperCase();
-      if (b.bustAt[h] && !a.bustAt[h]) {
-        SFX.bust(); const bu = b.bustAt[h];
-        if (bu.lost + (bu.kept || 0) > 0) api.moment({ art: "pot", word: "BUST", sub: `${NAME} −${bu.lost}`, color: "#B84A32", bg: "#F2B8A8", tilt: -9, caption: `Net double bogey for ${people[id].name}. ${bu.lost} gone from the pot${bu.kept ? `; the cushion keeps ${bu.kept}` : ""}. Banked points are safe.` });
-      }
-      else if (d < 0 && cur != null && sc <= -1 && val !== cur) {
-        const kind = val === 1 && PAR[h] > 2 ? "ace" : sc <= -3 ? "albatross" : sc === -2 ? "eagle" : "birdie";
-        (kind === "birdie" ? SFX.birdie : kind === "ace" ? SFX.ace : SFX.eagle)();
-        const M = {
-          birdie: { art: "bird", word: "BIRDIE!", color: "#2F4A3A", bg: "#BFE0F2", tilt: -7, caption: `${people[id].name}: one under on hole ${h + 1}.` },
-          eagle: { art: "eagle", word: "EAGLE!", color: "#1F4E79", bg: "#8EC5E8", tilt: 6, caption: `${people[id].name}: two under on hole ${h + 1}!` },
-          albatross: { art: "eagle", word: "ALBATROSS!", color: "#1F4E79", bg: "#8EC5E8", tilt: -5, caption: `${people[id].name}: three under on hole ${h + 1}. Almost never happens.` },
-          ace: { art: "ace", word: "HOLE IN ONE!", color: "#B84A32", bg: "#CFE6C9", tilt: -5, caption: `A hole in one on hole ${h + 1}! Drinks are on ${people[id].name}.` },
-        }[kind];
-        api.moment({ ...M, sub: NAME });
-      }
-      else if ((b.multAt[h] || 0) > (a.multAt[h] || 0)) {
-        SFX.mult(); const x = b.multAt[h];
-        api.moment({ art: "flames", word: x >= 3 ? "ON FIRE" : "ON A ROLL", sub: `${NAME} x${x}`, color: "#B84A32", bg: "#FFFDF7", tilt: -6, caption: x >= 3 ? `Five net pars or better in a row. ${people[id].name}'s points are tripled until they bank or bust.` : `Three net pars or better in a row. ${people[id].name}'s points are doubled until they bank or bust.` });
-      }
-      else if (d > 0) SFX.down(); else SFX.up();
-    } catch (e) { /* sound is optional */ }
+    // Just a blip here: the big moments wait until you leave the hole (celebrateHole), so stepping through scores can't set them off.
+    try { if (d > 0) SFX.down(); else SFX.up(); } catch (e) { /* sound is optional */ }
     api.setScore(id, h, val);
   };
   const StepBtn = ({ onClick, label, children, plus }) => (
@@ -2543,6 +2567,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                   {can.enteredBy && v != null && can.enteredBy(id, h) && <span>{` · by ${can.enteredBy(id, h)}`}</span>}
                   {can.edited && v != null && can.edited(id, h) && <span>{" · edited"}</span>}
                 </div>
+                {v != null && (v === 1 && PAR[h] > 2 || v - PAR[h] <= -1) && <span className="pill px" style={{ background: v === 1 && PAR[h] > 2 ? "#CFE6C9" : v - PAR[h] <= -2 ? "#8EC5E8" : "#BFE0F2", padding: "1px 6px", fontSize: 11, marginTop: 3, marginRight: 4 }}>{v === 1 && PAR[h] > 2 ? "HOLE IN ONE" : v - PAR[h] <= -3 ? "ALBATROSS" : v - PAR[h] === -2 ? "EAGLE" : "BIRDIE"}</span>}
                 {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</Tip></span>}
                 {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 14 }}>BUST</span></div>}
                 {hot && <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>{Array.from({ length: pc[id].mult }).map((_, k) => <Sprite key={k} name="flame" size={3} className="flick" />)}<span className="px" style={{ fontSize: 14 }}>x{pc[id].mult}</span></div>}
@@ -2575,7 +2600,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
       <div style={{ position: "sticky", bottom: 0, marginTop: "auto", padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
         {h < 17
           ? <button className="cta" onClick={goNext}>Next hole<ChevronRight size={22} /></button>
-          : <button className="cta" style={{ background: "var(--flag)", color: "var(--dk)" }} onClick={() => { if (!blocked("finish")) onFinish(); }}>Finish round</button>}
+          : <button className="cta" style={{ background: "var(--flag)", color: "var(--dk)" }} onClick={() => { if (!blocked("finish")) { celebrateHole(h); onFinish(); } }}>Finish round</button>}
       </div>
       {showReveal && <CardReveal key={h} round={round} people={people} h={h} onDone={() => { api.markSeen(h); setAgain(false); }} />}
       {ntpAsk && ntpMissing && (
@@ -3525,8 +3550,18 @@ function Game({ user, cloud, profile, now0, finished }) {
   const unfriend = uid => cloud.unfriend(uid);
   const [fx, setFx] = useState(null);
   const [tipK, setTipK] = useState(null);
-  const [moment, setMoment] = useState(null); const momentT = useRef(null);
-  const showMoment = m => { const key = Date.now() + Math.random(); setMoment({ ...m, key }); clearTimeout(momentT.current); momentT.current = setTimeout(() => setMoment(x => (x && x.key === key ? null : x)), 4500); };
+  // Big moments queue up and play one at a time: tap for the next, or each goes by itself after a few seconds.
+  const [moments, setMoments] = useState([]);
+  const showMoments = list => setMoments(q => [...q, ...list.map(m => ({ ...m, key: Date.now() + Math.random() }))]);
+  const showMoment = m => showMoments([m]);
+  const moment = moments[0] || null;
+  const nextMoment = () => setMoments(q => q.slice(1));
+  useEffect(() => {
+    if (!moment) return undefined;
+    try { if (moment.sound && SFX[moment.sound]) SFX[moment.sound](); } catch (e) { /* sound is optional */ }
+    const k = moment.key; const t = setTimeout(() => setMoments(q => (q[0] && q[0].key === k ? q.slice(1) : q)), 4500);
+    return () => clearTimeout(t);
+  }, [moment && moment.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [rowFx, setRowFx] = useState({});
   const rowStamp = (id, word, sub, color) => {
     const key = Date.now() + Math.random();
@@ -3773,7 +3808,7 @@ function Game({ user, cloud, profile, now0, finished }) {
   const leaveLive = () => { setLive(null); setLiveSheet(false); };
 
   const api = {
-    celebrate, moment: showMoment, rowStamp,
+    celebrate, moment: showMoment, moments: showMoments, rowStamp,
     setScore: (id, h, v) => {
       const prev = round.scores[id][h]; const who = (live && live.myId) || "watch";
       const pairs = [[["s", id, h], v], [["by", bankKey(id, h)], who]];
@@ -3917,7 +3952,7 @@ function Game({ user, cloud, profile, now0, finished }) {
     <div className={`sg${dark ? " dark" : ""}`} onClickCapture={e => { if (e.target.closest && e.target.closest("button")) setTimeout(() => { if (SFX.sinceSpecial() > 60) SFX.tap(); }, 0); }}>
       <style>{CSS}</style>
       <Celebrate fx={fx} />
-      <Moment m={moment} onDone={() => setMoment(null)} />
+      <Moment m={moment} more={moments.length > 1} onDone={nextMoment} />
       {friendAsk && !friendList.some(f => f.id === friendAsk.owner) && <FriendAsk who={friendAsk} onSend={() => sendFriendRequest(friendAsk)} onClose={() => setFriendAsk(null)} />}
       <TipSheet k={tipK} onClose={() => setTipK(null)} />
       {about && <AboutSheet onClose={() => setAbout(false)} />}
