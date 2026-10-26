@@ -25,7 +25,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.52";
+const APP_VERSION = "0.53";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -283,6 +283,47 @@ const SFX = (() => {
     }),
   };
 })();
+
+/* Haptics: short buzzes for the moments that matter. Android phones vibrate in patterns; iPhones (iOS 18+)
+   only allow a single light tap, made by flicking a hidden switch, and only straight from a tap. */
+const HAPTIC = (() => {
+  let on = true;
+  try { on = localStorage.getItem("puntaro.haptics") !== "off"; } catch (e) { /* default on */ }
+  let sw = null;
+  const ios = () => typeof navigator !== "undefined" && /iP(hone|ad|od)/.test(navigator.userAgent || "") && !navigator.vibrate;
+  const iosTap = () => {
+    try {
+      if (!sw) {
+        const lab = document.createElement("label"); const inp = document.createElement("input");
+        inp.type = "checkbox"; inp.setAttribute("switch", ""); lab.appendChild(inp);
+        lab.setAttribute("aria-hidden", "true"); lab.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none";
+        document.body.appendChild(lab); sw = lab;
+      }
+      sw.click();
+    } catch (e) { /* no haptics */ }
+  };
+  const buzz = p => {
+    if (!on) return;
+    try { if (navigator.vibrate) navigator.vibrate(p); else if (ios()) iosTap(); } catch (e) { /* no haptics */ }
+  };
+  return { buzz, isOn: () => on, supported: () => typeof navigator !== "undefined" && (!!navigator.vibrate || ios()),
+    set: v => { on = v; try { localStorage.setItem("puntaro.haptics", v ? "on" : "off"); } catch (e) { /* fine */ } if (v) buzz(20); } };
+})();
+// Which sounds also buzz, and how (milliseconds on, off, on...).
+const BUZZ = { up: 10, down: 18, bank: [25, 50, 35], bust: [70, 40, 140], mult: [12, 35, 12, 35, 12], ntp: [15, 40, 15, 40, 45], birdie: [15, 35, 15, 35, 60],
+  flip: 15, bless: [12, 40, 30], curse: 90, swing: 25, start: [20, 60, 40] };
+Object.keys(BUZZ).forEach(k => { const f = SFX[k]; SFX[k] = (...a) => { HAPTIC.buzz(BUZZ[k]); return f(...a); }; });
+{ const ev = SFX.event; SFX.event = k => { HAPTIC.buzz(k === "lost" || k === "water" || k === "fourputt" ? [50, 40, 50] : [15, 40, 25]); return ev(k); }; }
+
+function HapticRow() {
+  const [on, setOn] = useState(HAPTIC.isOn());
+  return (
+    <div className="card" style={{ padding: "8px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
+      <div><div style={{ fontWeight: 700, fontSize: 13 }}>Vibration</div><div className="cap">{HAPTIC.supported() === false ? "This phone or browser doesn't support vibration." : "A buzz for banks, busts, birdies, cards and moving holes. iPhones only do a single light tap."}</div></div>
+      <Toggle on={on} onChange={v => { HAPTIC.set(v); setOn(v); }} />
+    </div>
+  );
+}
 
 function SoundChip() {
   const [on, setOn] = useState(SFX.isOn());
@@ -2296,11 +2337,17 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
   const [nudge, setNudge] = useState(0);
   const ntpMissing = !!pc && round.opts.ntp && PAR[h] === 3 && !round.ntp[h];
   const blocked = () => { if (!ntpMissing) return false; setNudge(n => n + 1); SFX.down(); return true; };
-  const goNext = () => { if (blocked()) return; if (nextIsCard) setLastCall(true); else api.setHole(Math.min(17, h + 1)); };
+  const goNext = () => { if (blocked()) return; if (nextIsCard) { HAPTIC.buzz(15); setLastCall(true); } else { HAPTIC.buzz(20); api.setHole(Math.min(17, h + 1)); } };
+  // A new hole starts at the top of the page, so it's obvious the hole changed and its notices are seen.
+  const firstHole = useRef(true);
+  useEffect(() => {
+    if (firstHole.current) { firstHole.current = false; return; }
+    try { window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); } catch (e) { window.scrollTo(0, 0); }
+  }, [h]);
   /* heads-up strips at the top of the hole, for the scorer to read out */
   const notices = [];
   if (pc && round.opts.ntp && PAR[h] === 3) notices.push({ key: "ntp", icon: "flag", isize: 2, title: "Par 3: nearest the pin", text: "Closest ball earns +3. Pick the winner, or Nobody, before you move on." });
-  if (pc && round.opts.cards && cardHole(h) && !round.draws[h] && can.live && !can.canDeal(h)) notices.push({ key: "wait", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards coming`, text: "Cards are dealt once everyone has moved on to this hole and the last bank calls are revealed." });
+  if (pc && round.opts.cards && cardHole(h) && !round.draws[h] && can.live && !can.canDeal(h)) notices.push({ key: "wait", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards coming`, text: `Cards are dealt once everyone has moved on to this hole and the last bank calls are revealed.${can.waitingOn && can.waitingOn(h).length ? ` Waiting for ${can.waitingOn(h).join(", ")} to move on.` : ""}` });
   if (cardsHere) notices.push({ key: "cards", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards are out`, text: "Everyone drew a blessing or a curse. Banks from the last hole are locked.", action: ["Show cards", () => setAgain(true)] });
   if (nextIsCard) notices.push({ key: "bank", icon: "c_vault", isize: 2, urgent: true, title: `Next hole is the ${SI[h + 1] === 1 ? "hardest" : "easiest"}: last chance to bank`, text: "Everyone draws a card at the tee, then banks lock. Ask each player now.", action: ["Review banks", () => setLastCall(true)] });
   const bump = (id, d) => {
@@ -2442,7 +2489,7 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
             </div>
             <p className="cap" style={{ marginTop: 4 }}>Banking resets your streak, unless you hold a Bank vault.</p>
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-              <button className="cta" onClick={() => { setLastCall(false); api.setHole(h + 1); }}>Draw the cards</button>
+              <button className="cta" onClick={() => { HAPTIC.buzz([20, 50, 20]); setLastCall(false); api.setHole(h + 1); }}>Draw the cards</button>
               <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => setLastCall(false)}>Not yet</button>
             </div>
           </div>
@@ -2850,6 +2897,7 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
           <Toggle on={dark} onChange={setDark} />
         </div>
         <SoundRow />
+        <HapticRow />
         <div className="card" style={{ padding: 12 }}>
           <div className="cap" style={{ fontWeight: 600 }}>Your initials</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 5 }}>
@@ -3335,16 +3383,24 @@ function Game({ user, cloud, profile, now0, finished }) {
     setRound(prev => ({ ...r, hole: prev ? prev.hole : firstOpenHole(liveDoc), seen: prev ? prev.seen : r.seen }));
   }, [liveDoc, shown, live && live.mine]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [dealTry, setDealTry] = useState(0); const dealRetry = useRef(null);
   // Card holes: in "everyone scores", deal only once the last hole's calls are revealed, so the catch-up odds see true totals.
   const canDeal = (h, d = liveDoc) => !live || !d || d.scoring !== "each" || revealUpTo(d) >= h;
   useEffect(() => {
     if (!live || !liveDoc || !round || !round.opts.cards) return;
     const h = round.hole;
-    if (cardHole(h) && !round.draws[h] && canDeal(h)) {
-      const d = drawCards(round, h, mulberry32(round.drawSeed + h * 977));
-      backend().then(b => b.setIfAbsent(live.code, ["draws", h], d, [[["deal"], h]], amHost())).catch(() => {});
+    if (cardHole(h) && (!round.draws[h] || !(liveDoc.draws || {})[h]) && canDeal(h)) {
+      // The deal is the same on every phone (the shared shuffle plus the scores so far), so show it here
+      // straight away rather than waiting on the network, and keep trying to save it for the group.
+      const d = dealt.current[h] || drawCards(round, h, mulberry32(round.drawSeed + h * 977));
+      if (!round.draws[h]) { dealt.current[h] = d; setRound(r => (r && !r.draws[h] ? { ...r, draws: r.draws.map((x, i) => (i === h ? d : x)) } : r)); }
+      if (!(liveDoc.draws || {})[h] && (amHost() || liveDoc.scoring === "each")) {
+        backend().then(b => b.setIfAbsent(live.code, ["draws", h], d, [[["deal"], h]], amHost())).catch(() => {
+          clearTimeout(dealRetry.current); dealRetry.current = setTimeout(() => setDealTry(n => n + 1), 4000);
+        });
+      }
     }
-  }, [liveDoc, shown, round && round.hole]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [liveDoc, shown, round && round.hole, dealTry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const amHost = () => !!(liveDoc && liveUid && liveDoc.host === liveUid);
   const push = (pairs, quiet) => { if (!live || live.ended) return Promise.resolve(); return backend().then(b => b.update(live.code, pairs, amHost())).catch(() => { if (!quiet) setLiveErr("Offline. Scores you enter are saved and will sync when you're back."); }); };
@@ -3504,6 +3560,8 @@ function Game({ user, cloud, profile, now0, finished }) {
     ...rights(liveDoc, liveUid, mine),
     live: { code: live.code, hostName: liveDoc.people.me ? liveDoc.people.me.name : "The host", myId: live.myId },
     canDeal,
+    // Players on other phones who haven't reached hole h yet (cards on h wait for them).
+    waitingOn: h => liveDoc.base.playerIds.filter(id => (liveDoc.claims || {})[id] && ((liveDoc.at || {})[id] || 0) < h && id !== live.myId).map(id => (liveDoc.people[id] || {}).name || "a player"),
     enteredBy: (id, h) => { const by = liveDoc.by && liveDoc.by[bankKey(id, h)]; return by && by !== id ? (by === "watch" ? "a watcher" : (liveDoc.people[by] || {}).name || "someone") : null; },
     edited: (id, h) => !!(liveDoc.ed && liveDoc.ed[bankKey(id, h)]),
   } : live ? { score: () => true, bank: () => true, hidden: () => false, host: true, canDeal: () => true, live: { code: live.code, hostName: "The host", myId: live.myId } }
