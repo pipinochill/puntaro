@@ -25,7 +25,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.58";
+const APP_VERSION = "0.59";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -298,11 +298,18 @@ const HAPTIC = (() => {
     try {
       if (!sw) {
         const lab = document.createElement("label"); const inp = document.createElement("input");
-        inp.type = "checkbox"; inp.setAttribute("switch", ""); lab.appendChild(inp);
-        lab.setAttribute("aria-hidden", "true"); lab.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none";
+        inp.type = "checkbox"; inp.setAttribute("switch", ""); inp.tabIndex = -1; lab.appendChild(inp);
+        // Kept inside the screen (1px, invisible): an off-screen element made iPhones scroll to it.
+        lab.setAttribute("aria-hidden", "true"); lab.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;z-index:-1";
         document.body.appendChild(lab); sw = lab;
       }
+      // Clicking the label focuses the switch, which made iPhones pop up the form toolbar and push sheets around.
+      // Hand focus straight back without scrolling.
+      const prev = document.activeElement; const x = window.scrollX, y = window.scrollY;
       sw.click();
+      const inp = sw.firstChild; if (document.activeElement === inp) inp.blur();
+      if (prev && prev !== document.body && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) { /* fine */ } }
+      if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
     } catch (e) { /* no haptics */ }
   };
   const buzz = p => {
