@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, createContext, useContext } from "react";
 import { backend, newCode, cleanCode, joinLink, inviteLink, newRefCode, cleanRef, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain, EMAIL_KEY } from "./live.js";
 import { makeDecoder, cameraProblem } from "./scan.js";
 import { qrPath } from "./qr.js";
+import { differential, indexFrom, nextIndex, hcpTag, USUAL_SCORES, MAX_INDEX, ROUNDS_NEEDED } from "./hcp.js";
 
 /* ───────────── ICONS (inline, no library) ───────────── */
 function Ico({ size = 24, color = "currentColor", children }) {
@@ -24,7 +25,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.51";
+const APP_VERSION = "0.52";
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
 // PAR and SI are the holes of the course being played. applyHoles swaps them in place when a round starts.
@@ -1542,7 +1543,7 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}><Tiles size={20} hang toy /><button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 }}>
-          <p style={{ opacity: 0.8 }}>HCP {people.me.hi.toFixed(1)}</p>
+          <p style={{ opacity: 0.8 }}>HCP {fmtHcp(people.me)}</p>
           <div style={{ display: "flex", gap: 5, flex: "none" }}>
             <SoundChip />
             <button className="chip" onClick={() => setDark(!dark)} style={{ padding: "1px 6px", fontSize: 11 }}>{dark ? "Light mode" : "Dark mode"}</button>
@@ -2046,11 +2047,12 @@ function AboutSheet({ onClose }) {
           <p><b>Working:</b> banking and busting, streaks, Blessings & Curses, bonuses and penalties, nearest the pin, free for all or 2v2, handicap strokes and cushion, prize pool maths, course finder, paused rounds.</p>
           <p><b>New and still being tested:</b> live rounds. Everyone follows the round on their own phone, joining by QR code or join code. Choose one scorer, or everyone enters their own score with bank calls kept secret until the group moves on.</p>
           <p><b>New:</b> accounts. Sign in with Google or an email link, and your rounds, scoresheets and stats are saved to your account in the cloud, the same on any phone.</p>
+          <p><b>New:</b> handicaps for players without one. Pick what you usually shoot for a starting estimate (marked EST). After 3 live rounds with at least one other player on their own phone, {APP_NAME} works out your handicap from your scores the World Handicap System way (marked APP): it drops straight after a good round but rises by no more than 1.0 a round. Rounds scored on your own don't count. Handicaps you type in are left alone.</p>
           <p><b>Not yet:</b> linking friends' accounts, so the friends table shows their stats from rounds on their own phones.</p>
           <p><b>Your data:</b> stored with Google Firebase, in your account, where only you can see it. Your phone keeps a temporary offline copy so scoring works with no signal; signing out clears it. You can wipe or delete your account from the Me tab.</p>
           <p><b>Live rounds:</b> the round (course, players' first names, last initials and handicaps, scores) is shared with the players in it. Anyone with the join code can see it. Bank calls stay hidden until they're revealed. Finished live rounds are kept for everyone who played, even if one player deletes theirs.</p>
           <p><b>Samples:</b> the sample courses are made up, for trying the app.</p>
-          <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia.</p>
+          <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia. {APP_NAME} handicaps (EST and APP) are not official GA handicaps, and official handicaps can't be verified yet.</p>
           <p><b>Money:</b> the prize pool is a scoreboard only. {APP_NAME} never takes or moves money.</p>
         </div>
       </div>
@@ -2138,7 +2140,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
               <Avatar p={people[id]} size={26} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700 }}>{people[id].name}</div>
-                <div className="cap">HCP {people[id].hi.toFixed(1)}{people[id].guest ? " · guest" : ""}</div>
+                <div className="cap">HCP {fmtHcp(people[id])}{people[id].guest ? " · guest" : ""}</div>
               </div>
               {effMode === "2v2" && (
                 <button className="pill" aria-label={`${people[id].name} team ${teamOf(id) + 1}, tap to switch`} onClick={() => setTeam(id, 1 - teamOf(id))} style={{ background: teamOf(id) ? "var(--mint)" : "var(--flag)", color: "var(--dk)" }}>Team {teamOf(id) + 1}</button>
@@ -2168,7 +2170,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
               {pickList.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                   <Avatar p={people[id]} size={28} />
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {people[id].hi.toFixed(1)}{people[id].guest ? " · guest" : ""}</div></div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}{people[id].guest ? " · guest" : ""}</div></div>
                   <button className="chip" disabled={sel.includes(id) || sel.length >= MAXP} onClick={() => addPlayer(id)}>{sel.includes(id) ? "Added" : "Add"}</button>
                 </div>
               ))}
@@ -2196,7 +2198,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
               {sel.map(id => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
                   <Avatar p={people[id]} size={24} />
-                  <div style={{ flex: 1, fontWeight: 600 }}>{people[id].name} <span className="cap">HCP {people[id].hi.toFixed(1)}</span></div>
+                  <div style={{ flex: 1, fontWeight: 600 }}>{people[id].name} <span className="cap">HCP {fmtHcp(people[id])}</span></div>
                   <div style={{ fontWeight: 800 }}>{courseHcp(people[id].hi, cinfo)} <span className="cap" style={{ fontWeight: 400 }}>strokes</span></div>
                 </div>
               ))}
@@ -2648,22 +2650,61 @@ function Sheet({ title, onClose, children }) {
   );
 }
 
+// Official handicap, or an estimate from the player's usual score (including "I don't really play yet").
+// value: { mode: "ga" | "est", hi: string, usual: key }
+function HcpPicker({ value, onChange, who = "you" }) {
+  const set = patch => onChange({ ...value, ...patch });
+  const you = who === "you";
+  return (
+    <div style={{ display: "grid", gap: 7 }}>
+      <div className="seg">
+        <button className={`chip ${value.mode === "ga" ? "on" : ""}`} onClick={() => set({ mode: "ga" })}>{you ? "I have a handicap" : "Has a handicap"}</button>
+        <button className={`chip ${value.mode === "est" ? "on" : ""}`} onClick={() => set({ mode: "est" })}>{you ? "No handicap" : "No handicap"}</button>
+      </div>
+      {value.mode === "ga" && (
+        <div>
+          <input aria-label="Handicap index" inputMode="decimal" placeholder="Handicap index, e.g. 14.2" value={value.hi} onChange={e => set({ hi: e.target.value.replace(/[^0-9.\-]/g, "").slice(0, 5) })} style={inp} />
+          <p className="cap" style={{ marginTop: 4 }}>{you ? "Your official Golf Australia handicap index." : "Their official handicap index."}</p>
+        </div>
+      )}
+      {value.mode === "est" && (
+        <div>
+          <div className="cap" style={{ fontWeight: 600, marginBottom: 5 }}>{you ? "What do you usually shoot for 18 holes?" : "What do they usually shoot for 18 holes?"}</div>
+          <div className="seg">
+            {USUAL_SCORES.map(u => <button key={u.key} className={`chip ${value.usual === u.key ? "on" : ""}`} onClick={() => set({ usual: u.key })}>{u.label}</button>)}
+          </div>
+          <p className="cap" style={{ marginTop: 5 }}>
+            {value.usual ? `Starting handicap ${USUAL_SCORES.find(u => u.key === value.usual).hi.toFixed(1)}, marked EST. ` : ""}
+            {you ? `After ${ROUNDS_NEEDED} live rounds with your mates, Puntaro works it out from your scores instead.` : "Shown as EST so everyone knows it's an estimate."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+// Turn a picker value into { hi, hk } or an error message.
+const pickHcp = v => {
+  if (v.mode === "est") { const u = USUAL_SCORES.find(x => x.key === v.usual); return u ? { hi: u.hi, hk: "est" } : { err: "Pick what you usually shoot." }; }
+  if (v.mode === "ga") { const h = Number(v.hi); return v.hi.trim() === "" || Number.isNaN(h) || h < -10 || h > MAX_INDEX ? { err: `Handicap index should be between -10 and ${MAX_INDEX}.` } : { hi: Math.round(h * 10) / 10, hk: "ga" }; }
+  return { err: "Do you have a handicap?" };
+};
+
 // Name plus handicap index. Used for guests in a round and for adding a friend by hand.
 function PersonForm({ cta, onSubmit }) {
   const [name, setName] = useState("");
   const [last, setLast] = useState("");
-  const [hi, setHi] = useState("18.0");
-  const h = Number(hi);
-  const err = !name.trim() ? "Enter a first name." : !last.trim() ? "Enter a last name." : hi.trim() === "" || Number.isNaN(h) || h < -10 || h > 54 ? "Handicap index should be between -10 and 54." : "";
+  const [hp, setHp] = useState({ mode: "ga", hi: "18.0", usual: null });
+  const picked = pickHcp(hp);
+  const err = !name.trim() ? "Enter a first name." : !last.trim() ? "Enter a last name." : picked.err || "";
   return (
     <div style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <div><div className="cap" style={{ marginBottom: 3 }}>First name</div><input aria-label="Name" value={name} onChange={e => setName(e.target.value)} maxLength={20} style={inp} /></div>
         <div><div className="cap" style={{ marginBottom: 3 }}>Last name</div><input aria-label="Last name" value={last} onChange={e => setLast(e.target.value)} maxLength={20} style={inp} /></div>
       </div>
-      <div><div className="cap" style={{ marginBottom: 3 }}>Handicap index</div><input aria-label="Handicap index" inputMode="decimal" value={hi} onChange={e => setHi(e.target.value)} style={inp} /></div>
-      {err && name.length + last.length + hi.length > 0 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
-      <button className="cta" disabled={!!err} onClick={() => onSubmit({ name: name.trim(), last: last.trim(), hi: Math.round(h * 10) / 10 })}>{cta}</button>
+      <HcpPicker value={hp} onChange={setHp} who="them" />
+      {err && name.length + last.length > 0 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
+      <button className="cta" disabled={!!err} onClick={() => onSubmit({ name: name.trim(), last: last.trim(), hi: picked.hi, hk: picked.hk })}>{cta}</button>
     </div>
   );
 }
@@ -2711,7 +2752,7 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
                 <Avatar p={people[r.id]} size={28} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[r.id].name}</div>
-                  <div className="cap" style={{ fontSize: 10 }}>HCP {people[r.id].hi.toFixed(1)}</div>
+                  <div className="cap" style={{ fontSize: 10 }}>HCP {fmtHcp(people[r.id])}</div>
                 </div>
               </div>
               {METRICS.map(x => {
@@ -2735,7 +2776,7 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
               {sample.map(id => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
                   <Avatar p={people[id]} size={30} />
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {people[id].hi.toFixed(1)}</div></div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}</div></div>
                   <button onClick={() => setFriendIds(f => [...f, id])} className="chip">Add</button>
                 </div>
               ))}
@@ -2748,6 +2789,8 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds }) {
   );
 }
 
+// "14.2" plus EST (estimated) or APP (from Puntaro rounds) when it isn't an official handicap.
+const fmtHcp = p => { const t = hcpTag(p && p.hk); return `${Number((p && p.hi) ?? 0).toFixed(1)}${t ? ` ${t}` : ""}`; };
 const displayName = p => `${(p.first || p.name || "").trim()}${p.last ? ` ${p.last.trim()[0].toUpperCase()}.` : ""}`.slice(0, 30) || "A Puntaro player";
 
 // Your own invite link, and who signed up with it.
@@ -2789,7 +2832,9 @@ function InviteCard({ myRef, makeRef, cloud }) {
 function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, onSignOut, onStartFresh, onDeleteAccount, myRef, makeRef, cloud }) {
   const me = people.me;
   const [ask, setAsk] = useState(null); // "fresh" | "delete"
-  const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(36, Math.max(-2, v)) * 10) / 10 } }));
+  // Changing it by hand keeps an official handicap official; otherwise it becomes your own estimate.
+  const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(MAX_INDEX, Math.max(-10, v)) * 10) / 10, hk: p.me.hk === "ga" ? "ga" : "est" } }));
+  const counted = history.length; // finished rounds, for the explanation below
   const s = statsFor(history, "me", "season") || { rounds: 0, wins: 0, ntp: 0, pts: null };
   const tiles = [["Rounds", s.rounds], ["Puntaro wins", s.wins], ["NTPs", s.ntp], ["Avg points", s.pts == null ? "–" : s.pts.toFixed(1)]];
   return (
@@ -2814,12 +2859,16 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
           <p className="cap" style={{ marginTop: 5 }}>Shown on your avatar. Everyone still calls you "You" on your own phone.</p>
         </div>
         <div className="card" style={{ padding: 12 }}>
-          <div className="cap" style={{ fontWeight: 600 }}>Handicap index</div>
+          <div className="cap" style={{ fontWeight: 600 }}>Handicap index{hcpTag(me.hk) ? ` · ${hcpTag(me.hk)}` : ""}</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 5 }}>
             <button onClick={() => setHi(me.hi - 0.1)} aria-label="Lower handicap" style={{ width: 40, height: 40, borderRadius: "50%", border: "1.5px solid var(--line)", display: "grid", placeItems: "center" }}><Minus size={22} /></button>
             <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: -1.5 }}>{me.hi.toFixed(1)}</div>
             <button onClick={() => setHi(me.hi + 0.1)} aria-label="Raise handicap" style={{ width: 40, height: 40, borderRadius: "50%", border: "1.5px solid var(--line)", display: "grid", placeItems: "center" }}><Plus size={22} /></button>
           </div>
+          <p className="cap" style={{ marginTop: 6 }}>{me.hk === "ga" ? "Your official handicap. Keep it up to date here when it changes." : me.hk === "app" ? `Worked out by Puntaro from your live rounds with mates, the World Handicap System way. It drops straight away after a good round and rises at most 1.0 a round. Not an official GA handicap.` : `An estimate. After ${ROUNDS_NEEDED} live rounds with mates, Puntaro works out your handicap from your scores.`}</p>
+          <div className="cap" style={{ fontWeight: 600, marginTop: 10 }}>Golf ID (optional)</div>
+          <input aria-label="Golf ID" inputMode="numeric" placeholder="Your Golf Australia Golf ID" maxLength={12} value={me.golfId || ""} onChange={e => setPeople(p => ({ ...p, me: { ...p.me, golfId: e.target.value.replace(/[^0-9]/g, "").slice(0, 12) } }))} style={{ ...inp, marginTop: 4 }} />
+          <p className="cap" style={{ marginTop: 4 }}>Golf Australia doesn't let apps check handicaps yet. Add your Golf ID and Puntaro can verify your handicap with a GA badge if they do.</p>
         </div>
         <div className="card" style={{ padding: "11px 12px" }}>
           <h3 style={{ fontWeight: 800, fontSize: 15 }}>Strokes you get on each course</h3>
@@ -2930,7 +2979,7 @@ function JoinSheet({ initial, onClose, onJoined }) {
                 return (
                   <button key={id} className="chip" disabled={busy || taken} onClick={() => pick(id)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", textAlign: "left" }}>
                     <Avatar p={{ id, ...d.people[id] }} size={28} />
-                    <span style={{ flex: 1 }}>{d.people[id].name}<span className="cap"> HCP {Number(d.people[id].hi).toFixed(1)}</span></span>
+                    <span style={{ flex: 1 }}>{d.people[id].name}<span className="cap"> HCP {fmtHcp(d.people[id])}</span></span>
                     <span className="cap">{taken ? "Joined" : by ? "That's you" : ""}</span>
                   </button>
                 );
@@ -3067,7 +3116,7 @@ function Game({ user, cloud, profile, now0, finished }) {
   const start = parseJSON(now0 && now0.json, {});
   const [people, setPeople] = useState(() => {
     const p = parseJSON(profile.people, {});
-    return { ...p, me: { id: "me", name: "You", color: ME_COLOR, ...(p.me || {}), first: (p.me && p.me.first) || profile.first || "", last: (p.me && p.me.last) || profile.last || "", hi: p.me && p.me.hi != null ? p.me.hi : profile.hi ?? 18 } };
+    return { ...p, me: { id: "me", name: "You", color: ME_COLOR, ...(p.me || {}), first: (p.me && p.me.first) || profile.first || "", last: (p.me && p.me.last) || profile.last || "", hi: p.me && p.me.hi != null ? p.me.hi : profile.hi ?? 18, hk: (p.me && p.me.hk) || profile.hcpKind || "", golfId: (p.me && p.me.golfId) || profile.golfId || "" } };
   });
   const [dark, setDark] = useState(true);
   const [friendIds, setFriendIds] = useState(() => (Array.isArray(profile.friendIds) ? profile.friendIds : []));
@@ -3078,6 +3127,8 @@ function Game({ user, cloud, profile, now0, finished }) {
   const recent = finished.filter(r => !r.hidden).sort((a, b) => b.at - a.at).map(r => ({ id: r.id, course: r.course, when: fmtDay(r.at), gross: r.gross, net: r.net, note: r.note, hasCard: !!r.round }));
   const history = finished.map(r => ({ at: r.at, course: r.course, players: r.players || {} }));
   const [openRec, setOpenRec] = useState(null);
+  // Witnessed 18-hole rounds, oldest first, for the Puntaro handicap.
+  const hcpDiffs = finished.filter(f => f.witnessed && typeof f.diff === "number").sort((a, b) => a.at - b.at).map(f => f.diff);
   // Your invite code. Accounts made before invites get one the first time they open the Invite card.
   const [myRef, setMyRef] = useState(profile.refCode || null);
   useEffect(() => { stash(REF_KEY, null); }, []); // already signed up: an invite link no longer counts
@@ -3106,9 +3157,9 @@ function Game({ user, cloud, profile, now0, finished }) {
   const [liveSheet, setLiveSheet] = useState(false);
   const [joinCode, setJoinCode] = useState(PENDING_JOIN);
   const GUEST_COLORS = ["#9A7B3F", "#5E6E55", "#8B6B4A", "#6F7F73", "#A5543A"];
-  const newPerson = ({ name, last, hi }, guest) => {
+  const newPerson = ({ name, last, hi, hk }, guest) => {
     const id = (guest ? "g" : "f") + Date.now() + Math.floor(Math.random() * 99);
-    setPeople(p => ({ ...p, [id]: { id, name, last: last || "", hi, guest, color: GUEST_COLORS[Object.keys(p).length % GUEST_COLORS.length] } }));
+    setPeople(p => ({ ...p, [id]: { id, name, last: last || "", hi, hk: hk || "", guest, color: GUEST_COLORS[Object.keys(p).length % GUEST_COLORS.length] } }));
     return id;
   };
   const addGuest = g => newPerson(g, true);
@@ -3127,8 +3178,20 @@ function Game({ user, cloud, profile, now0, finished }) {
     document.addEventListener("visibilitychange", go); window.addEventListener("pagehide", flush);
     return () => { document.removeEventListener("visibilitychange", go); window.removeEventListener("pagehide", flush); flush(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // After each new witnessed round: a player without an official handicap gets one worked out from their rounds.
+  // The first one replaces the estimate; after that it drops straight away but only rises 1.0 a round.
+  const hcpApplied = useRef(profile.hcpRounds || 0);
+  useEffect(() => {
+    const n = hcpDiffs.length;
+    if (people.me.hk === "ga" || n < ROUNDS_NEEDED || n <= hcpApplied.current) return;
+    hcpApplied.current = n;
+    const next = nextIndex(people.me.hk === "app" ? people.me.hi : null, indexFrom(hcpDiffs));
+    setPeople(p => ({ ...p, me: { ...p.me, hi: next, hk: "app" } }));
+    cloud.setMine("", { hcpRounds: n }, true).catch(() => {});
+    note(`Your Puntaro handicap is now ${next.toFixed(1)}, from ${n} live rounds.`, 10000);
+  }, [hcpDiffs.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const booted = useRef(0);
-  useEffect(() => { if (booted.current++ < 1) return; queue("", { people: JSON.stringify(people), friendIds, courses: JSON.stringify(saved), first: people.me.first || "", last: people.me.last || "", hi: people.me.hi }, true); }, [people, friendIds, saved]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (booted.current++ < 1) return; queue("", { people: JSON.stringify(people), friendIds, courses: JSON.stringify(saved), first: people.me.first || "", last: people.me.last || "", hi: people.me.hi, hcpKind: people.me.hk || "", golfId: people.me.golfId || "" }, true); }, [people, friendIds, saved]); // eslint-disable-line react-hooks/exhaustive-deps
   // Skip the save on first load, unless loading dropped something (an expired paused round): then tidy the account too.
   const bootedNow = useRef((Array.isArray(start.parked) && start.parked.some(x => Date.now() - x.at >= PARK_MS)) || (Array.isArray(start.trash) && start.trash.some(x => Date.now() - x.at >= TRASH_MS)) ? 1 : 0);
   useEffect(() => { if (bootedNow.current++ < 1) return; queue("state/now", { json: JSON.stringify({ round, live, parked, trash }), at: Date.now() }, false); }, [round, live, parked, trash]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -3147,11 +3210,13 @@ function Game({ user, cloud, profile, now0, finished }) {
     } catch (e) { /* stats are a bonus; never block saving */ }
     return { gross: t.gross, net: r.useHcp ? t.net : t.gross, players };
   };
-  const record = (id, r, ppl, myId, lv) => {
+  // witnessed: a live round at least one other person joined. Only those count towards a Puntaro handicap.
+  const record = (id, r, ppl, myId, lv, witnessed = false) => {
     const joined = !!lv && myId !== "me";
     const res = resultFor(r, myId, joined);
+    const diff = myId ? differential(r, myId) : null;
     const names = Object.fromEntries(r.playerIds.map(pid => { const p = ppl[pid] || {}; return [pid, { id: pid, name: p.name || "?", first: p.first || "", last: (p.last || "").slice(0, 1), color: p.color || "#6F7F73", hi: p.hi ?? null }]; }));
-    return cloud.setMine(`rounds/${id}`, { id, at: Date.now(), course: r.course.name, ...res, note: lv ? "Live round" : "Puntaro round", round: JSON.stringify(r), people: JSON.stringify(names), hidden: false, live: lv ? { code: lv.code, myId: myId || null } : null }, false);
+    return cloud.setMine(`rounds/${id}`, { id, at: Date.now(), course: r.course.name, ...res, note: lv ? "Live round" : "Puntaro round", round: JSON.stringify(r), people: JSON.stringify(names), hidden: false, live: lv ? { code: lv.code, myId: myId || null } : null, diff, witnessed: !!witnessed }, false);
   };
   useEffect(() => {
     if (!parked.length) return undefined;
@@ -3205,7 +3270,7 @@ function Game({ user, cloud, profile, now0, finished }) {
   const fetched = useRef(new Set());      // holes whose calls this phone has fetched
   const prevDoc = useRef(null);
   const [liveNotes, setLiveNotes] = useState([]); // short messages that stack, newest last
-  const note = t => { const id = Date.now() + Math.random(); setLiveNotes(n => [...n.filter(x => x.t !== t), { id, t }].slice(-3)); setTimeout(() => setLiveNotes(n => n.filter(x => x.id !== id)), 5000); };
+  const note = (t, ms = 5000) => { const id = Date.now() + Math.random(); setLiveNotes(n => [...n.filter(x => x.t !== t), { id, t }].slice(-3)); setTimeout(() => setLiveNotes(n => n.filter(x => x.id !== id)), ms); };
   useEffect(() => {
     fetched.current = new Set(); prevDoc.current = null; setShown({});
     if (!live) { setLiveDoc(null); setLiveErr(""); return undefined; }
@@ -3368,7 +3433,7 @@ function Game({ user, cloud, profile, now0, finished }) {
     const r = docToRound({ ...d, done: true }, { bank: bankMap({ ...d, done: true }, shownAll, {}) });
     Object.entries(dealt.current || {}).forEach(([h, v]) => { r.draws[h] = v; });
     const ppl = Object.fromEntries(Object.entries(d.people).map(([k, v]) => [k, { id: k, ...v }]));
-    await record(d.code, r, ppl, lv.myId, lv);
+    await record(d.code, r, ppl, lv.myId, lv, Object.keys(d.claims || {}).length >= 2);
   };
   const recording = useRef(false);
   useEffect(() => {
@@ -3620,21 +3685,21 @@ function ProfileSetup({ cloud, user, onDone }) {
   const guess = (user.name || "").trim().split(/\s+/);
   const [first, setFirst] = useState(guess[0] || "");
   const [last, setLast] = useState(guess.length > 1 ? guess[guess.length - 1] : "");
-  const [hi, setHi] = useState("");
+  const [hp, setHp] = useState({ mode: null, hi: "", usual: null });
   const [bring, setBring] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const go = async () => {
-    const h = Number(hi);
+    const picked = pickHcp(hp);
     if (!first.trim()) { setErr("Enter your first name."); return; }
-    if (hi.trim() === "" || Number.isNaN(h) || h < -10 || h > 54) { setErr("Handicap index should be between -10 and 54. Not sure? Use 18 for now and change it later."); return; }
+    if (picked.err) { setErr(picked.err); return; }
     setBusy(true); setErr("");
-    const me = { ...((local && bring && local.people.me) || {}), id: "me", name: "You", color: ME_COLOR, first: first.trim(), last: last.trim(), hi: Math.round(h * 10) / 10 };
+    const me = { ...((local && bring && local.people.me) || {}), id: "me", name: "You", color: ME_COLOR, first: first.trim(), last: last.trim(), hi: picked.hi, hk: picked.hk };
     const people = { ...(local && bring ? local.people : {}), me };
     // Your own invite code (first name + 4 characters); retried if it's taken.
     let refCode = null;
     for (let k = 0; k < 4 && !refCode; k++) { const c = newRefCode(me.first); try { await cloud.createRef(c, displayName(me)); refCode = c; } catch (e) { /* taken or offline */ } }
-    const profile = { first: me.first, last: me.last, hi: me.hi, email: user.email || "", createdAt: Date.now(), refCode, referredBy: inviter ? inviter.code : null, people: JSON.stringify(people), friendIds: local && bring ? local.friendIds : [], courses: JSON.stringify(local && bring ? local.courses : []) };
+    const profile = { first: me.first, last: me.last, hi: me.hi, hcpKind: me.hk, hcpRounds: 0, email: user.email || "", createdAt: Date.now(), refCode, referredBy: inviter ? inviter.code : null, people: JSON.stringify(people), friendIds: local && bring ? local.friendIds : [], courses: JSON.stringify(local && bring ? local.courses : []) };
     const now = local && bring ? { json: JSON.stringify(local.now), at: Date.now() } : null;
     try {
       await cloud.setMine("", profile, false);
@@ -3657,8 +3722,9 @@ function ProfileSetup({ cloud, user, onDone }) {
         <input aria-label="Last name" placeholder="Last name" maxLength={20} value={last} onChange={e => setLast(e.target.value)} style={inp} />
       </div>
       <div>
-        <input aria-label="Handicap index" inputMode="decimal" placeholder="Handicap index, e.g. 14.2" value={hi} onChange={e => setHi(e.target.value.replace(/[^0-9.\-]/g, "").slice(0, 5))} style={inp} />
-        <p className="cap" style={{ marginTop: 4 }}>Your handicap index. Only your last initial is ever shown to other players.</p>
+        <div className="cap" style={{ fontWeight: 600, marginBottom: 5 }}>Your handicap</div>
+        <HcpPicker value={hp} onChange={v => { setHp(v); setErr(""); }} />
+        <p className="cap" style={{ marginTop: 6 }}>Only your last initial is ever shown to other players.</p>
       </div>
       {local && (
         <div className="card" style={{ padding: 11, display: "flex", gap: 9, alignItems: "center" }}>

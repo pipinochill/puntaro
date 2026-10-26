@@ -197,9 +197,14 @@ async def open_app(pg, url, q='', setup=None):
     for _ in range(4):
         if await pg.locator('.splash').count(): await pg.locator('.splash').dispatch_event('pointerdown'); await pg.wait_for_timeout(350)
     await pg.wait_for_timeout(400)
-    if setup and await pg.get_by_label('Handicap index').count():
-        await pg.get_by_label('First name').fill(setup[0]); await pg.get_by_label('Handicap index').fill(str(setup[1]))
+    if setup and await pg.get_by_label('First name').count():
+        await pg.get_by_label('First name').fill(setup[0]); await fill_hcp(pg, setup[1])
         await pg.get_by_role('button', name="Let's play").click(); await pg.wait_for_timeout(700)
+
+async def fill_hcp(pg, v):
+    """Sign-up asks whether you have a handicap first; say yes and type it."""
+    if not await pg.get_by_label('Handicap index').count(): await pg.get_by_role('button', name='I have a handicap', exact=True).click(); await pg.wait_for_timeout(100)
+    await pg.get_by_label('Handicap index').fill(str(v))
 
 async def flushed(pg, ms=1100):
     """Wait for the app's batched saves (700ms) to reach the cloud."""

@@ -10,7 +10,7 @@ raw = lambda pg, path, op, data='null': pg.evaluate(f"window.__fake.raw({json.du
 
 async def signup_google(pg, first, hcp=12):
     await pg.get_by_role('button', name='Continue with Google').click(); await pg.wait_for_timeout(700)
-    await pg.get_by_label('First name').fill(first); await pg.get_by_label('Last name').fill('Smith'); await pg.get_by_label('Handicap index').fill(str(hcp))
+    await pg.get_by_label('First name').fill(first); await pg.get_by_label('Last name').fill('Smith'); await fc.fill_hcp(pg, str(hcp))
 
 async def main():
     cloud = fc.Cloud(rules)
@@ -48,7 +48,7 @@ async def main():
         if await A.get_by_role('button', name='Start a new round').count(): await A.get_by_role('button', name='Start a new round').click(); await A.wait_for_timeout(300)
         check('A brand-new account starts with just you, so Tee off waits for a second player', await A.get_by_role('button', name='Tee off').is_disabled())
         await A.get_by_role('button', name='+ Guest').click(); await A.wait_for_timeout(300)
-        await A.get_by_label('Name', exact=True).fill('Priya'); await A.get_by_label('Last name').fill('Nair'); await A.get_by_label('Handicap index').fill('19')
+        await A.get_by_label('Name', exact=True).fill('Priya'); await A.get_by_label('Last name').fill('Nair'); await fc.fill_hcp(A, '19')
         await A.get_by_role('button', name='Add to round').click(); await A.wait_for_timeout(300)
         await A.get_by_role('switch').last.click(); await A.get_by_label('Your name for the group').fill('Pierre')
         await A.get_by_role('button', name='Tee off live').click(); await A.wait_for_timeout(900)
@@ -62,7 +62,7 @@ async def main():
         await fc.open_app(P, URL, q='?mode=signIn&fakeEmailLink=1')  # she taps the link in her email
         await P.wait_for_timeout(600)
         check('After the email link, Priya sees who invited her', await P.get_by_text('Invited by Pierre S.').count() == 1)
-        await P.get_by_label('First name').fill('Priya'); await P.get_by_label('Handicap index').fill('19')
+        await P.get_by_label('First name').fill('Priya'); await fc.fill_hcp(P, '19')
         await P.get_by_role('button', name="Let's play").click(); await P.wait_for_timeout(1200)
         check('...the live round she scanned is still waiting for her', await P.get_by_text('Which one are you?').count() == 1)
         check('...and Pierre is credited with Priya', f'refs/{code}/joins/u_priya' in cloud.docs)
