@@ -103,6 +103,7 @@ async def main():
         check(f'After 3 witnessed rounds the estimate becomes a Puntaro handicap ({want})', prof.get('hi') == want and prof.get('hcpKind') == 'app', json.dumps({k: prof.get(k) for k in ('hi', 'hcpKind', 'hcpRounds')}))
         check('The solo round wasn\'t counted', prof.get('hcpRounds') == 3)
         check('Pierre is told his new handicap', await A.get_by_text(f'Your Puntaro handicap is now {want:.1f}, from 3 live rounds.').count() == 1)
+        await A.get_by_role('button', name='Home', exact=True).click(); await A.wait_for_timeout(300)
         check('Home shows it with an APP tag', await A.get_by_text(f'HCP {want:.1f} APP').count() == 1)
         srec = cloud.finished('u_sam').get(code) or {}
         check('Nic\'s account records his own differential too', srec.get('witnessed') is True and isinstance(srec.get('diff'), (int, float)))

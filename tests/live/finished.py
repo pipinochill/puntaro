@@ -58,7 +58,7 @@ async def main():
         check('Nic\'s stats count his own result', sf and set(sf['players']) == {'me'})
         r = json.loads(sf['round']) if sf else {}
         check('The recorded card includes Nic\'s revealed bank call', r.get('bank', {}).get('sam', [False])[0] is True)
-        check('Nic is told it\'s saved', await S.get_by_text("It's saved in your Recent rounds").count() == 1)
+        check('Nic is told it\'s saved', await S.get_by_text("It's saved in your Round history").count() == 1)
         await fc.flushed(S)
         check('...and it leaves his round in progress', cloud.now_state('u_sam').get('round') is None)
 
@@ -74,13 +74,13 @@ async def main():
         check('Mitch\'s account records it when she next opens the app', cloud.finished('u_priya').get(code) is not None)
 
         # the host deletes theirs: only the host's copy is hidden
-        await fc.open_app(H, URL)
+        await fc.open_app(H, URL); await H.get_by_role('button', name='History', exact=True).click(); await H.wait_for_timeout(300)
         row = H.locator('[role=button]', has_text='Pebble Hollow').first
         bx = await row.bounding_box(); await H.mouse.move(bx['x'] + 20, bx['y'] + 10); await H.mouse.down(); await H.wait_for_timeout(900); await H.mouse.up()
         await H.wait_for_timeout(300); await H.get_by_role('button', name='Delete round', exact=True).click(); await H.wait_for_timeout(900)
         check('The host removing it only hides the host\'s copy', cloud.finished('u_pierre')[code].get('hidden') is True)
         check('...Nic and Mitch still have theirs, and the shared round stays online', not cloud.finished('u_sam')[code].get('hidden') and not cloud.finished('u_priya')[code].get('hidden') and cloud.live(code) is not None)
-        await fc.open_app(S, URL)
+        await fc.open_app(S, URL); await S.get_by_role('button', name='History', exact=True).click(); await S.wait_for_timeout(300)
         await S.locator('[role=button]', has_text='Pebble Hollow').first.click(); await S.wait_for_timeout(500)
         check('Nic can open the scoresheet any time', await S.get_by_text('Scoresheet').count() == 1)
         await S.screenshot(path=f'{OUT}/fin_card.png', full_page=True)

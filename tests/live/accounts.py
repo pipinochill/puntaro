@@ -94,14 +94,14 @@ async def main():
 
         # ---------- the same account on another phone
         A2 = await cloud.phone(b, 'u_pierre', email='pierre@example.com')
-        await fc.open_app(A2, URL)
+        await fc.open_app(A2, URL); await A2.get_by_role('button', name='History', exact=True).click(); await A2.wait_for_timeout(300)
         check('Signing in on another phone shows the same rounds', await A2.get_by_text('Cedar Ridge').count() >= 1 and await A2.get_by_text('Sunrise Links').count() >= 1)
         await A2.get_by_role('button', name='Me', exact=True).click(); await A2.wait_for_timeout(300)
         t = await A2.inner_text('body')
         check('...and the same stats (3 rounds)', '3\nRounds' in t, t[t.find('Rounds') - 6:t.find('Rounds') + 8])
 
         # ---------- removing a round from the list keeps the stats
-        await A2.get_by_role('button', name='Home', exact=True).click(); await A2.wait_for_timeout(300)
+        await A2.get_by_role('button', name='History', exact=True).click(); await A2.wait_for_timeout(300)
         row = A2.locator('[role=button]', has_text='Sunrise Links').first
         bx = await row.bounding_box(); await A2.mouse.move(bx['x'] + 20, bx['y'] + 10); await A2.mouse.down(); await A2.wait_for_timeout(900); await A2.mouse.up()
         await A2.wait_for_timeout(300); await A2.get_by_role('button', name='Delete round', exact=True).click(); await A2.wait_for_timeout(900)
@@ -113,7 +113,7 @@ async def main():
 
         # ---------- someone else's account is off limits
         B = await cloud.phone(b, 'u_sam', email='sam@example.com')
-        await fc.open_app(B, URL, setup=('Nic', 8.4))
+        await fc.open_app(B, URL, setup=('Nic', 8.4)); await B.get_by_role('button', name='History', exact=True).click(); await B.wait_for_timeout(300)
         check('A second person gets their own empty account', await B.get_by_text('No rounds yet').count() == 1)
         raw = lambda pg, path, op, data='null': pg.evaluate(f"window.__fake.raw({json.dumps(path)},{json.dumps(op)},{data}).then(()=>'ok',()=>'denied')")
         check('ATTACK Nic reads Pierre\'s profile: blocked', await raw(B, 'users/u_pierre', 'get') == 'denied')

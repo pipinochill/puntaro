@@ -9,6 +9,8 @@ function Ico({ size = 24, color = "currentColor", children }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" aria-hidden="true" style={{ flex: "none" }}>{children}</svg>;
 }
 function HomeIcon(p) { return <Ico {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M9 22V12h6v10" /></Ico>; }
+function ClockIcon(p) { return <Ico {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></Ico>; }
+function BookIcon(p) { return <Ico {...p}><path d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z" /><path d="M20 4h-5a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h6z" /></Ico>; }
 function UsersIcon(p) { return <Ico {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Ico>; }
 function UserIcon(p) { return <Ico {...p}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></Ico>; }
 function Plus(p) { return <Ico {...p}><path d="M5 12h14" /><path d="M12 5v14" /></Ico>; }
@@ -25,7 +27,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.60";
+const APP_VERSION = "0.61";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -840,7 +842,7 @@ function buildRound(cfg, people, seed) {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap');
-.sg{--ink:#1B1C1A;--muted:#55524A;--chalk:#F4F0E6;--card:#FFFDF7;--sel:#D3DACB;--night:#1B1C1A;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C9C0A8;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
+.sg{--ink:#1B1C1A;--muted:#55524A;--chalk:#F1EADB;--card:#FBF6EA;--sel:#D3DACB;--night:#1B1C1A;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C9C0A8;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
 .sg.dark{--ink:#EDE8DD;--muted:#B3AEA2;--chalk:#1B1C1A;--card:#252724;--sel:#2C4033;--night:#454841;--pine:#4F7A5A;--fair:#7FA886;--lime:#E0C799;--red:#CC5A3E;--bogey:#CC5A3E;--line:#383A35;--track:#1B1C1A;--head1:#2C4536;--head2:#27402F;--grid:rgba(232,227,214,.03);--on-bg:#C69C6D;--on-fg:#1B1C1A;}
 .sg{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;font-weight:500;font-size:14px;line-height:1.28;letter-spacing:0;color:var(--ink);background-color:var(--chalk);
  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:8px 8px;
@@ -1026,7 +1028,7 @@ const CSS = `
 @keyframes mbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
 .mstamp{position:absolute;left:0;right:0;top:200px;display:flex;justify-content:center;animation-delay:.25s;}
 .mstage.noart .mstamp{top:140px;}
-.mcap{max-width:326px;width:100%;background:#FFFDF7;color:#1B1C1A;border:3px solid #1B1C1A;box-shadow:5px 5px 0 #1B1C1A;padding:12px 14px;text-align:center;font-size:16px;font-weight:600;line-height:1.35;}
+.mcap{max-width:326px;width:100%;background:#FBF6EA;color:#1B1C1A;border:3px solid #1B1C1A;box-shadow:5px 5px 0 #1B1C1A;padding:12px 14px;text-align:center;font-size:16px;font-weight:600;line-height:1.35;}
 .rowstamp{position:absolute;right:58px;top:50%;transform:translateY(-50%);z-index:3;pointer-events:none;animation:rsout .4s steps(4) 2.6s forwards;}
 @keyframes rsout{to{opacity:0}}
 .shk{animation:shake .4s steps(6) 1;}
@@ -1706,11 +1708,8 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}><Tiles size={20} hang toy /><button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 }}>
-          <p style={{ opacity: 0.8 }}>HCP {fmtHcp(people.me)}</p>
-          <div style={{ display: "flex", gap: 5, flex: "none" }}>
-            <SoundChip />
-            <button className="chip" onClick={() => setDark(!dark)} style={{ padding: "1px 6px", fontSize: 11 }}>{dark ? "Light mode" : "Dark mode"}</button>
-          </div>
+          <p style={{ fontWeight: 600 }}>HCP {fmtHcp(people.me)}</p>
+          <button onClick={onRules} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--card)", color: "var(--ink)", border: "3px solid var(--night)", boxShadow: "3px 3px 0 var(--night)", padding: "7px 12px", fontWeight: 700, fontSize: 15 }}><BookIcon size={18} />Rules</button>
         </div>
       </div>
       <div style={{ padding: "0 12px", marginTop: -36, display: "grid", gap: 11 }}>
@@ -1727,10 +1726,6 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
           <ChevronRight size={18} />
         </button>
 
-        <button className="card" onClick={onRules} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", textAlign: "left", width: "100%" }}>
-          <div><div style={{ fontWeight: 700 }}>How Puntaro works</div><div className="cap">Scoring, cards, bonuses and the prize pool.</div></div>
-          <ChevronRight size={18} />
-        </button>
 
         {round && (
           <HoldRow className="card" onHold={() => askDelete("round")} style={{ padding: 12 }}>
@@ -1744,24 +1739,6 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
             <p className="cap" style={{ marginTop: 5, textAlign: "center" }}>Hold to delete this round.</p>
           </HoldRow>
         )}
-
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "5px 2px 8px" }}>
-            <h2 className="h2">Leading your friends</h2>
-            <button onClick={goFriends} style={{ color: "var(--fair)", fontWeight: 700 }}>See all</button>
-          </div>
-          <div className="card" style={{ padding: "5px 11px" }}>
-            {board.length === 0 && <p className="cap" style={{ padding: "10px 0" }}>Finish and save a round to start the table.</p>}
-            {board.slice(0, 3).map((r, i) => (
-              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
-                <div style={{ width: 22, fontWeight: 800, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i + 1}</div>
-                <Avatar p={people[r.id]} size={29} />
-                <div style={{ flex: 1, fontWeight: 700 }}>{people[r.id].name}</div>
-                <div style={{ fontWeight: 800 }}>{r.v.toFixed(1)}<span className="cap"> avg pts</span></div>
-              </div>
-            ))}
-          </div>
-        </div>
 
         {parked.length > 0 && (
           <div>
@@ -1784,11 +1761,11 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
           </div>
         )}
 
-        {trash.length > 0 && (
+        {trash.filter(x => x.kind === "round").length > 0 && (
           <div>
             <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recently deleted</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 5 minutes, then gone for good.</p></div>
             <div className="card" style={{ padding: "5px 11px" }}>
-              {trash.map((x, i) => {
+              {trash.filter(x => x.kind === "round").map((x, i) => {
                 const left = Math.max(0, Math.ceil((TRASH_MS - (now - x.at)) / 1000));
                 return (
                   <div key={x.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
@@ -1804,8 +1781,40 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
           </div>
         )}
 
+      </div>
+      <button className="pt-foot" onClick={onAbout} aria-label="About this alpha">
+        <Tiles size={15} />
+        <span className="cap" style={{ color: "inherit" }}>Alpha {APP_VERSION}. Bank it or bust.</span>
+      </button>
+    </div>
+  );
+}
+
+// Finished rounds: tap for the scoresheet, hold to remove (stats keep it).
+function History({ recent, askDelete, onOpenRound, trash, now, onRestore }) {
+  const gone = trash.filter(x => x.kind !== "round");
+  return (
+    <div style={{ paddingBottom: 19 }}>
+      <div className="stripes" style={{ padding: "20px 16px 18px" }}><h1>Round history</h1></div>
+      <div style={{ padding: 12, display: "grid", gap: 11 }}>
+        {gone.length > 0 && (
+          <div>
+            <div style={{ margin: "0 2px 6px" }}><h2 className="h2">Recently deleted</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 5 minutes, then gone for good.</p></div>
+            <div className="card" style={{ padding: "5px 11px" }}>
+              {gone.map((x, i) => {
+                const left = Math.max(0, Math.ceil((TRASH_MS - (now - x.at)) / 1000));
+                return (
+                  <div key={x.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                    <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700 }}>{x.item.course}</div><div className="cap">{x.item.when} · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</div></div>
+                    <button className="chip" onClick={() => onRestore(x)}>Restore</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div>
-          <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recent rounds</h2><p className="cap" style={{ marginTop: 2 }}>Tap a round for its scoresheet. Hold to remove it from this list (your stats keep it).</p></div>
+          <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Your rounds</h2><p className="cap" style={{ marginTop: 2 }}>Tap a round for its scoresheet. Hold to remove it from this list (your stats keep it).</p></div>
           <div className="card" style={{ padding: "5px 11px" }}>
             {recent.length === 0 && <div className="cap" style={{ padding: "9px 0" }}>No rounds yet. Finish one and it shows up here.</div>}
             {recent.map((r, i) => (
@@ -1823,10 +1832,6 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
           </div>
         </div>
       </div>
-      <button className="pt-foot" onClick={onAbout} aria-label="About this alpha">
-        <Tiles size={15} />
-        <span className="cap" style={{ color: "inherit" }}>Alpha {APP_VERSION}. Bank it or bust.</span>
-      </button>
     </div>
   );
 }
@@ -3852,7 +3857,7 @@ function Game({ user, cloud, profile, now0, finished }) {
     const myId = live ? live.myId : "me";
     if (live && !myId) { setLive(null); setRound(null); setView("tabs"); setTab("home"); return; }
     record(live ? live.code : `r${Date.now()}`, round, roundPeople, myId, live).catch(() => note("Couldn't save that round. Check your connection and try again."));
-    setLive(null); setRound(null); setView("tabs"); setTab("home");
+    setLive(null); setRound(null); setView("tabs"); setTab("history");
   };
   const finishLive = () => {
     backend().then(b => b.finish(live.code, amHost())).catch(e => note(explain(e)));
@@ -3875,8 +3880,8 @@ function Game({ user, cloud, profile, now0, finished }) {
     const lv = live;
     recordLive(lv, liveDoc).then(() => {
       setLive(l => (l && l.code === lv.code ? null : l)); setRound(r => (r && live && live.code === lv.code ? null : r));
-      setView(v => (v === "round" || v === "summary" ? "tabs" : v)); setTab("home");
-      note(lv.myId ? "Round finished. It's saved in your Recent rounds." : "Round finished.");
+      setView(v => (v === "round" || v === "summary" ? "tabs" : v)); setTab(lv.myId ? "history" : "home");
+      note(lv.myId ? "Round finished. It's saved in your Round history." : "Round finished.");
     }).catch(() => note("Couldn't save the finished round. It'll try again next time you open the app.")).finally(() => { recording.current = false; });
   }, [liveDoc && liveDoc.done]); // eslint-disable-line react-hooks/exhaustive-deps
   // Paused live rounds that were finished while you were away: record them and clear them out.
@@ -3889,7 +3894,7 @@ function Game({ user, cloud, profile, now0, finished }) {
     }))).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tabs = [["home", "Home", HomeIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon]];
+  const tabs = [["home", "Home", HomeIcon], ["history", "History", ClockIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon]];
   const openRound = id => {
     const rec = finished.find(f => f.id === id); if (!rec || !rec.round) return;
     const r = parseJSON(rec.round, null); if (!r) return;
@@ -3995,6 +4000,7 @@ function Game({ user, cloud, profile, now0, finished }) {
         <>
           <div style={{ flex: 1 }}>
             {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "history" && <History recent={recent} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} onOpenRound={openRound} trash={trash} now={now} onRestore={restore} />}
             {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => cloud.acceptRequest(id)} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
             {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
           </div>
