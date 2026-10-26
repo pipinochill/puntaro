@@ -25,25 +25,25 @@ async def api(pg, js):
 
 async def main():
     cloud = fc.Cloud(rules)
-    for uid, first in (('u_pierre', 'Pierre'), ('u_sam', 'Sam'), ('u_priya', 'Priya')): cloud.seed(uid, fc.profile(first))
+    for uid, first in (('u_pierre', 'Pierre'), ('u_sam', 'Nic'), ('u_priya', 'Mitch')): cloud.seed(uid, fc.profile(first))
     async with async_playwright() as p:
         b = await p.chromium.launch()
         H = await cloud.phone(b, 'u_pierre'); S = await cloud.phone(b, 'u_sam'); P = await cloud.phone(b, 'u_priya')
         await fc.open_app(H, URL); code = await host_live(H, cloud)
-        await join(S, code, 'Sam'); await join(P, code, 'Priya')
-        for pg, who in ((H, 'Pierre'), (S, 'Sam'), (P, 'Priya')): await pg.get_by_role('button', name=f'{who} plus one').click(); await pg.wait_for_timeout(150)
-        await H.get_by_role('button', name='Jake plus one').click()
+        await join(S, code, 'Nic'); await join(P, code, 'Mitch')
+        for pg, who in ((H, 'Pierre'), (S, 'Nic'), (P, 'Mitch')): await pg.get_by_role('button', name=f'{who} plus one').click(); await pg.wait_for_timeout(150)
+        await H.get_by_role('button', name='Greg plus one').click()
         await S.get_by_role('button', name='Bank after hole').first.click(); await S.wait_for_timeout(1700)
         await asyncio.sleep(0.6)
 
-        # Priya's phone goes off before the end
+        # Mitch's phone goes off before the end
         await P.close()
 
-        # Sam can't finish it
+        # Nic can't finish it
         await S.get_by_role('button', name='Finish', exact=True).click(); await S.wait_for_timeout(400)
         check('A player sees "Waiting for Pierre" instead of a save button', await S.get_by_role('button', name='Waiting for Pierre').count() == 1)
         await S.screenshot(path=f'{OUT}/fin_waiting.png')
-        check('ATTACK Sam finishes the round early: blocked', await api(S, f"b.finish('{code}')") == 'denied' and not cloud.live(code).get('done'))
+        check('ATTACK Nic finishes the round early: blocked', await api(S, f"b.finish('{code}')") == 'denied' and not cloud.live(code).get('done'))
         await S.get_by_role('button', name='Back to Home').click(); await S.wait_for_timeout(300)
 
         # host finishes
@@ -54,24 +54,24 @@ async def main():
         check('The live round is marked finished and kept online', d is not None and d.get('done') is True)
         hf = cloud.finished('u_pierre').get(code); sf = cloud.finished('u_sam').get(code)
         check('The host\'s account records it', hf is not None)
-        check('Sam\'s account records it too, without him doing anything', sf is not None)
-        check('Sam\'s stats count his own result', sf and set(sf['players']) == {'me'})
+        check('Nic\'s account records it too, without him doing anything', sf is not None)
+        check('Nic\'s stats count his own result', sf and set(sf['players']) == {'me'})
         r = json.loads(sf['round']) if sf else {}
-        check('The recorded card includes Sam\'s revealed bank call', r.get('bank', {}).get('sam', [False])[0] is True)
-        check('Sam is told it\'s saved', await S.get_by_text("It's saved in your Recent rounds").count() == 1)
+        check('The recorded card includes Nic\'s revealed bank call', r.get('bank', {}).get('sam', [False])[0] is True)
+        check('Nic is told it\'s saved', await S.get_by_text("It's saved in your Recent rounds").count() == 1)
         await fc.flushed(S)
         check('...and it leaves his round in progress', cloud.now_state('u_sam').get('round') is None)
 
         # locked
-        check('ATTACK Sam changes a score after the finish: blocked', await api(S, f"b.update('{code}',[[['s','sam','0'],1]])") == 'denied')
+        check('ATTACK Nic changes a score after the finish: blocked', await api(S, f"b.update('{code}',[[['s','sam','0'],1]])") == 'denied')
         check('ATTACK the host reopens it: blocked', await api(H, f"b.update('{code}',[[['done'],false]])") == 'denied')
-        check('ATTACK Sam changes his bank call after the finish: blocked', await api(S, f"b.putBank('{code}','sam',0,false)") == 'denied')
+        check('ATTACK Nic changes his bank call after the finish: blocked', await api(S, f"b.putBank('{code}','sam',0,false)") == 'denied')
         check('Bank calls are all readable once it\'s finished', await api(H, f"b.getBank('{code}','sam',0)") == 'ok')
 
-        # Priya comes back later
+        # Mitch comes back later
         P = await cloud.phone(b, 'u_priya')
         await fc.open_app(P, URL); await P.wait_for_timeout(2500)
-        check('Priya\'s account records it when she next opens the app', cloud.finished('u_priya').get(code) is not None)
+        check('Mitch\'s account records it when she next opens the app', cloud.finished('u_priya').get(code) is not None)
 
         # the host deletes theirs: only the host's copy is hidden
         await fc.open_app(H, URL)
@@ -79,26 +79,26 @@ async def main():
         bx = await row.bounding_box(); await H.mouse.move(bx['x'] + 20, bx['y'] + 10); await H.mouse.down(); await H.wait_for_timeout(900); await H.mouse.up()
         await H.wait_for_timeout(300); await H.get_by_role('button', name='Delete round', exact=True).click(); await H.wait_for_timeout(900)
         check('The host removing it only hides the host\'s copy', cloud.finished('u_pierre')[code].get('hidden') is True)
-        check('...Sam and Priya still have theirs, and the shared round stays online', not cloud.finished('u_sam')[code].get('hidden') and not cloud.finished('u_priya')[code].get('hidden') and cloud.live(code) is not None)
+        check('...Nic and Mitch still have theirs, and the shared round stays online', not cloud.finished('u_sam')[code].get('hidden') and not cloud.finished('u_priya')[code].get('hidden') and cloud.live(code) is not None)
         await fc.open_app(S, URL)
         await S.locator('[role=button]', has_text='Pebble Hollow').first.click(); await S.wait_for_timeout(500)
-        check('Sam can open the scoresheet any time', await S.get_by_text('Scoresheet').count() == 1)
+        check('Nic can open the scoresheet any time', await S.get_by_text('Scoresheet').count() == 1)
         await S.screenshot(path=f'{OUT}/fin_card.png', full_page=True)
 
         # 6-hour fallback
         await fc.open_app(H, URL); code2 = await host_live(H, cloud)
-        await join(S, code2, 'Sam')
-        await S.get_by_role('button', name='Sam plus one').click(); await S.wait_for_timeout(400)
-        check('ATTACK Sam finishes a fresh round: blocked', await api(S, f"b.finish('{code2}')") == 'denied')
-        check('ATTACK Sam stamps the host\'s clock to fake a quiet host: blocked', await api(S, f"b.update('{code2}',[[['s','sam','1'],4]],true)") == 'denied')
+        await join(S, code2, 'Nic')
+        await S.get_by_role('button', name='Nic plus one').click(); await S.wait_for_timeout(400)
+        check('ATTACK Nic finishes a fresh round: blocked', await api(S, f"b.finish('{code2}')") == 'denied')
+        check('ATTACK Nic stamps the host\'s clock to fake a quiet host: blocked', await api(S, f"b.update('{code2}',[[['s','sam','1'],4]],true)") == 'denied')
         cloud.clock_offset = 6 * 3600 * 1000 + 60 * 1000  # six hours pass with no activity
         await S.evaluate("Date.now = (n => () => n() + 6*3600*1000 + 60*1000)(Date.now)")
-        await S.get_by_role('button', name='Sam plus one').click(); await S.wait_for_timeout(300)  # Sam keeps playing: that's not the host
+        await S.get_by_role('button', name='Nic plus one').click(); await S.wait_for_timeout(300)  # Nic keeps playing: that's not the host
         await S.get_by_role('button', name='Finish', exact=True).click(); await S.wait_for_timeout(400)
-        check('After 6 hours with nothing from the host\'s phone, Sam is offered "Finish for everyone"', await S.get_by_role('button', name='Finish for everyone').count() == 1)
+        check('After 6 hours with nothing from the host\'s phone, Nic is offered "Finish for everyone"', await S.get_by_role('button', name='Finish for everyone').count() == 1)
         await S.get_by_role('button', name='Finish for everyone').click(); await S.wait_for_timeout(2500)
         check('...and it finishes for everyone', (cloud.live(code2) or {}).get('done') is True and (cloud.live(code2) or {}).get('doneBy') == 'u_sam')
-        check('...recorded in Sam\'s account', cloud.finished('u_sam').get(code2) is not None)
+        check('...recorded in Nic\'s account', cloud.finished('u_sam').get(code2) is not None)
 
         print('page errors:', H.errs + S.errs + P.errs); print('denied:', len(cloud.denied)); print(f'{sum(res)}/{len(res)} passed')
         await b.close()

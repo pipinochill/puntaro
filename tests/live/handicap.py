@@ -25,11 +25,11 @@ def seed_round(uid, n, diff, witnessed=True, days_ago=10):
                                                  'live': {'code': f'PUNT-SEED{n}', 'myId': 'me'}, 'diff': diff, 'witnessed': witnessed}
 
 async def play_live_round(H, S, code):
-    """Host keeps score for both for 18 holes (one scorer): Pierre one over par each hole, Sam par."""
+    """Host keeps score for both for 18 holes (one scorer): Pierre one over par each hole, Nic par."""
     for h in range(18):
         await H.get_by_role('button', name='Pierre plus one').click(); await H.wait_for_timeout(60)
         await H.get_by_role('button', name='Pierre plus one').click(); await H.wait_for_timeout(60)
-        await H.get_by_role('button', name='Sam plus one').click(); await H.wait_for_timeout(60)
+        await H.get_by_role('button', name='Nic plus one').click(); await H.wait_for_timeout(60)
         if await H.get_by_role('button', name='Nobody hit the green').count(): await H.get_by_role('button', name='Nobody').first.click(); await H.wait_for_timeout(100)
         if h == 17: break
         await H.get_by_role('button', name='Next hole').last.click(); await H.wait_for_timeout(200)
@@ -69,15 +69,15 @@ async def main():
         # ---- a guest with no handicap
         await A.get_by_role('button', name='Start a round').click(); await A.wait_for_timeout(300)
         await A.get_by_role('button', name='+ Guest').click(); await A.wait_for_timeout(300)
-        await A.get_by_label('Name', exact=True).fill('Sam'); await A.get_by_label('Last name').fill('Walker')
+        await A.get_by_label('Name', exact=True).fill('Nic'); await A.get_by_label('Last name').fill('Walker')
         await A.get_by_role('button', name='No handicap', exact=True).click(); await A.get_by_role('button', name='100 to 109', exact=True).click()
         await A.get_by_role('button', name='Add to round').click(); await A.wait_for_timeout(300)
         check('A guest without a handicap gets an estimate, shown as EST', await A.get_by_text('HCP 30.0 EST').count() >= 1)
         await A.screenshot(path=f'{OUT}/hcp_guest.png')
 
-        # ---- Sam signs up, Pierre has two earlier witnessed rounds, then they play a live round together
+        # ---- Nic signs up, Pierre has two earlier witnessed rounds, then they play a live round together
         S = await cloud.phone(b, 'u_sam', signed_in=False); await fc.open_app(S, URL)
-        await signup(S, 'Sam', 'No handicap', usual='100 to 109'); await S.get_by_role('button', name="Let's play").click(); await S.wait_for_timeout(800)
+        await signup(S, 'Nic', 'No handicap', usual='100 to 109'); await S.get_by_role('button', name="Let's play").click(); await S.wait_for_timeout(800)
         seed_round('u_pierre', 1, 21.4, days_ago=20); seed_round('u_pierre', 2, 24.0, days_ago=12)
         seed_round('u_pierre', 3, 5.0, witnessed=False, days_ago=11)  # a solo round: must not count
         await A.get_by_role('switch').last.click(); await A.get_by_label('Your name for the group').fill('Pierre')
@@ -86,7 +86,7 @@ async def main():
         code = [k.split('/')[1] for k in cloud.docs if k.startswith('rounds/') and k.count('/') == 1][0]
         await A.get_by_role('button', name='Close').first.click()
         await fc.open_app(S, URL, q=f'?join={code}'); await S.wait_for_timeout(500)
-        await S.get_by_role('button', name='Sam').first.click(); await S.wait_for_timeout(700)
+        await S.get_by_role('button', name='Nic').first.click(); await S.wait_for_timeout(700)
         await play_live_round(A, S, code)
         await A.get_by_role('button', name='Finish', exact=True).click(); await A.wait_for_timeout(400)
         await A.get_by_role('button', name='Finish round').click(); await A.wait_for_timeout(2500)
@@ -103,7 +103,7 @@ async def main():
         check('Pierre is told his new handicap', await A.get_by_text(f'Your Puntaro handicap is now {want:.1f}, from 3 live rounds.').count() == 1)
         check('Home shows it with an APP tag', await A.get_by_text(f'HCP {want:.1f} APP').count() == 1)
         srec = cloud.finished('u_sam').get(code) or {}
-        check('Sam\'s account records his own differential too', srec.get('witnessed') is True and isinstance(srec.get('diff'), (int, float)))
+        check('Nic\'s account records his own differential too', srec.get('witnessed') is True and isinstance(srec.get('diff'), (int, float)))
         check('...but one round isn\'t enough to change his estimate', cloud.user('u_sam').get('hcpKind') == 'est' and cloud.user('u_sam').get('hi') == 30)
 
         # ---- slow up, fast down

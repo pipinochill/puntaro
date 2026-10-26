@@ -16,9 +16,9 @@ def getp(d, path):
     return d
 
 DEMO = {
-    'sam': {'id': 'sam', 'name': 'Sam', 'last': 'Walker', 'hi': 8.4, 'color': '#8B6B4A'},
-    'priya': {'id': 'priya', 'name': 'Priya', 'last': 'Nair', 'hi': 19.0, 'color': '#A5543A'},
-    'jake': {'id': 'jake', 'name': 'Jake', 'last': 'Morrison', 'hi': 11.6, 'color': '#6F7F73'},
+    'sam': {'id': 'sam', 'name': 'Nic', 'last': 'Walker', 'hi': 8.4, 'color': '#8B6B4A'},
+    'priya': {'id': 'priya', 'name': 'Mitch', 'last': 'Nair', 'hi': 19.0, 'color': '#A5543A'},
+    'jake': {'id': 'jake', 'name': 'Greg', 'last': 'Morrison', 'hi': 11.6, 'color': '#6F7F73'},
 }
 
 def profile(first, hi=14.2, last='', friends=('sam', 'priya', 'jake')):

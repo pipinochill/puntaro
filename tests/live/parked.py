@@ -20,7 +20,7 @@ async def main():
         b = await p.chromium.launch()
         A = await cloud.phone(b, 'u_a'); await fc.open_app(A, URL)
         await tee_off(A)
-        for who in ('You', 'Sam'): await A.get_by_role('button', name=f'{who} plus one').click(); await A.wait_for_timeout(100)
+        for who in ('You', 'Nic'): await A.get_by_role('button', name=f'{who} plus one').click(); await A.wait_for_timeout(100)
         await fc.flushed(A); first = json.dumps(st()['round']['scores'])
         await fc.open_app(A, URL)
         await A.get_by_role('button', name='Start a round').click(); await A.wait_for_timeout(400)
@@ -59,7 +59,7 @@ async def main():
         code = [k for k in cloud.docs if k.startswith('rounds/') and k.count('/') == 1][0].split('/')[1]
         before = len(st()['parked'])
         await fc.open_app(A, URL, q=f'?join={code}'); await A.wait_for_timeout(500)
-        await A.get_by_role('button', name='Sam').first.click(); await A.wait_for_timeout(700); await fc.flushed(A)
+        await A.get_by_role('button', name='Nic').first.click(); await A.wait_for_timeout(700); await fc.flushed(A)
         check('Joining a live round pauses the solo round in progress', len(st()['parked']) == before + 1 and st()['live']['code'] == code)
         await fc.open_app(A, URL)
         await A.get_by_role('button', name='Resume', exact=True).first.click(); await A.wait_for_timeout(500); await fc.flushed(A)

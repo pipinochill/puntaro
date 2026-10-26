@@ -25,7 +25,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.55";
+const APP_VERSION = "0.56";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -66,9 +66,9 @@ const parseJSON = (t, fallback) => { try { const v = JSON.parse(t); return v == 
 const ME_COLOR = "#4F7A5A";
 const PEOPLE = {
   me:    { id: "me", name: "You", first: "", last: "", hi: 14.2, color: "#4F7A5A" },
-  sam:   { id: "sam", name: "Sam", last: "Walker", hi: 8.4, color: "#8B6B4A" },
-  priya: { id: "priya", name: "Priya", last: "Nair", hi: 19.0, color: "#A5543A" },
-  jake:  { id: "jake", name: "Jake", last: "Morrison", hi: 11.6, color: "#6F7F73" },
+  sam:   { id: "sam", name: "Nic", last: "Walker", hi: 8.4, color: "#3E7CB1" },
+  priya: { id: "priya", name: "Mitch", last: "Nair", hi: 19.0, color: "#A5543A" },
+  jake:  { id: "jake", name: "Greg", last: "Morrison", hi: 11.6, color: "#6F7F73" },
   maya:  { id: "maya", name: "Maya", last: "Chen", hi: 5.2, color: "#9A7650" },
   leo:   { id: "leo", name: "Leo", last: "Costa", hi: 23.5, color: "#5E4636" },
   dani:  { id: "dani", name: "Dani", last: "Ferris", hi: 13.1, color: "#3F5F4B" },
@@ -255,11 +255,13 @@ const SFX = (() => {
     tap: () => { const a = ac(); if (a) tone(a, 587, 0, 0.05, { type: "triangle", vol: 0.06 }); },
     up: mk(a => { tone(a, 523, 0, 0.07); tone(a, 784, 0.06, 0.1); }),
     down: mk(a => { tone(a, 392, 0, 0.07); tone(a, 262, 0.06, 0.13, { type: "triangle", vol: 0.1 }); }),
-    bank: mk(a => { tone(a, 988, 0, 0.07); tone(a, 1175, 0.07, 0.36, { vol: 0.05 }); tone(a, 988, 0.09, 0.26, { vol: 0.03, type: "triangle" }); }),
-    bust: mk(a => { noise(a, 0, 0.38, { vol: 0.13, from: 1200, to: 120 }); tone(a, 220, 0, 0.55, { type: "sawtooth", vol: 0.07, to: 45 }); tone(a, 330, 0, 0.28, { vol: 0.04, to: 80 }); }),
-    mult: mk(a => run(a, [523, 659, 784, 1047, 1319], 0.045, { vol: 0.06 })),
-    ntp: mk(a => { noise(a, 0, 0.1, { vol: 0.08, from: 600, to: 3000 }); [392, 523, 659, 784, 1047].forEach((f, i) => tone(a, f, 0.08 + i * 0.07, 0.14, { vol: 0.06 })); tone(a, 523, 0.5, 0.4, { type: "triangle", vol: 0.08 }); tone(a, 784, 0.5, 0.4, { type: "triangle", vol: 0.06 }); }),
-    birdie: mk(a => { run(a, [659, 784, 988, 1319], 0.06, { type: "triangle", vol: 0.1 }); tone(a, 1319, 0.26, 0.3, { vol: 0.05 }); }),
+    bank: mk(a => { tone(a, 988, 0, 0.07, { vol: 0.06 }); tone(a, 1319, 0.07, 0.38, { vol: 0.05 }); tone(a, 1976, 0.07, 0.2, { type: "triangle", vol: 0.03, det: 0 }); noise(a, 0.07, 0.08, { from: 7000, to: 5000, vol: 0.04 }); }),
+    bust: mk(a => { noise(a, 0, 0.42, { from: 1300, to: 120, vol: 0.14 }); tone(a, 220, 0, 0.6, { type: "sawtooth", to: 45, vol: 0.07 }); [[392, 0.65], [370, 0.9], [349, 1.15]].forEach(([f, t]) => tone(a, f, t, 0.22, { type: "triangle", vol: 0.11 })); tone(a, 330, 1.4, 0.7, { type: "triangle", to: 247, vol: 0.11 }); }),
+    mult: mk(a => { noise(a, 0, 0.55, { from: 300, to: 4500, vol: 0.1 }); [392, 523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(a, f, 0.12 + i * 0.05, 0.08, { vol: 0.055 })); for (let i = 0; i < 8; i++) noise(a, 0.55 + Math.random() * 0.5, 0.025, { from: 5000, to: 3000, vol: 0.06 }); tone(a, 1568, 0.5, 0.45, { type: "triangle", vol: 0.06 }); }),
+    ntp: mk(a => { tone(a, 140, 0, 0.12, { type: "sine", to: 70, vol: 0.18, det: 0 }); tone(a, 1568, 0.1, 0.35, { type: "triangle", vol: 0.08 }); tone(a, 2093, 0.18, 0.3, { type: "triangle", vol: 0.05 }); }),
+    birdie: mk(a => { tone(a, 2000, 0, 0.06, { to: 2700, vol: 0.05 }); tone(a, 2100, 0.09, 0.06, { to: 2900, vol: 0.05 }); [1047, 1319, 1568].forEach((f, i) => tone(a, f, 0.22 + i * 0.07, 0.11, { type: "triangle", vol: 0.1 })); [2093, 2349, 2093, 2349, 2637].forEach((f, i) => tone(a, f, 0.46 + i * 0.05, 0.05, { vol: 0.035, det: 0 })); }),
+    eagle: mk(a => { tone(a, 900, 0, 0.28, { type: "sawtooth", to: 2300, vol: 0.05 }); tone(a, 2300, 0.28, 0.18, { type: "sawtooth", to: 1500, vol: 0.04 }); noise(a, 0.2, 0.35, { from: 400, to: 3500, vol: 0.08 }); [[523, 0.6, 0.12], [659, 0.72, 0.12], [784, 0.84, 0.12], [1047, 0.96, 0.55]].forEach(([f, t, d]) => tone(a, f, t, d, { vol: 0.06 })); tone(a, 523, 0.96, 0.55, { type: "triangle", vol: 0.08, det: 0 }); tone(a, 784, 0.96, 0.55, { type: "triangle", vol: 0.06, det: 0 }); }),
+    ace: mk(a => { for (let i = 0; i < 6; i++) noise(a, i * 0.11, 0.03, { from: 2400, to: 1800, vol: 0.04 }); tone(a, 200, 0.72, 0.16, { type: "sine", to: 80, vol: 0.18, det: 0 }); [0.86, 0.92, 0.97].forEach((t, i) => tone(a, 1760 - i * 140, t, 0.05, { type: "triangle", vol: 0.05, det: 0 })); [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(a, f, 1.15 + i * 0.1, 0.11, { vol: 0.06 })); [1568, 1047, 784].forEach(f => tone(a, f, 1.88, 0.8, { type: "triangle", vol: 0.07 })); [2637, 3136, 2637, 3520].forEach((f, i) => tone(a, f, 1.95 + i * 0.12, 0.06, { vol: 0.025, det: 0 })); }),
     event: k => mk(a => {
       const ding = (at = 0, f = 1319) => { tone(a, f * 0.75, at, 0.07); tone(a, f, at + 0.07, 0.3, { vol: 0.055 }); };
       if (k === "sandy") { noise(a, 0, 0.16, { vol: 0.1, from: 900, to: 400 }); ding(0.14, 1175); }
@@ -311,7 +313,7 @@ const HAPTIC = (() => {
     set: v => { on = v; try { localStorage.setItem("puntaro.haptics", v ? "on" : "off"); } catch (e) { /* fine */ } if (v) buzz(20); } };
 })();
 // Which sounds also buzz, and how (milliseconds on, off, on...).
-const BUZZ = { up: 10, down: 18, bank: [25, 50, 35], bust: [70, 40, 140], mult: [12, 35, 12, 35, 12], ntp: [15, 40, 15, 40, 45], birdie: [15, 35, 15, 35, 60],
+const BUZZ = { up: 10, down: 18, bank: [25, 50, 35], bust: [70, 40, 140], mult: [12, 35, 12, 35, 12], ntp: [15, 40, 15, 40, 45], birdie: [15, 35, 15, 35, 60], eagle: [20, 40, 20, 40, 90], ace: [30, 40, 30, 40, 30, 40, 160],
   flip: 15, bless: [12, 40, 30], curse: 90, swing: 25, start: [20, 60, 40] };
 Object.keys(BUZZ).forEach(k => { const f = SFX[k]; SFX[k] = (...a) => { HAPTIC.buzz(BUZZ[k]); return f(...a); }; });
 { const ev = SFX.event; SFX.event = k => { HAPTIC.buzz(k === "lost" || k === "water" || k === "fourputt" ? [50, 40, 50] : [15, 40, 25]); return ev(k); }; }
@@ -830,33 +832,35 @@ function buildRound(cfg, people, seed) {
 /* ───────────── SMALL PARTS ───────────── */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400&text=0123456789&display=swap');
-.sg{--ink:#242622;--muted:#6E6A5E;--chalk:#E7E2D5;--card:#F4F0E6;--sel:#D3DACB;--night:#2A2C28;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C7BFAB;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
-.sg.dark{--ink:#E8E3D6;--muted:#9B968A;--chalk:#1B1C1A;--card:#252724;--sel:#2C4033;--night:#454841;--pine:#4F7A5A;--fair:#7FA886;--lime:#E0C799;--red:#CC5A3E;--bogey:#CC5A3E;--line:#383A35;--track:#1B1C1A;--head1:#2C4536;--head2:#27402F;--grid:rgba(232,227,214,.03);--on-bg:#C69C6D;--on-fg:#1B1C1A;}
-.sg{font-family:'Silkscreen','Pixelify Sans',ui-monospace,monospace;font-size:13px;line-height:1.22;letter-spacing:-.01em;color:var(--ink);background-color:var(--chalk);
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap');
+.sg{--ink:#1B1C1A;--muted:#55524A;--chalk:#F4F0E6;--card:#FFFDF7;--sel:#D3DACB;--night:#1B1C1A;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C9C0A8;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
+.sg.dark{--ink:#EDE8DD;--muted:#B3AEA2;--chalk:#1B1C1A;--card:#252724;--sel:#2C4033;--night:#454841;--pine:#4F7A5A;--fair:#7FA886;--lime:#E0C799;--red:#CC5A3E;--bogey:#CC5A3E;--line:#383A35;--track:#1B1C1A;--head1:#2C4536;--head2:#27402F;--grid:rgba(232,227,214,.03);--on-bg:#C69C6D;--on-fg:#1B1C1A;}
+.sg{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;font-weight:500;font-size:15px;line-height:1.3;letter-spacing:0;color:var(--ink);background-color:var(--chalk);
  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:8px 8px;
  font-variant-numeric:tabular-nums;max-width:430px;margin:0 auto;min-height:100vh;position:relative;display:flex;flex-direction:column;}
 .sg *{box-sizing:border-box;border-radius:0 !important;}
 .sg *{font-synthesis:none;}
 .sg h1,.sg h2,.sg h3,.sg p{margin:0;}
 .sg h1,.sg h2,.sg h3,.sg .px,.sg .cta{font-weight:700 !important;letter-spacing:0 !important;}
-.sg h1{font-size:22px !important;line-height:1.15 !important;}
-.sg h2,.sg .h2{font-size:15px !important;line-height:1.2 !important;}
-.sg h3{font-size:13px !important;line-height:1.2 !important;}
+.sg .px{font-family:'Silkscreen','Pixelify Sans',ui-monospace,monospace;}
+.sg h1{font-size:25px !important;line-height:1.15 !important;}
+.sg h2,.sg .h2{font-size:18px !important;line-height:1.2 !important;}
+.sg h3{font-size:15px !important;line-height:1.2 !important;}
 .sg button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;-webkit-tap-highlight-color:transparent;}
 .sg button:focus-visible{outline:3px solid var(--water);outline-offset:2px;}
 .sg svg{shape-rendering:crispEdges;}
 .sg svg *{stroke-linecap:square;stroke-linejoin:miter;}
 .stripes{background:repeating-linear-gradient(90deg,var(--head1) 0 32px,var(--head2) 32px 64px);border-bottom:4px solid var(--night);color:var(--hi);}
-.card{background:var(--card);border:3px solid var(--night);box-shadow:3px 3px 0 var(--night);}
-.sg .pill{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;font-weight:600;font-size:11px;color:var(--dk);border:2px solid var(--night);}
+.card{background:var(--card);border:3px solid var(--night);box-shadow:4px 4px 0 var(--night);}
+.sg .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;font-weight:600;font-size:13px;color:var(--dk);border:2px solid var(--night);}
 .sg .stripes .pill{color:var(--hi);}
-.sg .chip{border:2px solid var(--night);background:var(--card);color:var(--ink);padding:2px 8px;font-weight:600;font-size:13px;white-space:nowrap;box-shadow:2px 2px 0 var(--night);}
+.sg .chip{border:2px solid var(--night);background:var(--card);color:var(--ink);padding:5px 10px;font-weight:600;font-size:14px;white-space:nowrap;box-shadow:2px 2px 0 var(--night);}
 .sg .chip.on{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg);box-shadow:none;transform:translate(2px,2px);}
-.sg .cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;font-size:15px !important;background:var(--on-bg);color:var(--on-fg);border:3px solid var(--on-bg);box-shadow:0 3px 0 var(--fair);}
-.sg .cta:active{transform:translateY(3px);box-shadow:none;}
+.sg .cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:56px;padding:12px;font-size:18px !important;background:var(--pine);color:#F4F0E6;border:3px solid var(--night);box-shadow:0 5px 0 var(--night);}
+.sg.dark .cta{background:var(--on-bg);color:var(--on-fg);}
+.sg .cta:active{transform:translateY(5px);box-shadow:none;}
 .sg .cta:disabled{opacity:.4;cursor:not-allowed;}
-.cap{font-size:11.5px;color:var(--muted);line-height:1.22;}
+.cap{font-size:13.5px;color:var(--muted);line-height:1.3;}
 .sg .chip:disabled{opacity:.45;cursor:not-allowed;}
 .sg fieldset:disabled button{opacity:.4;cursor:not-allowed;}
 .seg{display:flex;flex-wrap:wrap;gap:6px;}
@@ -999,6 +1003,25 @@ const CSS = `
 .fxo.bank .fxt{color:#E7E2D5;}
 .fxs{margin-top:8px;font-weight:700;font-size:15px;color:#F4F0E6;text-shadow:2px 2px 0 #14150F;animation:fxpop 1.4s steps(10) forwards;}
 @keyframes fxpop{0%{transform:scale(.3) rotate(-6deg);opacity:0}25%{transform:scale(1.25) rotate(2deg);opacity:1}40%{transform:scale(1) rotate(0)}85%{opacity:1}100%{transform:translateY(-14px);opacity:0}}
+.stampm{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:8px 18px 10px;color:var(--sc);background:rgba(255,253,247,.96);border:6px solid var(--sc);outline:3px solid var(--sc);outline-offset:5px;transform:rotate(var(--tilt));animation:stampslam .45s steps(6) both;}
+.stampm .sw{font-family:'Silkscreen',monospace;font-weight:700;line-height:1;white-space:nowrap;}
+.stampm .ss{font-family:'Silkscreen',monospace;font-size:18px;line-height:1.1;white-space:nowrap;}
+.stampm.sm{padding:3px 8px 4px;border-width:3px;outline-width:2px;outline-offset:3px;}
+.stampm.sm .ss{font-size:11px;}
+@keyframes stampslam{0%{transform:scale(2.6) rotate(calc(var(--tilt) - 14deg));opacity:0}55%{transform:scale(.9) rotate(var(--tilt));opacity:1}75%{transform:scale(1.06) rotate(var(--tilt))}100%{transform:scale(1) rotate(var(--tilt))}}
+.moment{position:fixed;inset:0;max-width:430px;margin:0 auto;z-index:62;background:rgba(27,28,26,.62);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:16px;cursor:pointer;animation:mfade .2s steps(3) both;}
+@keyframes mfade{from{opacity:0}to{opacity:1}}
+.mstage{position:relative;width:340px;height:380px;max-width:100%;}
+.mconf{position:absolute;left:50%;top:60px;transform:translateX(-50%);animation:mconf .5s steps(5) both;}
+@keyframes mconf{from{transform:translateX(-50%) scale(.4);opacity:0}to{transform:translateX(-50%) scale(1);opacity:1}}
+.mart{position:absolute;left:0;right:0;top:12px;display:flex;justify-content:center;animation:mart .5s steps(6) .1s both,mbob 1.6s steps(4) .7s infinite;}
+@keyframes mart{0%{transform:translateY(-90px);opacity:0}70%{transform:translateY(6px);opacity:1}100%{transform:none}}
+@keyframes mbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.mstamp{position:absolute;left:0;right:0;top:200px;display:flex;justify-content:center;animation-delay:.25s;}
+.mstage.noart .mstamp{top:140px;}
+.mcap{max-width:326px;width:100%;background:#FFFDF7;color:#1B1C1A;border:3px solid #1B1C1A;box-shadow:5px 5px 0 #1B1C1A;padding:12px 14px;text-align:center;font-size:16px;font-weight:600;line-height:1.35;}
+.rowstamp{position:absolute;right:58px;top:50%;transform:translateY(-50%);z-index:3;pointer-events:none;animation:rsout .4s steps(4) 2.6s forwards;}
+@keyframes rsout{to{opacity:0}}
 .shk{animation:shake .4s steps(6) 1;}
 .tip{border-bottom:2px dotted var(--muted);cursor:help;text-align:inherit;}
 .tipsheet{position:fixed;inset:0;max-width:430px;margin:0 auto;z-index:70;display:flex;align-items:flex-end;background:rgba(0,0,0,.55);}
@@ -1046,7 +1069,7 @@ function ScoreMark({ v, par, size = 50 }) {
   const g = "var(--fair)", r = "var(--red)", m = "var(--mint)", w = "var(--card)";
   const layers = d <= -2 ? [[46, g], [41, w], [36, g], [31, m]] : d === -1 ? [[41, g], [36, m]] : d === 1 ? [[41, r], [36, w]] : d >= 2 ? [[46, r], [41, w], [36, r], [31, w]] : [];
   const birdie = d < 0;
-  const num = <span key={v} className="pop" style={{ fontWeight: 700, fontSize: 16, lineHeight: 1, color: d > 0 ? "var(--red)" : d < 0 ? "var(--dk)" : "var(--ink)" }}>{v}</span>;
+  const num = <span key={v} className="pop px" style={{ fontSize: 20, lineHeight: 1, color: d > 0 ? "var(--red)" : d < 0 ? "var(--dk)" : "var(--ink)" }}>{v}</span>;
   const art = layers.reduceRight((child, [sz, bg]) => (
     <div style={{ width: sz, height: sz, background: bg, clipPath: birdie ? CH : "none", display: "grid", placeItems: "center" }}>{child}</div>
   ), num);
@@ -1128,7 +1151,7 @@ Object.assign(TIPS, {
 /* Nearest the pin: big, at the top of a par 3, and asked for before leaving the hole. */
 function NtpPick({ round, people, ids, h, api, disabled, onPicked }) {
   const v = round.ntp[h];
-  const pick = id => { if (disabled) return; if (v !== id && id !== "none") SFX.ntp(); else HAPTIC.buzz(15); api.setNtp(h, id); if (onPicked) onPicked(id); };
+  const pick = id => { if (disabled) return; if (v !== id && id !== "none") { SFX.ntp(); if (api.rowStamp) api.rowStamp(id, "STUCK IT", "NEAREST +3", "#1B1C1A"); } else HAPTIC.buzz(15); api.setNtp(h, id); if (onPicked) onPicked(id); };
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: ids.length > 4 ? "1fr 1fr 1fr" : "1fr 1fr", gap: 7 }}>
@@ -1251,6 +1274,42 @@ function Celebrate({ fx }) {
         <div className="fxs">{fx.sub}</div>
         <Burst colors={gold ? (fx.kind === "bank" ? ["#FFE08A", "#E0C799", "#A9BFA3", "#FFF3C9"] : BURST_B) : BURST_C} n={fx.kind === "birdie" ? 24 : 18} reach={fx.kind === "birdie" ? 120 : 95} />
       </div>
+    </div>
+  );
+}
+
+/* Big moments: 8-bit art, a stamp and confetti. Layers are [colour, pixel path]. */
+const ART = {
+  bird: { w: 20, h: 14, l: [["#1B1C1A", "M11 0h4v1h-4zM10 1h1v1h-1zM15 1h1v1h-1zM9 2h1v1h-1zM14 2h1v1h-1zM16 2h1v1h-1zM9 3h1v1h-1zM13 3h2v1h-2zM16 3h1v1h-1zM2 4h2v1h-2zM9 4h1v1h-1zM16 4h1v1h-1zM1 5h1v1h-1zM4 5h1v1h-1zM8 5h1v1h-1zM16 5h1v1h-1zM0 6h1v1h-1zM5 6h3v1h-3zM16 6h1v1h-1zM0 7h1v1h-1zM8 7h1v1h-1zM15 7h1v1h-1zM1 8h1v1h-1zM9 8h1v1h-1zM15 8h1v1h-1zM2 9h1v1h-1zM9 9h1v1h-1zM15 9h1v1h-1zM3 10h1v1h-1zM8 10h1v1h-1zM14 10h1v1h-1zM4 11h5v1h-5zM13 11h1v1h-1zM8 12h5v1h-5z"], ["#3E7CB1", "M11 1h4v1h-4zM10 2h3v1h-3zM15 2h1v1h-1zM10 3h3v1h-3zM15 3h1v1h-1zM10 4h6v1h-6zM2 5h2v1h-2zM9 5h7v1h-7zM1 6h4v1h-4zM8 6h8v1h-8zM1 7h2v1h-2zM9 7h6v1h-6zM2 8h1v1h-1zM14 8h1v1h-1z"], ["#FFFDF7", "M13 2h1v1h-1zM10 8h4v1h-4zM10 9h5v1h-5zM9 10h5v1h-5zM9 11h4v1h-4z"], ["#E8742A", "M17 3h2v1h-2zM17 4h3v1h-3zM9 13h1v1h-1zM12 13h1v1h-1z"], ["#8EC5E8", "M3 7h5v1h-5zM3 8h6v1h-6zM3 9h6v1h-6zM4 10h4v1h-4z"]] },
+  eagle: { w: 28, h: 18, l: [["#1B1C1A", "M0 0h2v1h-2zM26 0h2v1h-2zM0 1h1v1h-1zM2 1h1v1h-1zM25 1h1v1h-1zM27 1h1v1h-1zM0 2h1v1h-1zM3 2h1v1h-1zM24 2h1v1h-1zM27 2h1v1h-1zM1 3h1v1h-1zM4 3h1v1h-1zM23 3h1v1h-1zM26 3h1v1h-1zM1 4h1v1h-1zM5 4h1v1h-1zM11 4h6v1h-6zM22 4h1v1h-1zM26 4h1v1h-1zM2 5h1v1h-1zM6 5h1v1h-1zM10 5h1v1h-1zM17 5h1v1h-1zM21 5h1v1h-1zM25 5h1v1h-1zM2 6h1v1h-1zM7 6h1v1h-1zM9 6h1v1h-1zM12 6h1v1h-1zM15 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM25 6h1v1h-1zM3 7h1v1h-1zM8 7h2v1h-2zM18 7h2v1h-2zM24 7h1v1h-1zM3 8h1v1h-1zM9 8h2v1h-2zM17 8h2v1h-2zM24 8h1v1h-1zM4 9h1v1h-1zM11 9h2v1h-2zM15 9h2v1h-2zM23 9h1v1h-1zM4 10h1v1h-1zM13 10h2v1h-2zM23 10h1v1h-1zM5 11h1v1h-1zM22 11h1v1h-1zM6 12h2v1h-2zM20 12h2v1h-2zM8 13h2v1h-2zM18 13h2v1h-2zM10 14h1v1h-1zM17 14h1v1h-1zM10 15h2v1h-2zM16 15h2v1h-2zM11 16h1v1h-1zM13 16h2v1h-2zM16 16h1v1h-1zM12 17h4v1h-4z"], ["#6B4A30", "M1 1h1v1h-1zM26 1h1v1h-1zM1 2h2v1h-2zM25 2h2v1h-2zM2 3h2v1h-2zM24 3h2v1h-2zM3 4h2v1h-2zM23 4h2v1h-2zM4 5h2v1h-2zM22 5h2v1h-2zM5 6h2v1h-2zM21 6h2v1h-2zM6 7h2v1h-2zM20 7h2v1h-2zM7 8h2v1h-2zM19 8h2v1h-2zM8 9h3v1h-3zM17 9h3v1h-3zM9 10h4v1h-4zM15 10h4v1h-4zM10 11h8v1h-8zM11 12h6v1h-6zM12 13h4v1h-4zM13 14h2v1h-2zM12 15h4v1h-4z"], ["#3B2A1E", "M2 4h1v1h-1zM25 4h1v1h-1zM3 5h1v1h-1zM24 5h1v1h-1zM3 6h2v1h-2zM23 6h2v1h-2zM4 7h2v1h-2zM22 7h2v1h-2zM4 8h3v1h-3zM21 8h3v1h-3zM5 9h3v1h-3zM20 9h3v1h-3zM5 10h4v1h-4zM19 10h4v1h-4zM6 11h4v1h-4zM18 11h4v1h-4zM8 12h3v1h-3zM17 12h3v1h-3zM10 13h2v1h-2zM16 13h2v1h-2zM11 14h2v1h-2zM15 14h2v1h-2z"], ["#FFFDF7", "M11 5h6v1h-6zM10 6h2v1h-2zM13 6h2v1h-2zM16 6h2v1h-2zM10 7h8v1h-8zM11 8h2v1h-2zM15 8h2v1h-2z"], ["#F2C230", "M13 8h2v1h-2zM13 9h2v1h-2zM12 16h1v1h-1zM15 16h1v1h-1z"]] },
+  ace: { w: 24, h: 19, l: [["#2F4A3A", "M0 17h24v1h-24zM0 18h24v1h-24z"], ["#4F8A5B", "M0 15h8v1h-8zM15 15h1v1h-1zM17 15h7v1h-7zM0 16h7v1h-7zM16 16h8v1h-8z"], ["#1B1C1A", "M12 0h1v1h-1zM12 1h1v1h-1zM12 2h1v1h-1zM12 3h1v1h-1zM12 4h1v1h-1zM12 5h1v1h-1zM12 6h1v1h-1zM12 7h1v1h-1zM10 8h3v1h-3zM9 9h1v1h-1zM13 9h1v1h-1zM8 10h1v1h-1zM14 10h1v1h-1zM8 11h1v1h-1zM14 11h1v1h-1zM8 12h1v1h-1zM14 12h1v1h-1zM9 13h1v1h-1zM13 13h1v1h-1zM10 14h3v1h-3zM8 15h7v1h-7zM7 16h9v1h-9z"], ["#B84A32", "M13 1h4v1h-4zM13 2h6v1h-6zM13 3h8v1h-8zM13 4h6v1h-6zM13 5h4v1h-4z"], ["#FFFDF7", "M2 5h1v1h-1zM21 5h1v1h-1zM1 6h3v1h-3zM20 6h3v1h-3zM2 7h1v1h-1zM21 7h1v1h-1zM16 13h1v1h-1zM15 14h3v1h-3zM16 15h1v1h-1zM10 9h3v1h-3zM9 10h5v1h-5zM9 11h5v1h-5zM9 12h5v1h-5zM10 13h3v1h-3z"], ["#8EC5E8", "M6 6h1v1h-1zM7 7h1v1h-1zM8 8h1v1h-1z"]] },
+  flames: { w: 26, h: 18, l: [["#B84A32", "M14 0h1v1h-1zM13 1h3v1h-3zM12 2h4v1h-4zM12 3h5v1h-5zM11 4h6v1h-6zM11 5h6v1h-6zM2 6h1v1h-1zM10 6h7v1h-7zM23 6h1v1h-1zM2 7h2v1h-2zM10 7h3v1h-3zM14 7h3v1h-3zM22 7h2v1h-2zM2 8h3v1h-3zM9 8h3v1h-3zM15 8h3v1h-3zM21 8h3v1h-3zM1 9h5v1h-5zM9 9h3v1h-3zM15 9h3v1h-3zM20 9h5v1h-5zM1 10h5v1h-5zM9 10h3v1h-3zM15 10h3v1h-3zM20 10h5v1h-5zM1 11h3v1h-3zM5 11h2v1h-2zM8 11h3v1h-3zM15 11h3v1h-3zM19 11h2v1h-2zM22 11h3v1h-3zM1 12h2v1h-2zM5 12h2v1h-2zM8 12h3v1h-3zM15 12h3v1h-3zM19 12h2v1h-2zM23 12h2v1h-2zM1 13h2v1h-2zM6 13h5v1h-5zM16 13h4v1h-4zM23 13h2v1h-2zM1 14h2v1h-2zM6 14h4v1h-4zM16 14h4v1h-4zM23 14h2v1h-2zM1 15h2v1h-2zM7 15h3v1h-3zM16 15h3v1h-3zM23 15h2v1h-2zM1 16h2v1h-2zM7 16h3v1h-3zM16 16h3v1h-3zM23 16h2v1h-2zM2 17h1v1h-1zM7 17h1v1h-1zM9 17h2v1h-2zM15 17h2v1h-2zM18 17h1v1h-1zM23 17h1v1h-1z"], ["#E8742A", "M13 7h1v1h-1zM12 8h3v1h-3zM12 9h3v1h-3zM12 10h3v1h-3zM4 11h1v1h-1zM11 11h4v1h-4zM21 11h1v1h-1zM3 12h2v1h-2zM11 12h1v1h-1zM14 12h1v1h-1zM21 12h2v1h-2zM3 13h3v1h-3zM11 13h1v1h-1zM15 13h1v1h-1zM20 13h3v1h-3zM3 14h1v1h-1zM5 14h1v1h-1zM10 14h1v1h-1zM15 14h1v1h-1zM20 14h1v1h-1zM22 14h1v1h-1zM3 15h1v1h-1zM6 15h1v1h-1zM10 15h1v1h-1zM15 15h1v1h-1zM19 15h1v1h-1zM22 15h1v1h-1zM3 16h1v1h-1zM6 16h1v1h-1zM10 16h1v1h-1zM15 16h1v1h-1zM19 16h1v1h-1zM22 16h1v1h-1z"], ["#FFD25A", "M12 12h2v1h-2zM12 13h3v1h-3zM4 14h1v1h-1zM11 14h4v1h-4zM21 14h1v1h-1zM4 15h2v1h-2zM11 15h4v1h-4zM20 15h2v1h-2zM4 16h2v1h-2zM11 16h4v1h-4zM20 16h2v1h-2zM3 17h4v1h-4zM11 17h4v1h-4zM19 17h4v1h-4z"]] },
+  pot: { w: 20, h: 15, l: [["#1B1C1A", "M6 0h8v1h-8zM6 1h1v1h-1zM13 1h1v1h-1zM5 2h10v1h-10zM4 3h1v1h-1zM15 3h1v1h-1zM3 4h1v1h-1zM16 4h1v1h-1zM2 5h1v1h-1zM17 5h1v1h-1zM2 6h1v1h-1zM17 6h1v1h-1zM2 7h1v1h-1zM17 7h1v1h-1zM2 8h1v1h-1zM17 8h1v1h-1zM3 9h1v1h-1zM16 9h1v1h-1zM4 10h1v1h-1zM15 10h1v1h-1zM5 11h10v1h-10zM6 13h1v1h-1zM14 13h1v1h-1zM13 14h1v1h-1z"], ["#F4F0E6", "M7 1h6v1h-6zM5 3h10v1h-10zM4 4h5v1h-5zM10 4h6v1h-6zM3 5h6v1h-6zM11 5h6v1h-6zM3 6h7v1h-7zM11 6h6v1h-6zM3 7h6v1h-6zM11 7h6v1h-6zM3 8h6v1h-6zM10 8h7v1h-7zM4 9h5v1h-5zM11 9h5v1h-5zM5 10h5v1h-5zM11 10h4v1h-4z"], ["#B84A32", "M9 4h1v1h-1zM9 5h2v1h-2zM10 6h1v1h-1zM9 7h2v1h-2zM9 8h1v1h-1zM9 9h2v1h-2zM10 10h1v1h-1zM2 13h2v1h-2zM17 13h2v1h-2zM1 14h2v1h-2zM18 14h1v1h-1z"]] },
+};
+const CONFETTI = "M30 1h2v1h-2zM37 1h2v1h-2zM30 2h2v1h-2zM37 2h2v1h-2zM45 2h2v1h-2zM28 3h3v1h-3zM45 3h2v1h-2zM28 4h3v1h-3zM51 4h3v1h-3zM51 5h5v1h-5zM20 6h2v1h-2zM31 6h3v1h-3zM54 6h2v1h-2zM20 7h2v1h-2zM24 7h2v1h-2zM31 7h3v1h-3zM10 8h2v1h-2zM24 8h2v1h-2zM10 9h2v1h-2zM36 9h3v1h-3zM41 9h2v1h-2zM23 10h2v1h-2zM36 10h3v1h-3zM41 10h5v1h-5zM54 10h2v1h-2zM11 11h2v1h-2zM23 11h2v1h-2zM42 11h4v1h-4zM54 11h2v1h-2zM11 12h2v1h-2zM54 12h2v1h-2zM28 13h12v1h-12zM8 14h2v1h-2zM25 14h18v1h-18zM8 15h2v1h-2zM16 15h2v1h-2zM23 15h22v1h-22zM49 15h2v1h-2zM16 16h2v1h-2zM22 16h24v1h-24zM49 16h2v1h-2zM21 17h26v1h-26zM12 18h2v1h-2zM20 18h28v1h-28zM12 19h2v1h-2zM18 19h31v1h-31zM58 19h2v1h-2zM18 20h32v1h-32zM58 20h2v1h-2zM18 21h32v1h-32zM55 21h2v1h-2zM17 22h34v1h-34zM55 22h2v1h-2zM64 22h2v1h-2zM17 23h34v1h-34zM54 23h2v1h-2zM60 23h2v1h-2zM64 23h2v1h-2zM13 24h2v1h-2zM17 24h34v1h-34zM54 24h2v1h-2zM59 24h3v1h-3zM13 25h2v1h-2zM17 25h34v1h-34zM59 25h2v1h-2zM17 26h37v1h-37zM58 26h2v1h-2zM17 27h37v1h-37zM58 27h2v1h-2zM63 27h2v1h-2zM12 28h2v1h-2zM17 28h34v1h-34zM63 28h2v1h-2zM12 29h2v1h-2zM18 29h32v1h-32zM7 30h2v1h-2zM18 30h32v1h-32zM7 31h2v1h-2zM14 31h2v1h-2zM19 31h30v1h-30zM14 32h3v1h-3zM20 32h28v1h-28zM51 32h2v1h-2zM8 33h2v1h-2zM15 33h2v1h-2zM21 33h26v1h-26zM51 33h2v1h-2zM8 34h2v1h-2zM22 34h24v1h-24zM23 35h22v1h-22zM10 36h2v1h-2zM13 36h2v1h-2zM25 36h18v1h-18zM56 36h2v1h-2zM8 37h4v1h-4zM13 37h2v1h-2zM16 37h2v1h-2zM28 37h14v1h-14zM56 37h2v1h-2zM8 38h3v1h-3zM16 38h2v1h-2zM60 38h2v1h-2zM45 39h2v1h-2zM60 39h2v1h-2zM8 40h2v1h-2zM22 40h2v1h-2zM45 40h2v1h-2zM48 40h2v1h-2zM8 41h2v1h-2zM22 41h2v1h-2zM48 41h2v1h-2zM40 42h2v1h-2zM51 42h2v1h-2zM30 43h2v1h-2zM40 43h2v1h-2zM50 43h3v1h-3zM30 44h2v1h-2zM50 44h2v1h-2zM24 45h2v1h-2zM24 46h2v1h-2zM36 46h2v1h-2zM36 47h2v1h-2z";
+function PixelArt({ k, px = 10, className }) {
+  const a = ART[k]; if (!a) return null;
+  return <svg className={className} width={a.w * px} height={a.h * px} viewBox={`0 0 ${a.w} ${a.h}`} shapeRendering="crispEdges" aria-hidden="true">{a.l.map(([c, d], i) => <path key={i} fill={c} d={d} />)}</svg>;
+}
+function StampMark({ word, sub, color, tilt = -7, small }) {
+  return (
+    <div className={small ? "stampm sm" : "stampm"} style={{ "--sc": color, "--tilt": `${tilt}deg` }}>
+      <span className="sw" style={{ fontSize: small ? 22 : word.length > 9 ? 34 : word.length > 7 ? 40 : 52 }}>{word}</span>
+      {sub && <span className="ss">{sub}</span>}
+    </div>
+  );
+}
+/* A big moment: art, a stamp and confetti over the round. Tap to carry on; it also goes by itself. */
+function Moment({ m, onDone }) {
+  if (!m) return null;
+  return (
+    <div className="moment" key={m.key} role="alertdialog" aria-label={`${m.word} ${m.sub || ""}`} onClick={onDone}>
+      <div className="mstage">
+        <svg className="mconf" width="340" height="255" viewBox="0 0 68 51" shapeRendering="crispEdges" aria-hidden="true"><path fill="#1B1C1A" fillOpacity=".85" transform="translate(.8 .8)" d={CONFETTI} /><path fill={m.bg} d={CONFETTI} /></svg>
+        {m.art && <div className="mart"><PixelArt k={m.art} px={m.art === "pot" ? 9 : 10} /></div>}
+        <div className="mstamp"><StampMark word={m.word} sub={m.sub} color={m.color} tilt={m.tilt} /></div>
+      </div>
+      {m.caption && <div className="mcap"><div>{m.caption}</div><div className="cap" style={{ marginTop: 6, fontWeight: 600 }}>Tap to carry on</div></div>}
     </div>
   );
 }
@@ -1429,7 +1488,7 @@ function GamePanel({ gid, round, people, h, api }) {
                             const on = !!evs[k]; const pen = EVENTS[k].kind === "penalty"; const dud = !pen && k !== "chipin" && round.scores[id][h] != null && netOf(round, id, h) - PAR[h] >= 1;
                             return (
                               <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-                                <button className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => { api.setEvent(id, h, k); setHintK(k); if (!on) { SFX.event(k); if (!dud) api.celebrate(pen ? "penalty" : "bonus", EVENTS[k].name.toUpperCase() + (pen ? "" : "!"), `${people[id].name}: ${EV_FX[k]}`, k); } }}
+                                <button className={`chip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => { api.setEvent(id, h, k); setHintK(k); if (!on) { SFX.event(k); if (!dud) api.rowStamp(id, EVENTS[k].name.toUpperCase(), EVENTS[k].tag.slice(EVENTS[k].name.length).replace(/^[:\s]+/, "").replace("-", "−").toUpperCase(), pen ? "#B84A32" : "#2F4A3A"); } }}
                                   title={dud ? "Needs net par or better" : undefined} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 6px 1px 3px", fontSize: 12, opacity: dud ? 0.4 : 1, textDecoration: dud && on ? "line-through" : "none", ...(on && pen ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : {}) }}>
                                   <EventBadge k={k} px={1} />{EVENTS[k].tag}
                                 </button>
@@ -2354,7 +2413,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
   );
 }
 
-function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
+function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLive }) {
   const can = useContext(LiveCtx);
   const [gtab, setGtab] = useState(round.games[0] || null);
   const h = round.hole; const ids = round.playerIds;
@@ -2388,21 +2447,38 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
       const nr = { ...round, scores: { ...round.scores, [id]: round.scores[id].map((x, i) => (i === h ? val : x)) } };
       const a = puntCalc(round)[id], b = puntCalc(nr)[id];
       const sc = val - PAR[h];
-      if (b.bustAt[h] && !a.bustAt[h]) { SFX.bust(); { const bu = b.bustAt[h]; if (bu.lost + (bu.kept || 0) > 0) api.celebrate("bust", `BUST −${bu.lost}`, bu.kept ? `${people[id].name} · cushion keeps ${bu.kept}` : people[id].name); } }
-      else if (d < 0 && cur != null && sc <= -1 && val !== cur) { SFX.birdie(); api.celebrate("birdie", val === 1 && PAR[h] > 2 ? "HOLE IN ONE!" : sc <= -3 ? "ALBATROSS!" : sc === -2 ? "EAGLE!" : "BIRDIE!", people[id].name); }
-      else if ((b.multAt[h] || 0) > (a.multAt[h] || 0)) SFX.mult();
+      const NAME = people[id].name.toUpperCase();
+      if (b.bustAt[h] && !a.bustAt[h]) {
+        SFX.bust(); const bu = b.bustAt[h];
+        if (bu.lost + (bu.kept || 0) > 0) api.moment({ art: "pot", word: "BUST", sub: `${NAME} −${bu.lost}`, color: "#B84A32", bg: "#F2B8A8", tilt: -9, caption: `Net double bogey for ${people[id].name}. ${bu.lost} gone from the pot${bu.kept ? `; the cushion keeps ${bu.kept}` : ""}. Banked points are safe.` });
+      }
+      else if (d < 0 && cur != null && sc <= -1 && val !== cur) {
+        const kind = val === 1 && PAR[h] > 2 ? "ace" : sc <= -3 ? "albatross" : sc === -2 ? "eagle" : "birdie";
+        (kind === "birdie" ? SFX.birdie : kind === "ace" ? SFX.ace : SFX.eagle)();
+        const M = {
+          birdie: { art: "bird", word: "BIRDIE!", color: "#2F4A3A", bg: "#BFE0F2", tilt: -7, caption: `${people[id].name}: one under on hole ${h + 1}.` },
+          eagle: { art: "eagle", word: "EAGLE!", color: "#1F4E79", bg: "#8EC5E8", tilt: 6, caption: `${people[id].name}: two under on hole ${h + 1}!` },
+          albatross: { art: "eagle", word: "ALBATROSS!", color: "#1F4E79", bg: "#8EC5E8", tilt: -5, caption: `${people[id].name}: three under on hole ${h + 1}. Almost never happens.` },
+          ace: { art: "ace", word: "HOLE IN ONE!", color: "#B84A32", bg: "#CFE6C9", tilt: -5, caption: `A hole in one on hole ${h + 1}! Drinks are on ${people[id].name}.` },
+        }[kind];
+        api.moment({ ...M, sub: NAME });
+      }
+      else if ((b.multAt[h] || 0) > (a.multAt[h] || 0)) {
+        SFX.mult(); const x = b.multAt[h];
+        api.moment({ art: "flames", word: x >= 3 ? "ON FIRE" : "ON A ROLL", sub: `${NAME} x${x}`, color: "#B84A32", bg: "#FFFDF7", tilt: -6, caption: x >= 3 ? `Five net pars or better in a row. ${people[id].name}'s points are tripled until they bank or bust.` : `Three net pars or better in a row. ${people[id].name}'s points are doubled until they bank or bust.` });
+      }
       else if (d > 0) SFX.down(); else SFX.up();
     } catch (e) { /* sound is optional */ }
     api.setScore(id, h, val);
   };
-  const StepBtn = ({ onClick, label, children }) => (
-    <button onClick={onClick} aria-label={label} style={{ width: 36, height: 36, borderRadius: "50%", border: "1.5px solid var(--line)", display: "grid", placeItems: "center", background: "var(--card)", flex: "none" }}>{children}</button>
+  const StepBtn = ({ onClick, label, children, plus }) => (
+    <button onClick={onClick} aria-label={label} style={{ width: 44, height: 44, border: "3px solid var(--night)", display: "grid", placeItems: "center", background: plus ? "var(--pine)" : "var(--chalk)", color: plus ? "#F4F0E6" : "var(--ink)", flex: "none" }}>{children}</button>
   );
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <div className="stripes" style={{ padding: "9px 12px 11px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <button onClick={onBack} style={{ display: "flex", alignItems: "center", fontWeight: 600, opacity: 0.9 }}><ChevronLeft size={22} />{round.course.name}</button>
+          <button onClick={onBack} aria-label="Back" style={{ display: "flex", alignItems: "center", gap: 4, minHeight: 44 }}><ChevronLeft size={22} /><Tiles size={15} /></button>
           <div style={{ display: "flex", gap: 6 }}>
             {can.live && <button onClick={onLive} aria-label="Live round details" style={{ fontWeight: 700, background: "var(--red)", color: "#fff", padding: "5px 9px", display: "flex", alignItems: "center", gap: 5 }}><span className="blink" style={{ width: 7, height: 7, background: "#fff", display: "block" }} />LIVE</button>}
             <button onClick={onRules} style={{ fontWeight: 700, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 11px" }}>Rules</button>
@@ -2410,16 +2486,13 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
-          <button onClick={() => api.setHole(Math.max(0, h - 1))} aria-label="Previous hole" disabled={h === 0} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,.14)", display: "grid", placeItems: "center", opacity: h === 0 ? 0.35 : 1 }}><ChevronLeft size={26} /></button>
+          <button onClick={() => api.setHole(Math.max(0, h - 1))} aria-label="Previous hole" disabled={h === 0} style={{ width: 48, height: 48, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 0 ? 0.35 : 1 }}><ChevronLeft size={26} /></button>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 600 }}>Hole</div>
-            <div className="px" style={{ fontSize: 29, lineHeight: 1, margin: "5px 0" }}>{h + 1}</div>
-            <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 8 }}>
-              <span className="pill" style={{ background: "rgba(255,255,255,.16)", padding: "3px 9px" }}>Par {PAR[h]}</span>
-              <span className="pill" style={{ background: "rgba(255,255,255,.16)", padding: "3px 9px" }}>Stroke index {SI[h]}</span>
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, opacity: 0.9 }}>{round.course.name}</div>
+            <div className="px" aria-label={`Hole ${h + 1}`} style={{ fontSize: 48, lineHeight: 1, margin: "4px 0 6px" }}>{h + 1}</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Par {PAR[h]} · Index {SI[h]}</div>
           </div>
-          <button onClick={goNext} aria-label="Next hole" disabled={h === 17} style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,.14)", display: "grid", placeItems: "center", opacity: h === 17 ? 0.35 : 1 }}><ChevronRight size={26} /></button>
+          <button onClick={goNext} aria-label="Next hole" disabled={h === 17} style={{ width: 48, height: 48, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 17 ? 0.35 : 1 }}><ChevronRight size={26} /></button>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 11 }}>
           {range18.map(i => (
@@ -2438,10 +2511,10 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
           <div key={n.key} role="status" style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px", border: "3px solid var(--night)", background: n.urgent ? "var(--red)" : "var(--flag)", color: n.urgent ? "#fff" : "var(--dk)" }}>
             <div style={{ flex: "none", width: 28, display: "grid", placeItems: "center" }}><Sprite name={n.icon} size={n.isize} className={n.urgent ? "flick" : ""} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.15 }}>{n.title}</div>
-              <div style={{ fontSize: 12, lineHeight: 1.2 }}>{n.text}</div>
+              <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>{n.title}</div>
+              <div style={{ fontSize: 14, lineHeight: 1.3 }}>{n.text}</div>
             </div>
-            {n.action && <button className="chip" onClick={n.action[1]} style={{ flex: "none", padding: "1px 7px", fontSize: 12, color: "var(--ink)" }}>{n.action[0]}</button>}
+            {n.action && <button className="chip" onClick={n.action[1]} style={{ flex: "none", padding: "6px 9px", fontSize: 13, color: "var(--ink)" }}>{n.action[0]}</button>}
           </div>
         ))}
         </div>
@@ -2453,11 +2526,11 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
           const t = totalsFor(round, id); const n = netOf(round, id, h);
           const bust = pc && pc[id].bustAt[h]; const hot = pc && !bust && v != null && pc[id].mult > 1;
           return (
-            <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 6px 6px 9px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
-              <Avatar p={people[id]} size={31} />
+            <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ position: "relative", display: "flex", alignItems: "center", gap: 9, padding: "9px 8px 9px 10px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
+              <Avatar p={people[id]} size={38} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 15 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 10, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
-                <div className="cap">
+                <div style={{ fontWeight: 700, fontSize: 18 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 10, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
+                <div className="cap" style={{ fontSize: 14.5, fontWeight: 600 }}>
                   {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
                   {can.enteredBy && v != null && can.enteredBy(id, h) && <span>{` · by ${can.enteredBy(id, h)}`}</span>}
@@ -2467,9 +2540,10 @@ function Round({ round, people, api, onBack, onFinish, onRules, onLive }) {
                 {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 14 }}>BUST</span></div>}
                 {hot && <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>{Array.from({ length: pc[id].mult }).map((_, k) => <Sprite key={k} name="flame" size={3} className="flick" />)}<span className="px" style={{ fontSize: 14 }}>x{pc[id].mult}</span></div>}
               </div>
+              {rowFx[id] && <div className="rowstamp" key={rowFx[id].key}><StampMark small word={rowFx[id].word} sub={rowFx[id].sub} color={rowFx[id].color} tilt={-8} /></div>}
               <StepBtn onClick={() => bump(id, -1)} label={`${people[id].name} minus one`}><Minus size={22} /></StepBtn>
               <ScoreMark v={v} par={PAR[h]} />
-              <StepBtn onClick={() => bump(id, 1)} label={`${people[id].name} plus one`}><Plus size={22} /></StepBtn>
+              <StepBtn plus onClick={() => bump(id, 1)} label={`${people[id].name} plus one`}><Plus size={22} /></StepBtn>
             </div>
           );
         })}
@@ -3210,7 +3284,9 @@ function Game({ user, cloud, profile, now0, finished }) {
     const p = parseJSON(profile.people, {});
     return { ...p, me: { id: "me", name: "You", color: ME_COLOR, ...(p.me || {}), first: (p.me && p.me.first) || profile.first || "", last: (p.me && p.me.last) || profile.last || "", hi: p.me && p.me.hi != null ? p.me.hi : profile.hi ?? 18, hk: (p.me && p.me.hk) || profile.hcpKind || "", golfId: (p.me && p.me.golfId) || profile.golfId || "" } };
   });
-  const [dark, setDark] = useState(true);
+  // Daylight by default: easiest to read on a sunny course. The choice is remembered on this phone.
+  const [dark, setDarkRaw] = useState(() => { try { return localStorage.getItem("puntaro.dark") === "1"; } catch (e) { return false; } });
+  const setDark = v => { setDarkRaw(v); try { localStorage.setItem("puntaro.dark", v ? "1" : "0"); } catch (e) { /* fine */ } };
   const [friendIds, setFriendIds] = useState(() => (Array.isArray(profile.friendIds) ? profile.friendIds : []));
   const [tab, setTab] = useState("home");
   const [view, setView] = useState("tabs");
@@ -3235,6 +3311,14 @@ function Game({ user, cloud, profile, now0, finished }) {
   };
   const [fx, setFx] = useState(null);
   const [tipK, setTipK] = useState(null);
+  const [moment, setMoment] = useState(null); const momentT = useRef(null);
+  const showMoment = m => { const key = Date.now() + Math.random(); setMoment({ ...m, key }); clearTimeout(momentT.current); momentT.current = setTimeout(() => setMoment(x => (x && x.key === key ? null : x)), 4500); };
+  const [rowFx, setRowFx] = useState({});
+  const rowStamp = (id, word, sub, color) => {
+    const key = Date.now() + Math.random();
+    setRowFx(r => ({ ...r, [id]: { word, sub, color, key } }));
+    setTimeout(() => setRowFx(r => { if (!r[id] || r[id].key !== key) return r; const n = { ...r }; delete n[id]; return n; }), 3100);
+  };
   const celebrate = (kind, text, sub, badge) => { const key = Date.now() + Math.random(); setFx({ key, kind, text, sub, badge }); setTimeout(() => setFx(f => (f && f.key === key ? null : f)), 1500); };
   const [del, setDel] = useState(null);
   const [rulesFrom, setRulesFrom] = useState("tabs");
@@ -3398,7 +3482,7 @@ function Game({ user, cloud, profile, now0, finished }) {
         setShown(sh => { const n = { ...sh }; ids.forEach((id, k) => { n[bankKey(id, h)] = vals[k]; }); return n; });
         if (fresh && liveDoc.scoring === "each") {
           const who = ids.filter((id, k) => vals[k] && id !== live.myId).map(id => (liveDoc.people[id] || {}).name);
-          if (who.length) celebrate("bank", "BANK CALLS", `Hole ${h + 1}: ${who.join(", ")} banked`); else note(`Hole ${h + 1}: nobody else banked. Pots ride on.`);
+          if (who.length) { note(`Hole ${h + 1}: ${who.join(", ")} banked.`); ids.forEach((id, k) => { if (vals[k] && id !== live.myId) rowStamp(id, "BANKED", `HOLE ${h + 1}`, "#2F4A3A"); }); } else note(`Hole ${h + 1}: nobody else banked. Pots ride on.`);
         }
       });
     }
@@ -3475,7 +3559,7 @@ function Game({ user, cloud, profile, now0, finished }) {
   const leaveLive = () => { setLive(null); setLiveSheet(false); };
 
   const api = {
-    celebrate,
+    celebrate, moment: showMoment, rowStamp,
     setScore: (id, h, v) => {
       const prev = round.scores[id][h]; const who = (live && live.myId) || "watch";
       const pairs = [[["s", id, h], v], [["by", bankKey(id, h)], who]];
@@ -3486,7 +3570,7 @@ function Game({ user, cloud, profile, now0, finished }) {
       push(pairs); setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } }));
     },
     setBank: (id, h, v) => {
-      if (v) { SFX.bank(); try { const pot = puntCalc(round)[id].potAt[h]; if (pot > 0) celebrate("bank", `BANKED +${pot}`, people[id].name); } catch (e) { /* fine */ } }
+      if (v) { SFX.bank(); try { const st = puntCalc(round)[id]; const pot = st.potAt[h] != null ? st.potAt[h] : st.pot; if (pot > 0) rowStamp(id, "BANKING", `AFTER HOLE ${h + 1}`, "#2F4A3A"); } catch (e) { /* fine */ } }
       if (live && !live.ended && liveDoc && liveDoc.scoring === "each") {
         // Secret call: stored where only this phone can read it until the reveal.
         setLive(l => ({ ...l, mine: { ...(l.mine || {}), [bankKey(id, h)]: v } }));
@@ -3617,6 +3701,7 @@ function Game({ user, cloud, profile, now0, finished }) {
     <div className={`sg${dark ? " dark" : ""}`} onClickCapture={e => { if (e.target.closest && e.target.closest("button")) setTimeout(() => { if (SFX.sinceSpecial() > 60) SFX.tap(); }, 0); }}>
       <style>{CSS}</style>
       <Celebrate fx={fx} />
+      <Moment m={moment} onDone={() => setMoment(null)} />
       <TipSheet k={tipK} onClose={() => setTipK(null)} />
       {about && <AboutSheet onClose={() => setAbout(false)} />}
       {askNew && round && (
@@ -3650,7 +3735,7 @@ function Game({ user, cloud, profile, now0, finished }) {
         </div>
       )}
       {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
-      {view === "round" && round && <Round round={round} people={roundPeople} api={api} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
+      {view === "round" && round && <Round round={round} people={roundPeople} api={api} rowFx={rowFx} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
       {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} footer={liveFooter()} />}
       {view === "card" && openRec && <Summary record={openRec.rec} round={openRec.round} people={openRec.people} onBack={() => { setOpenRec(null); setView("tabs"); }} />}

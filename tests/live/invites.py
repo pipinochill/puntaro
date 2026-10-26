@@ -28,27 +28,27 @@ async def main():
         check('...and that no one has joined yet', await A.get_by_text('No one has joined with your link yet').count() == 1)
         await A.get_by_text('Invite friends').scroll_into_view_if_needed(); await A.screenshot(path=f'{OUT}/inv_me0.png')
 
-        # Sam opens Pierre's invite link and signs up
+        # Nic opens Pierre's invite link and signs up
         S = await cloud.phone(b, 'u_sam', signed_in=False)
         await fc.open_app(S, URL, q=f'?ref={code}')
-        await signup_google(S, 'Sam')
-        check('Sam sees who invited him', await S.get_by_text('Invited by Pierre S.').count() == 1)
+        await signup_google(S, 'Nic')
+        check('Nic sees who invited him', await S.get_by_text('Invited by Pierre S.').count() == 1)
         await S.screenshot(path=f'{OUT}/inv_setup.png')
         await S.get_by_role('button', name="Let's play").click(); await S.wait_for_timeout(900)
-        check('Sam\'s account records who invited him', (cloud.user('u_sam') or {}).get('referredBy') == code)
-        check('Pierre is credited with Sam', cloud.docs.get(f'refs/{code}/joins/u_sam', {}).get('name') == 'Sam S.')
-        check('The invite code is cleared from Sam\'s phone', 'puntaro.pendingRef' not in await S.evaluate('Object.keys(localStorage)'))
+        check('Nic\'s account records who invited him', (cloud.user('u_sam') or {}).get('referredBy') == code)
+        check('Pierre is credited with Nic', cloud.docs.get(f'refs/{code}/joins/u_sam', {}).get('name') == 'Nic S.')
+        check('The invite code is cleared from Nic\'s phone', 'puntaro.pendingRef' not in await S.evaluate('Object.keys(localStorage)'))
         await fc.open_app(A, URL); await A.get_by_role('button', name='Me', exact=True).click(); await A.wait_for_timeout(600)
-        check('Pierre sees "1 joined with your link: Sam S."', await A.get_by_text('1 joined with your link').count() == 1 and await A.get_by_text('Sam S.').count() >= 1)
+        check('Pierre sees "1 joined with your link: Nic S."', await A.get_by_text('1 joined with your link').count() == 1 and await A.get_by_text('Nic S.').count() >= 1)
         await A.get_by_text('Invite friends').scroll_into_view_if_needed(); await A.screenshot(path=f'{OUT}/inv_me1.png')
 
-        # Priya scans Pierre's live round QR, signs in with an email link (which reopens the app on a fresh page)
+        # Mitch scans Pierre's live round QR, signs in with an email link (which reopens the app on a fresh page)
         await A.get_by_role('button', name='Home', exact=True).click(); await A.wait_for_timeout(300)
         await A.get_by_role('button', name='Start a round').click(); await A.wait_for_timeout(300)
         if await A.get_by_role('button', name='Start a new round').count(): await A.get_by_role('button', name='Start a new round').click(); await A.wait_for_timeout(300)
         check('A brand-new account starts with just you, so Tee off waits for a second player', await A.get_by_role('button', name='Tee off').is_disabled())
         await A.get_by_role('button', name='+ Guest').click(); await A.wait_for_timeout(300)
-        await A.get_by_label('Name', exact=True).fill('Priya'); await A.get_by_label('Last name').fill('Nair'); await fc.fill_hcp(A, '19')
+        await A.get_by_label('Name', exact=True).fill('Mitch'); await A.get_by_label('Last name').fill('Nair'); await fc.fill_hcp(A, '19')
         await A.get_by_role('button', name='Add to round').click(); await A.wait_for_timeout(300)
         await A.get_by_role('switch').last.click(); await A.get_by_label('Your name for the group').fill('Pierre')
         await A.get_by_role('button', name='Tee off live').click(); await A.wait_for_timeout(900)
@@ -61,12 +61,12 @@ async def main():
         await P.get_by_label('Email address').fill('priya@example.com'); await P.get_by_role('button', name='Email me a sign-in link').click(); await P.wait_for_timeout(300)
         await fc.open_app(P, URL, q='?mode=signIn&fakeEmailLink=1')  # she taps the link in her email
         await P.wait_for_timeout(600)
-        check('After the email link, Priya sees who invited her', await P.get_by_text('Invited by Pierre S.').count() == 1)
-        await P.get_by_label('First name').fill('Priya'); await fc.fill_hcp(P, '19')
+        check('After the email link, Mitch sees who invited her', await P.get_by_text('Invited by Pierre S.').count() == 1)
+        await P.get_by_label('First name').fill('Mitch'); await fc.fill_hcp(P, '19')
         await P.get_by_role('button', name="Let's play").click(); await P.wait_for_timeout(1200)
         check('...the live round she scanned is still waiting for her', await P.get_by_text('Which one are you?').count() == 1)
-        check('...and Pierre is credited with Priya', f'refs/{code}/joins/u_priya' in cloud.docs)
-        await P.get_by_role('button', name='Priya').first.click(); await P.wait_for_timeout(600)
+        check('...and Pierre is credited with Mitch', f'refs/{code}/joins/u_priya' in cloud.docs)
+        await P.get_by_role('button', name='Mitch').first.click(); await P.wait_for_timeout(600)
         check('She joins the round', 'u_priya' in cloud.live(live)['claims'].values())
 
         # existing players opening an invite link aren't counted
@@ -76,13 +76,13 @@ async def main():
 
         # attacks
         scode = cloud.user('u_sam')['refCode']; pcode = cloud.user('u_priya')['refCode']
-        check('ATTACK Sam adds himself to Priya\'s invites too: blocked', await raw(S, f'refs/{pcode}/joins/u_sam', 'set', '{"name":"Sam S.","at":0}') == 'denied')
-        check('ATTACK Sam changes who invited him: blocked', await raw(S, 'users/u_sam', 'set', json.dumps({**cloud.user('u_sam'), 'referredBy': pcode})) == 'denied')
+        check('ATTACK Nic adds himself to Mitch\'s invites too: blocked', await raw(S, f'refs/{pcode}/joins/u_sam', 'set', '{"name":"Nic S.","at":0}') == 'denied')
+        check('ATTACK Nic changes who invited him: blocked', await raw(S, 'users/u_sam', 'set', json.dumps({**cloud.user('u_sam'), 'referredBy': pcode})) == 'denied')
         check('ATTACK Pierre counts himself on his own link: blocked', await raw(A, f'refs/{code}/joins/u_pierre', 'set', '{"name":"x","at":0}') == 'denied')
-        check('ATTACK Sam adds a fake person to Pierre\'s list: blocked', await raw(S, f'refs/{code}/joins/u_fake', 'set', '{"name":"Fake","at":0}') == 'denied')
-        check('ATTACK Sam removes himself from Pierre\'s list: blocked', await raw(S, f'refs/{code}/joins/u_sam', 'delete') == 'denied')
-        check('ATTACK Sam takes over Pierre\'s invite code: blocked', await raw(S, f'refs/{code}', 'set', '{"owner":"u_sam","name":"Sam"}') == 'denied' and cloud.docs[f'refs/{code}']['owner'] == 'u_pierre')
-        check('ATTACK Sam reads who joined with Pierre\'s link: blocked', await raw(S, f'refs/{code}/joins/u_priya', 'get') == 'denied')
+        check('ATTACK Nic adds a fake person to Pierre\'s list: blocked', await raw(S, f'refs/{code}/joins/u_fake', 'set', '{"name":"Fake","at":0}') == 'denied')
+        check('ATTACK Nic removes himself from Pierre\'s list: blocked', await raw(S, f'refs/{code}/joins/u_sam', 'delete') == 'denied')
+        check('ATTACK Nic takes over Pierre\'s invite code: blocked', await raw(S, f'refs/{code}', 'set', '{"owner":"u_sam","name":"Nic"}') == 'denied' and cloud.docs[f'refs/{code}']['owner'] == 'u_pierre')
+        check('ATTACK Nic reads who joined with Pierre\'s link: blocked', await raw(S, f'refs/{code}/joins/u_priya', 'get') == 'denied')
         check('Pierre can read his own list', await raw(A, f'refs/{code}/joins/u_priya', 'get') == 'ok')
 
         # an account from before invites gets a code on request

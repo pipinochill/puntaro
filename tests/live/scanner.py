@@ -102,7 +102,7 @@ async def main():
         print('   frames grabbed from the camera:', frames)
         ended = await J.evaluate("window.__lastStream ? window.__lastStream.getTracks().every(t=>t.readyState==='ended') : null")
         check('The camera switches off as soon as it has the code', ended is True, str(ended))
-        await J.get_by_role('button', name='Sam').first.click(); await J.wait_for_timeout(700)
+        await J.get_by_role('button', name='Nic').first.click(); await J.wait_for_timeout(700)
         check('...and joining works from there', (DB[code]['claims'] or {}).get('sam') is not None)
         await J.screenshot(path=f'{OUT}/c_joined.png')
 

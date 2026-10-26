@@ -77,16 +77,16 @@ async def main():
         rules.can_update = orig
 
         # ---- live, everyone scores: cards wait for a player who hasn't moved on, and say who
-        cloud.seed('u_c', fc.profile('Pierre')); cloud.seed('u_s', fc.profile('Sam'))
+        cloud.seed('u_c', fc.profile('Pierre')); cloud.seed('u_s', fc.profile('Nic'))
         C = await cloud.phone(b, 'u_c'); await fc.open_app(C, URL); await start(C, 'Everyone scores')
         code = [k.split('/')[1] for k in cloud.docs if k.startswith('rounds/') and k.count('/') == 1][-1]
         S = await cloud.phone(b, 'u_s'); await fc.open_app(S, URL, q=f'?join={code}'); await S.wait_for_timeout(500)
-        await S.get_by_role('button', name='Sam').first.click(); await S.wait_for_timeout(700)
+        await S.get_by_role('button', name='Nic').first.click(); await S.wait_for_timeout(700)
         await to_cards(C, 'Pierre')
-        check('Everyone scores: cards wait while Sam is still on an earlier hole', await C.get_by_role('dialog', name='Draw your cards').count() == 0)
-        check('...and the page says who it\'s waiting for', await C.get_by_text('Waiting for Sam to move on.').count() == 1)
+        check('Everyone scores: cards wait while Nic is still on an earlier hole', await C.get_by_role('dialog', name='Draw your cards').count() == 0)
+        check('...and the page says who it\'s waiting for', await C.get_by_text('Waiting for Nic to move on.').count() == 1)
         await C.screenshot(path=f'{OUT}/cards_wait.png')
-        await to_cards(S, 'Sam')
+        await to_cards(S, 'Nic')
         await C.wait_for_timeout(1500)
         check('...then the cards come up on both phones', await C.get_by_role('dialog', name='Draw your cards').count() == 1 and await S.get_by_role('dialog', name='Draw your cards').count() == 1)
 

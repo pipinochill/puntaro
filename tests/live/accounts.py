@@ -113,15 +113,15 @@ async def main():
 
         # ---------- someone else's account is off limits
         B = await cloud.phone(b, 'u_sam', email='sam@example.com')
-        await fc.open_app(B, URL, setup=('Sam', 8.4))
+        await fc.open_app(B, URL, setup=('Nic', 8.4))
         check('A second person gets their own empty account', await B.get_by_text('No rounds yet').count() == 1)
         raw = lambda pg, path, op, data='null': pg.evaluate(f"window.__fake.raw({json.dumps(path)},{json.dumps(op)},{data}).then(()=>'ok',()=>'denied')")
-        check('ATTACK Sam reads Pierre\'s profile: blocked', await raw(B, 'users/u_pierre', 'get') == 'denied')
+        check('ATTACK Nic reads Pierre\'s profile: blocked', await raw(B, 'users/u_pierre', 'get') == 'denied')
         rid = list(cloud.finished('u_pierre'))[0]
-        check('ATTACK Sam reads Pierre\'s finished rounds: blocked', await raw(B, f'users/u_pierre/rounds/{rid}', 'get') == 'denied')
-        check('ATTACK Sam overwrites Pierre\'s stats: blocked', await raw(B, f'users/u_pierre/rounds/{rid}', 'set', '{"players":{}}') == 'denied' and cloud.finished('u_pierre')[rid].get('players'))
-        check('ATTACK Sam deletes Pierre\'s round in progress: blocked', await raw(B, 'users/u_pierre/state/now', 'delete') == 'denied')
-        check('Sam can read his own profile', await raw(B, 'users/u_sam', 'get') == 'ok')
+        check('ATTACK Nic reads Pierre\'s finished rounds: blocked', await raw(B, f'users/u_pierre/rounds/{rid}', 'get') == 'denied')
+        check('ATTACK Nic overwrites Pierre\'s stats: blocked', await raw(B, f'users/u_pierre/rounds/{rid}', 'set', '{"players":{}}') == 'denied' and cloud.finished('u_pierre')[rid].get('players'))
+        check('ATTACK Nic deletes Pierre\'s round in progress: blocked', await raw(B, 'users/u_pierre/state/now', 'delete') == 'denied')
+        check('Nic can read his own profile', await raw(B, 'users/u_sam', 'get') == 'ok')
 
         # ---------- sign out clears the phone
         await A.get_by_role('button', name='Me', exact=True).click(); await A.wait_for_timeout(300)
