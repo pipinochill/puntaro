@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.64";
+const APP_VERSION = "0.65";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3522,6 +3522,8 @@ function Game({ user, cloud, profile, now0, finished }) {
   const [friendIds, setFriendIds] = useState(() => (Array.isArray(profile.friendIds) ? profile.friendIds : []));
   const [tab, setTab] = useState("home");
   const [view, setView] = useState("tabs");
+  // Every new screen (a round you just teed off, a tab, the rules) opens at the top, not wherever the last one was scrolled to.
+  useEffect(() => { try { window.scrollTo(0, 0); } catch (e) { /* fine */ } }, [view, tab]);
   const [round, setRound] = useState(() => { if (start.round) applyHoles(start.round.holes || null); return start.round || null; });
   // Finished rounds live in your account (users/{uid}/rounds). Removing one from the list only hides it: stats keep it.
   const recent = finished.filter(r => !r.hidden).sort((a, b) => b.at - a.at).map(r => ({ id: r.id, course: r.course, when: fmtDay(r.at), gross: r.gross, net: r.net, note: r.note, hasCard: !!r.round }));
