@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.65";
+const APP_VERSION = "0.66";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1059,6 +1059,23 @@ const CSS = `
 @keyframes mbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
 .mstamp{position:absolute;left:0;right:0;top:200px;display:flex;justify-content:center;animation-delay:.25s;}
 .mstage.noart .mstamp{top:140px;}
+.moment.mix{background:rgba(27,28,26,.8);justify-content:flex-start;gap:10px;padding-top:max(14px,env(safe-area-inset-top));overflow-y:auto;}
+.moment.mix .mstage{height:300px;width:272px;flex:none;}
+.moment.mix .mstage>*{transform-origin:top center;}
+.moment.mix .mconf{top:48px;width:272px;height:204px;}
+.moment.mix .mart{top:0;zoom:.8;}
+.moment.mix .mstamp{top:160px;zoom:.8;}
+.mtitle{font-family:Silkscreen,monospace;font-weight:700;font-size:20px;color:#FBF6EA;text-shadow:3px 3px 0 #1B1C1A;}
+.mpanel{max-width:350px;width:100%;border:3px solid #1B1C1A;box-shadow:5px 5px 0 #1B1C1A;padding:6px 10px;animation:mfade .3s steps(3) .5s both;}
+.mpanel.also{background:#DCEBF3;}
+.mpanel.ouch{background:#F6DCD4;animation-delay:.9s;}
+.mph{font-family:Silkscreen,monospace;font-weight:700;font-size:13px;color:#1F4E79;}
+.mpanel.ouch .mph{color:#B84A32;}
+.mrow{display:flex;align-items:center;gap:12px;padding:5px 2px;}
+.mrart{width:60px;flex:none;display:flex;justify-content:center;}
+.mrw{font-family:Silkscreen,monospace;font-weight:700;font-size:16px;line-height:1.1;}
+.mrn{font-size:15px;font-weight:700;color:#1B1C1A;}
+.mtap{font-size:14px;font-weight:700;color:#FBF6EA;margin-top:4px;}
 .mcap{max-width:326px;width:100%;background:#FBF6EA;color:#1B1C1A;border:3px solid #1B1C1A;box-shadow:5px 5px 0 #1B1C1A;padding:12px 14px;text-align:center;font-size:16px;font-weight:600;line-height:1.35;}
 .rowstamp{position:absolute;right:58px;top:50%;transform:translateY(-50%);z-index:3;pointer-events:none;animation:rsout .4s steps(4) 2.6s forwards;}
 @keyframes rsout{to{opacity:0}}
@@ -1330,6 +1347,7 @@ function Celebrate({ fx }) {
 const ART = {
   bird: { w: 20, h: 14, l: [["#1B1C1A", "M11 0h4v1h-4zM10 1h1v1h-1zM15 1h1v1h-1zM9 2h1v1h-1zM14 2h1v1h-1zM16 2h1v1h-1zM9 3h1v1h-1zM13 3h2v1h-2zM16 3h1v1h-1zM2 4h2v1h-2zM9 4h1v1h-1zM16 4h1v1h-1zM1 5h1v1h-1zM4 5h1v1h-1zM8 5h1v1h-1zM16 5h1v1h-1zM0 6h1v1h-1zM5 6h3v1h-3zM16 6h1v1h-1zM0 7h1v1h-1zM8 7h1v1h-1zM15 7h1v1h-1zM1 8h1v1h-1zM9 8h1v1h-1zM15 8h1v1h-1zM2 9h1v1h-1zM9 9h1v1h-1zM15 9h1v1h-1zM3 10h1v1h-1zM8 10h1v1h-1zM14 10h1v1h-1zM4 11h5v1h-5zM13 11h1v1h-1zM8 12h5v1h-5z"], ["#3E7CB1", "M11 1h4v1h-4zM10 2h3v1h-3zM15 2h1v1h-1zM10 3h3v1h-3zM15 3h1v1h-1zM10 4h6v1h-6zM2 5h2v1h-2zM9 5h7v1h-7zM1 6h4v1h-4zM8 6h8v1h-8zM1 7h2v1h-2zM9 7h6v1h-6zM2 8h1v1h-1zM14 8h1v1h-1z"], ["#FFFDF7", "M13 2h1v1h-1zM10 8h4v1h-4zM10 9h5v1h-5zM9 10h5v1h-5zM9 11h4v1h-4z"], ["#E8742A", "M17 3h2v1h-2zM17 4h3v1h-3zM9 13h1v1h-1zM12 13h1v1h-1z"], ["#8EC5E8", "M3 7h5v1h-5zM3 8h6v1h-6zM3 9h6v1h-6zM4 10h4v1h-4z"]] },
   eagle: { w: 28, h: 18, l: [["#1B1C1A", "M0 0h2v1h-2zM26 0h2v1h-2zM0 1h1v1h-1zM2 1h1v1h-1zM25 1h1v1h-1zM27 1h1v1h-1zM0 2h1v1h-1zM3 2h1v1h-1zM24 2h1v1h-1zM27 2h1v1h-1zM1 3h1v1h-1zM4 3h1v1h-1zM23 3h1v1h-1zM26 3h1v1h-1zM1 4h1v1h-1zM5 4h1v1h-1zM11 4h6v1h-6zM22 4h1v1h-1zM26 4h1v1h-1zM2 5h1v1h-1zM6 5h1v1h-1zM10 5h1v1h-1zM17 5h1v1h-1zM21 5h1v1h-1zM25 5h1v1h-1zM2 6h1v1h-1zM7 6h1v1h-1zM9 6h1v1h-1zM12 6h1v1h-1zM15 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM25 6h1v1h-1zM3 7h1v1h-1zM8 7h2v1h-2zM18 7h2v1h-2zM24 7h1v1h-1zM3 8h1v1h-1zM9 8h2v1h-2zM17 8h2v1h-2zM24 8h1v1h-1zM4 9h1v1h-1zM11 9h2v1h-2zM15 9h2v1h-2zM23 9h1v1h-1zM4 10h1v1h-1zM13 10h2v1h-2zM23 10h1v1h-1zM5 11h1v1h-1zM22 11h1v1h-1zM6 12h2v1h-2zM20 12h2v1h-2zM8 13h2v1h-2zM18 13h2v1h-2zM10 14h1v1h-1zM17 14h1v1h-1zM10 15h2v1h-2zM16 15h2v1h-2zM11 16h1v1h-1zM13 16h2v1h-2zM16 16h1v1h-1zM12 17h4v1h-4z"], ["#6B4A30", "M1 1h1v1h-1zM26 1h1v1h-1zM1 2h2v1h-2zM25 2h2v1h-2zM2 3h2v1h-2zM24 3h2v1h-2zM3 4h2v1h-2zM23 4h2v1h-2zM4 5h2v1h-2zM22 5h2v1h-2zM5 6h2v1h-2zM21 6h2v1h-2zM6 7h2v1h-2zM20 7h2v1h-2zM7 8h2v1h-2zM19 8h2v1h-2zM8 9h3v1h-3zM17 9h3v1h-3zM9 10h4v1h-4zM15 10h4v1h-4zM10 11h8v1h-8zM11 12h6v1h-6zM12 13h4v1h-4zM13 14h2v1h-2zM12 15h4v1h-4z"], ["#3B2A1E", "M2 4h1v1h-1zM25 4h1v1h-1zM3 5h1v1h-1zM24 5h1v1h-1zM3 6h2v1h-2zM23 6h2v1h-2zM4 7h2v1h-2zM22 7h2v1h-2zM4 8h3v1h-3zM21 8h3v1h-3zM5 9h3v1h-3zM20 9h3v1h-3zM5 10h4v1h-4zM19 10h4v1h-4zM6 11h4v1h-4zM18 11h4v1h-4zM8 12h3v1h-3zM17 12h3v1h-3zM10 13h2v1h-2zM16 13h2v1h-2zM11 14h2v1h-2zM15 14h2v1h-2z"], ["#FFFDF7", "M11 5h6v1h-6zM10 6h2v1h-2zM13 6h2v1h-2zM16 6h2v1h-2zM10 7h8v1h-8zM11 8h2v1h-2zM15 8h2v1h-2z"], ["#F2C230", "M13 8h2v1h-2zM13 9h2v1h-2zM12 16h1v1h-1zM15 16h1v1h-1z"]] },
+  albatross: { w: 40, h: 18, l: [["#1B1C1A", "M18 0h4v1h-4zM17 1h1v1h-1zM22 1h1v1h-1zM10 2h7v1h-7zM18 2h1v1h-1zM22 2h1v1h-1zM9 3h1v1h-1zM23 3h1v1h-1zM11 4h4v1h-4zM22 4h1v1h-1zM26 4h3v1h-3zM7 5h4v1h-4zM14 5h3v1h-3zM22 5h1v1h-1zM24 5h2v1h-2zM29 5h4v1h-4zM4 6h3v1h-3zM16 6h1v1h-1zM22 6h2v1h-2zM33 6h3v1h-3zM1 7h3v1h-3zM36 7h3v1h-3zM0 8h1v1h-1zM39 8h1v1h-1zM1 9h2v1h-2zM37 9h2v1h-2zM3 10h4v1h-4zM33 10h4v1h-4zM7 11h6v1h-6zM27 11h6v1h-6zM13 12h4v1h-4zM23 12h4v1h-4zM17 13h1v1h-1zM22 13h1v1h-1zM18 14h4v1h-4z"], ["#FFFDF7", "M18 1h4v1h-4zM19 2h3v1h-3zM17 3h6v1h-6zM16 4h6v1h-6zM17 5h5v1h-5zM11 6h3v1h-3zM17 6h5v1h-5zM26 6h3v1h-3zM8 7h8v1h-8zM18 7h4v1h-4zM24 7h8v1h-8zM6 8h28v1h-28zM9 9h22v1h-22zM13 10h14v1h-14zM15 11h10v1h-10zM17 12h6v1h-6zM18 13h4v1h-4z"], ["#3A3D40", "M17 2h1v1h-1zM11 5h3v1h-3zM26 5h3v1h-3zM7 6h4v1h-4zM14 6h2v1h-2zM24 6h2v1h-2zM29 6h4v1h-4zM4 7h4v1h-4zM16 7h2v1h-2zM22 7h2v1h-2zM32 7h4v1h-4zM1 8h5v1h-5zM34 8h5v1h-5zM3 9h6v1h-6zM31 9h6v1h-6zM7 10h6v1h-6zM27 10h6v1h-6zM13 11h2v1h-2zM25 11h2v1h-2z"], ["#F2C230", "M11 3h6v1h-6zM15 4h1v1h-1z"], ["#E8742A", "M10 3h1v1h-1zM10 4h1v1h-1zM18 15h1v1h-1zM21 15h1v1h-1z"], ["#3E7CB1", "M2 17h2v1h-2zM12 17h3v1h-3zM26 17h3v1h-3zM35 17h2v1h-2z"], ["#8EC5E8", "M2 16h2v1h-2zM12 16h3v1h-3zM26 16h3v1h-3zM35 16h2v1h-2zM1 17h1v1h-1zM4 17h1v1h-1zM11 17h1v1h-1zM15 17h1v1h-1zM25 17h1v1h-1zM29 17h1v1h-1zM34 17h1v1h-1zM37 17h1v1h-1z"]] },
   ace: { w: 24, h: 19, l: [["#2F4A3A", "M0 17h24v1h-24zM0 18h24v1h-24z"], ["#4F8A5B", "M0 15h8v1h-8zM15 15h1v1h-1zM17 15h7v1h-7zM0 16h7v1h-7zM16 16h8v1h-8z"], ["#1B1C1A", "M12 0h1v1h-1zM12 1h1v1h-1zM12 2h1v1h-1zM12 3h1v1h-1zM12 4h1v1h-1zM12 5h1v1h-1zM12 6h1v1h-1zM12 7h1v1h-1zM10 8h3v1h-3zM9 9h1v1h-1zM13 9h1v1h-1zM8 10h1v1h-1zM14 10h1v1h-1zM8 11h1v1h-1zM14 11h1v1h-1zM8 12h1v1h-1zM14 12h1v1h-1zM9 13h1v1h-1zM13 13h1v1h-1zM10 14h3v1h-3zM8 15h7v1h-7zM7 16h9v1h-9z"], ["#B84A32", "M13 1h4v1h-4zM13 2h6v1h-6zM13 3h8v1h-8zM13 4h6v1h-6zM13 5h4v1h-4z"], ["#FFFDF7", "M2 5h1v1h-1zM21 5h1v1h-1zM1 6h3v1h-3zM20 6h3v1h-3zM2 7h1v1h-1zM21 7h1v1h-1zM16 13h1v1h-1zM15 14h3v1h-3zM16 15h1v1h-1zM10 9h3v1h-3zM9 10h5v1h-5zM9 11h5v1h-5zM9 12h5v1h-5zM10 13h3v1h-3z"], ["#8EC5E8", "M6 6h1v1h-1zM7 7h1v1h-1zM8 8h1v1h-1z"]] },
   flames: { w: 26, h: 18, l: [["#B84A32", "M14 0h1v1h-1zM13 1h3v1h-3zM12 2h4v1h-4zM12 3h5v1h-5zM11 4h6v1h-6zM11 5h6v1h-6zM2 6h1v1h-1zM10 6h7v1h-7zM23 6h1v1h-1zM2 7h2v1h-2zM10 7h3v1h-3zM14 7h3v1h-3zM22 7h2v1h-2zM2 8h3v1h-3zM9 8h3v1h-3zM15 8h3v1h-3zM21 8h3v1h-3zM1 9h5v1h-5zM9 9h3v1h-3zM15 9h3v1h-3zM20 9h5v1h-5zM1 10h5v1h-5zM9 10h3v1h-3zM15 10h3v1h-3zM20 10h5v1h-5zM1 11h3v1h-3zM5 11h2v1h-2zM8 11h3v1h-3zM15 11h3v1h-3zM19 11h2v1h-2zM22 11h3v1h-3zM1 12h2v1h-2zM5 12h2v1h-2zM8 12h3v1h-3zM15 12h3v1h-3zM19 12h2v1h-2zM23 12h2v1h-2zM1 13h2v1h-2zM6 13h5v1h-5zM16 13h4v1h-4zM23 13h2v1h-2zM1 14h2v1h-2zM6 14h4v1h-4zM16 14h4v1h-4zM23 14h2v1h-2zM1 15h2v1h-2zM7 15h3v1h-3zM16 15h3v1h-3zM23 15h2v1h-2zM1 16h2v1h-2zM7 16h3v1h-3zM16 16h3v1h-3zM23 16h2v1h-2zM2 17h1v1h-1zM7 17h1v1h-1zM9 17h2v1h-2zM15 17h2v1h-2zM18 17h1v1h-1zM23 17h1v1h-1z"], ["#E8742A", "M13 7h1v1h-1zM12 8h3v1h-3zM12 9h3v1h-3zM12 10h3v1h-3zM4 11h1v1h-1zM11 11h4v1h-4zM21 11h1v1h-1zM3 12h2v1h-2zM11 12h1v1h-1zM14 12h1v1h-1zM21 12h2v1h-2zM3 13h3v1h-3zM11 13h1v1h-1zM15 13h1v1h-1zM20 13h3v1h-3zM3 14h1v1h-1zM5 14h1v1h-1zM10 14h1v1h-1zM15 14h1v1h-1zM20 14h1v1h-1zM22 14h1v1h-1zM3 15h1v1h-1zM6 15h1v1h-1zM10 15h1v1h-1zM15 15h1v1h-1zM19 15h1v1h-1zM22 15h1v1h-1zM3 16h1v1h-1zM6 16h1v1h-1zM10 16h1v1h-1zM15 16h1v1h-1zM19 16h1v1h-1zM22 16h1v1h-1z"], ["#FFD25A", "M12 12h2v1h-2zM12 13h3v1h-3zM4 14h1v1h-1zM11 14h4v1h-4zM21 14h1v1h-1zM4 15h2v1h-2zM11 15h4v1h-4zM20 15h2v1h-2zM4 16h2v1h-2zM11 16h4v1h-4zM20 16h2v1h-2zM3 17h4v1h-4zM11 17h4v1h-4zM19 17h4v1h-4z"]] },
   pot: { w: 20, h: 15, l: [["#1B1C1A", "M6 0h8v1h-8zM6 1h1v1h-1zM13 1h1v1h-1zM5 2h10v1h-10zM4 3h1v1h-1zM15 3h1v1h-1zM3 4h1v1h-1zM16 4h1v1h-1zM2 5h1v1h-1zM17 5h1v1h-1zM2 6h1v1h-1zM17 6h1v1h-1zM2 7h1v1h-1zM17 7h1v1h-1zM2 8h1v1h-1zM17 8h1v1h-1zM3 9h1v1h-1zM16 9h1v1h-1zM4 10h1v1h-1zM15 10h1v1h-1zM5 11h10v1h-10zM6 13h1v1h-1zM14 13h1v1h-1zM13 14h1v1h-1z"], ["#F4F0E6", "M7 1h6v1h-6zM5 3h10v1h-10zM4 4h5v1h-5zM10 4h6v1h-6zM3 5h6v1h-6zM11 5h6v1h-6zM3 6h7v1h-7zM11 6h6v1h-6zM3 7h6v1h-6zM11 7h6v1h-6zM3 8h6v1h-6zM10 8h7v1h-7zM4 9h5v1h-5zM11 9h5v1h-5zM5 10h5v1h-5zM11 10h4v1h-4z"], ["#B84A32", "M9 4h1v1h-1zM9 5h2v1h-2zM10 6h1v1h-1zM9 7h2v1h-2zM9 8h1v1h-1zM9 9h2v1h-2zM10 10h1v1h-1zM2 13h2v1h-2zM17 13h2v1h-2zM1 14h2v1h-2zM18 14h1v1h-1z"]] },
@@ -1350,7 +1368,7 @@ function StampMark({ word, sub, color, tilt = -7, small }) {
 const PLAYED = new Map(); // "round seed:hole" -> what was celebrated, so going back and forward doesn't replay it
 const GOOD = {
   ace: { rank: 6, art: "ace", word: "HOLE IN ONE!", label: "Hole in one", color: "#B84A32", bg: "#CFE6C9", tilt: -5, sound: "ace" },
-  albatross: { rank: 5, art: "eagle", word: "ALBATROSS!", label: "Albatross", color: "#1F4E79", bg: "#8EC5E8", tilt: -5, sound: "eagle" },
+  albatross: { rank: 5, art: "albatross", word: "ALBATROSS!", label: "Albatross", color: "#1F4E79", bg: "#8EC5E8", tilt: -5, sound: "eagle" },
   eagle: { rank: 4, art: "eagle", word: "EAGLE!", label: "Eagle", color: "#1F4E79", bg: "#8EC5E8", tilt: 6, sound: "eagle" },
   birdie: { rank: 3, art: "bird", word: "BIRDIE!", label: "Birdie", color: "#2F4A3A", bg: "#BFE0F2", tilt: -7, sound: "birdie" },
   fire: { rank: 2, art: "flames", word: "ON FIRE", label: "On fire x3", color: "#B84A32", bg: "#FFFDF7", tilt: -6, sound: "mult" },
@@ -1369,33 +1387,54 @@ function scoreName(v, par) {
   if (d === 3) return { label: "TRIPLE BOGEY", bg: "#E89A86" };
   return { label: `+${d}`, bg: "#E89A86" };
 }
+// One screen per hole: the best moment big, then the other nice ones ("Also") and any busts ("Ouch") as rows underneath.
+const ROW_ART = { birdie: "bird", fire: "flames", roll: "flames", eagle: "eagle", albatross: "albatross", ace: "ace" };
 function holeScreens({ good, bad }, hh, people) {
   const nm = id => (people[id] ? people[id].name : "Someone");
-  const out = [];
+  const ouch = bad.map(e => ({ art: "pot", word: `BUST −${e.lost}`, name: nm(e.id), note: e.kept ? `cushion keeps ${e.kept}` : "" }));
   if (good.length) {
     const g = [...good].sort((a, b) => GOOD[b.kind].rank - GOOD[a.kind].rank); const top = GOOD[g[0].kind];
-    const who = [...new Set(g.map(e => e.id))];
-    out.push({ ...top, sub: who.length === 1 ? `${nm(who[0]).toUpperCase()}${g[0].x ? ` x${g[0].x}` : ""}` : `${nm(g[0].id).toUpperCase()} +${who.length - 1} MORE`,
-      caption: g.length === 1 && g[0].kind === "ace" ? [`A hole in one on hole ${hh + 1}! Drinks are on ${nm(g[0].id)}.`]
-        : [`Hole ${hh + 1}`, ...g.map(e => `${GOOD[e.kind].label}: ${nm(e.id)}`)] });
+    const also = [];
+    g.slice(1).forEach(e => { // the same thing for several players goes on one row: "You, Nic & Mitch"
+      const word = `${GOOD[e.kind].word.replace("!", "")}${e.x ? ` x${e.x}` : ""}`.trim();
+      const r = also.find(x => x.word === word);
+      if (r) r.names.push(nm(e.id)); else also.push({ art: ROW_ART[e.kind], word, names: [nm(e.id)], color: GOOD[e.kind].color });
+    });
+    also.forEach(r => { r.name = r.names.length > 1 ? `${r.names.slice(0, -1).join(", ")} & ${r.names[r.names.length - 1]}` : r.names[0]; });
+    const one = !also.length && !ouch.length;
+    return [{ ...top, sub: `${nm(g[0].id).toUpperCase()}${g[0].x ? ` x${g[0].x}` : ""}`, also, ouch, title: `HOLE ${hh + 1}`,
+      caption: !one ? null : g[0].kind === "ace" ? [`A hole in one on hole ${hh + 1}! Drinks are on ${nm(g[0].id)}.`] : [`Hole ${hh + 1}`, `${top.label}: ${nm(g[0].id)}`] }];
   }
   if (bad.length) {
-    out.push({ art: "pot", word: bad.length > 1 ? "BUSTS" : "BUST", color: "#B84A32", bg: "#F2B8A8", tilt: -9, sound: "bust",
+    return [{ art: "pot", word: bad.length > 1 ? "BUSTS" : "BUST", color: "#B84A32", bg: "#F2B8A8", tilt: -9, sound: "bust",
       sub: bad.length === 1 ? `${nm(bad[0].id).toUpperCase()} −${bad[0].lost}` : bad.length === 2 ? bad.map(e => nm(e.id).toUpperCase()).join(" & ") : `${bad.length} PLAYERS`,
-      caption: [`Hole ${hh + 1}: net double bogey`, ...bad.map(e => `${nm(e.id)} −${e.lost}${e.kept ? ` (cushion keeps ${e.kept})` : ""}`), "Banked points are safe."] });
+      caption: [`Hole ${hh + 1}: net double bogey`, ...bad.map(e => `${nm(e.id)} −${e.lost}${e.kept ? ` (cushion keeps ${e.kept})` : ""}`), "Banked points are safe."] }];
   }
-  return out;
+  return [];
+}
+function MomentRow({ r }) {
+  return (
+    <div className="mrow">
+      <div className="mrart"><PixelArt k={r.art} px={r.art === "albatross" ? 1.4 : r.art === "eagle" ? 1.6 : 2.2} /></div>
+      <div style={{ minWidth: 0 }}><div className="mrw" style={{ color: r.color || "#B84A32" }}>{r.word}</div><div className="mrn">{r.name}{r.note ? ` · ${r.note}` : ""}</div></div>
+    </div>
+  );
 }
 /* A big moment: art, a stamp and confetti over the round. Tap to carry on; it also goes by itself. */
 function Moment({ m, more, onDone }) {
   if (!m) return null;
+  const mix = !!((m.also && m.also.length) || (m.ouch && m.ouch.length));
   return (
-    <div className="moment" key={m.key} role="alertdialog" aria-label={`${m.word} ${m.sub || ""}`} onClick={onDone}>
+    <div className={mix ? "moment mix" : "moment"} key={m.key} role="alertdialog" aria-label={`${m.word} ${m.sub || ""}`} onClick={onDone}>
+      {mix && <div className="mtitle">{m.title}</div>}
       <div className="mstage">
         <svg className="mconf" width="340" height="255" viewBox="0 0 68 51" shapeRendering="crispEdges" aria-hidden="true"><path fill="#1B1C1A" fillOpacity=".85" transform="translate(.8 .8)" d={CONFETTI} /><path fill={m.bg} d={CONFETTI} /></svg>
         {m.art && <div className="mart"><PixelArt k={m.art} px={m.art === "pot" ? 9 : 10} /></div>}
         <div className="mstamp"><StampMark word={m.word} sub={m.sub} color={m.color} tilt={m.tilt} /></div>
       </div>
+      {mix && m.also.length > 0 && <div className="mpanel also"><div className="mph">ALSO</div>{m.also.map((r, i) => <MomentRow key={i} r={r} />)}</div>}
+      {mix && m.ouch.length > 0 && <div className="mpanel ouch"><div className="mph">OUCH</div>{m.ouch.map((r, i) => <MomentRow key={i} r={r} />)}<div className="mrn" style={{ fontWeight: 600, padding: "2px 0 2px" }}>Banked points are safe.</div></div>}
+      {mix && <div className="mtap">{more ? "Tap for the next one" : "Tap to carry on"}</div>}
       {m.caption && <div className="mcap">{(Array.isArray(m.caption) ? m.caption : [m.caption]).map((l, i) => <div key={i} style={i === 0 && Array.isArray(m.caption) && m.caption.length > 1 ? { fontWeight: 700 } : null}>{l}</div>)}<div className="cap" style={{ marginTop: 6, fontWeight: 600 }}>{more ? "Tap for the next one" : "Tap to carry on"}</div></div>}
     </div>
   );
@@ -3619,8 +3658,11 @@ function Game({ user, cloud, profile, now0, finished }) {
   useEffect(() => {
     if (!moment) return undefined;
     try { if (moment.sound && SFX[moment.sound]) SFX[moment.sound](); } catch (e) { /* sound is optional */ }
-    const k = moment.key; const t = setTimeout(() => setMoments(q => (q[0] && q[0].key === k ? q.slice(1) : q)), 4500);
-    return () => clearTimeout(t);
+    const busts = moment.ouch && moment.ouch.length && moment.sound !== "bust";
+    const b = busts ? setTimeout(() => { try { SFX.bust(); } catch (e) { /* optional */ } }, 1300) : null;
+    const long = (moment.also && moment.also.length) || busts;
+    const k = moment.key; const t = setTimeout(() => setMoments(q => (q[0] && q[0].key === k ? q.slice(1) : q)), long ? 5000 : 4500);
+    return () => { clearTimeout(t); if (b) clearTimeout(b); };
   }, [moment && moment.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [rowFx, setRowFx] = useState({});
   const rowStamp = (id, word, sub, color) => {

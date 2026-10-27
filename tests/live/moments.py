@@ -1,4 +1,4 @@
-"""Big moments play when you leave a hole, for final scores: good news on one screen, then the bad.
+"""Big moments play when you leave a hole, for final scores: everything from the hole on one screen.
 Small stamps on the row, daylight by default, sample players, sounds/vibration."""
 import asyncio, sys
 from playwright.async_api import async_playwright
@@ -53,14 +53,13 @@ async def main():
         await nxt()
         if await A.get_by_role('dialog', name='Nearest the pin').count(): await A.get_by_role('dialog').get_by_role('button', name='Nobody hit the green').click(); await A.wait_for_timeout(700)
         t1 = await mom.inner_text() if await mom.count() else ''
-        check('All the good news comes first, on one screen', 'BIRDIE!' in t1 and 'Birdie: Nic' in t1 and 'On a roll x2: Mitch' in t1 and 'BUST' not in t1, t1)
-        check('...headlined by the best one, with how many others', 'NIC +' in t1 and 'MORE' in t1, t1)
-        check('...and says there\'s more to come', 'Tap for the next one' in t1)
-        await A.screenshot(path=f'{OUT}/moments_good.png')
-        await mom.click(); await A.wait_for_timeout(300)
-        t2 = await mom.inner_text() if await mom.count() else ''
-        check('Then the bad news', 'BUST' in t2 and 'GREG' in t2 and 'Banked points are safe' in t2, t2)
-        await A.screenshot(path=f'{OUT}/moments_bad.png')
+        check('Everything from the hole is on one screen', 'BIRDIE!' in t1 and 'ON A ROLL x2' in t1 and 'Mitch' in t1 and 'BUST −' in t1 and 'Greg' in t1, t1)
+        check('...the best one big, with who did it', await A.locator('.moment .mstamp').count() == 1 and 'NIC' in await A.locator('.moment .mstamp').inner_text())
+        check('...the other nice ones under ALSO', await A.locator('.mpanel.also .mrow').count() == 1 and 'Nic & Mitch' in await A.locator('.mpanel.also').inner_text())
+        check('...and busts under OUCH, with banked points safe', await A.locator('.mpanel.ouch .mrow').count() == 1 and 'Banked points are safe' in await A.locator('.mpanel.ouch').inner_text())
+        check('...one tap to carry on', 'Tap to carry on' in t1)
+        await A.wait_for_timeout(1200)
+        await A.screenshot(path=f'{OUT}/moments_mix.png')
         await mom.click(); await A.wait_for_timeout(300)
         check('...and then you\'re back to scoring', await mom.count() == 0)
         check('...then the last chance to bank, as before', await A.get_by_role('button', name='Draw the cards').count() == 1)
