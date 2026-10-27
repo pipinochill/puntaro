@@ -29,7 +29,7 @@ async def main():
         nic = rows[1]
         check('12 strokes busts someone who left an earlier hole blank', 'bust' in (await nic.get_attribute('class')) and 'BUST' in await nic.inner_text())
         check('...and their row says which hole has no score', 'No score on hole 3' in await nic.inner_text())
-        check('Everyone else busts as normal', all(['bust' in (await r.get_attribute('class')) for r in rows]))
+        check('Everyone else busts as normal (unless a Safety net card saves them)', all(['bust' in (await r.get_attribute('class')) or 'SAFETY NET SAVED' in await r.inner_text() for r in rows]))
         await nic.get_by_role('button', name='Fill it in').click(); await A.wait_for_timeout(400)
         check('Fill it in jumps to the blank hole', await A.locator('.stripes .px').first.inner_text() == '3')
         print('page errors:', A.errs); print(f'{sum(res)}/{len(res)} passed'); await b.close()

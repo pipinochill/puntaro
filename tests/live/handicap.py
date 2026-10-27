@@ -12,7 +12,7 @@ def whs(diffs):  # the app's own maths, run in node
 
 async def signup(pg, first, choose, usual=None, hi=None):
     await pg.get_by_role('button', name='Continue with Google').click(); await pg.wait_for_timeout(700)
-    await pg.get_by_label('First name').fill(first); await pg.get_by_label('Last name').fill('Smith')
+    await pg.get_by_label('First name').fill(first); await pg.get_by_label('Last name').fill('Smith'); await fc.next_step(pg)
     await pg.get_by_role('button', name=choose, exact=True).click()
     if usual: await pg.get_by_role('button', name=usual, exact=True).click()
     if hi is not None: await pg.get_by_label('Handicap index').fill(str(hi))

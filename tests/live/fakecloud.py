@@ -280,8 +280,13 @@ async def open_app(pg, url, q='', setup=None):
         await pg.get_by_label('First name').fill(setup[0]); await fill_hcp(pg, setup[1])
         await pg.get_by_role('button', name="Let's play").click(); await pg.wait_for_timeout(700)
 
+async def next_step(pg):
+    """Sign-up asks one question at a time: move from your name to your handicap if we're still on the name."""
+    if await pg.get_by_role('button', name='Next', exact=True).count(): await pg.get_by_role('button', name='Next', exact=True).click(); await pg.wait_for_timeout(250)
+
 async def fill_hcp(pg, v):
     """Sign-up asks whether you have a handicap first; say yes and type it."""
+    await next_step(pg)
     if not await pg.get_by_label('Handicap index').count(): await pg.get_by_role('button', name='I have a handicap', exact=True).click(); await pg.wait_for_timeout(100)
     await pg.get_by_label('Handicap index').fill(str(v))
 

@@ -9,6 +9,17 @@ function Ico({ size = 24, color = "currentColor", children }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" aria-hidden="true" style={{ flex: "none" }}>{children}</svg>;
 }
 function HomeIcon(p) { return <Ico {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M9 22V12h6v10" /></Ico>; }
+function QrIcon(p) { return <Ico {...p}><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 20h2M20 14v2" /></Ico>; }
+// The Start a round flag: a pennant waving on its pole, like the splash screen's.
+function WaveFlag() {
+  return (
+    <div className="wflag" aria-hidden="true">
+      <div className="wpole" />
+      <div className="wcloth">{[0, 1, 2, 3, 4, 5, 6].map(i => <i key={i} style={{ animationDelay: `${i * -0.14}s` }} />)}</div>
+      <div className="wgreen" />
+    </div>
+  );
+}
 function ClockIcon(p) { return <Ico {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></Ico>; }
 function BookIcon(p) { return <Ico {...p}><path d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z" /><path d="M20 4h-5a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h6z" /></Ico>; }
 function UsersIcon(p) { return <Ico {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Ico>; }
@@ -27,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.63";
+const APP_VERSION = "0.64";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -571,6 +582,15 @@ const mulberry32 = a => () => {
 };
 /* Everyone draws one card from the mixed deck. With catch-up odds on, the leader draws
    mostly curses (70%) and last place mostly blessings (70%). Everyone else, and ties, get 50/50. */
+// The cards the shuffle could deal each player on hole h: the seed fixes the order, the catch-up odds only decide blessing vs curse.
+function dealOk(seed, h, ids, deal) {
+  const rng = mulberry32(seed + h * 977);
+  return ids.every(id => {
+    const a = rng(), b = rng();
+    const ok = []; if (a < 0.7) ok.push(BLESSINGS[Math.floor(b * BLESSINGS.length)]); if (a >= 0.3) ok.push(CURSES[Math.floor(b * CURSES.length)]);
+    return ok.includes(deal[id]);
+  });
+}
 function drawCards(r, h, rng) {
   const pc = puntCalc(r, h);
   const totals = r.playerIds.map(id => pc[id].total);
@@ -595,7 +615,7 @@ function puntCalc(r, upTo = 18) {
   const ids = r.playerIds;
   const S = {};
   ids.forEach(id => (S[id] = { pot: 0, banked: 0, streak: 0, shields: 0, vaults: 0, leak: 0, busts: 0, alive: true,
-    log: [], bustAt: [], multAt: [], evAt: [], potAt: [], streakAt: [] }));
+    log: [], bustAt: [], multAt: [], evAt: [], potAt: [], potStart: [], streakAt: [] }));
   for (let h = 0; h < upTo; h++) {
     const gifts = {}; ids.forEach(id => (gifts[id] = 0));
     const played = [];
@@ -613,6 +633,7 @@ function puntCalc(r, upTo = 18) {
         return;
       }
       played.push(id);
+      st.potStart[h] = st.pot; // what was in the pot coming into this hole
       const card = r.opts.cards && r.draws[h] ? r.draws[h][id] || null : null;
       const evs = (r.events[id] && r.events[id][h]) || {};
       const diff = netOf(r, id, h) - PAR[h];
@@ -623,7 +644,8 @@ function puntCalc(r, upTo = 18) {
       if (card === "vault") st.vaults++;
       if (card === "hot") st.streak = Math.max(st.streak, 2);
       if (diff >= (card === "mine" ? 1 : 2)) {
-        if (st.shields > 0) { st.shields--; st.log[h] = note + "Safety net saved the pot"; }
+        // A Safety net is only used up when there's a pot to save; a bust on an empty pot keeps it for later.
+        if (st.shields > 0 && st.pot > 0) { st.shields--; st.log[h] = note + "Safety net saved the pot"; }
         else {
           const kept = cushionKeep(r, id, st.pot);
           st.bustAt[h] = { lost: st.pot - kept, kept };
@@ -684,7 +706,7 @@ function puntCalc(r, upTo = 18) {
     const st = S[id];
     const mult = st.streak >= 5 ? 3 : st.streak >= 3 ? 2 : 1;
     out[id] = { pot: st.pot, banked: st.banked, total: st.banked + st.pot, streak: st.streak, mult, shields: st.shields, vaults: st.vaults, leak: st.leak,
-      busts: st.busts, log: st.log, bustAt: st.bustAt, multAt: st.multAt, evAt: st.evAt, potAt: st.potAt, streakAt: st.streakAt };
+      busts: st.busts, log: st.log, bustAt: st.bustAt, multAt: st.multAt, evAt: st.evAt, potAt: st.potAt, potStart: st.potStart, streakAt: st.streakAt };
   });
   return out;
 }
@@ -1040,6 +1062,14 @@ const CSS = `
 .mcap{max-width:326px;width:100%;background:#FBF6EA;color:#1B1C1A;border:3px solid #1B1C1A;box-shadow:5px 5px 0 #1B1C1A;padding:12px 14px;text-align:center;font-size:16px;font-weight:600;line-height:1.35;}
 .rowstamp{position:absolute;right:58px;top:50%;transform:translateY(-50%);z-index:3;pointer-events:none;animation:rsout .4s steps(4) 2.6s forwards;}
 @keyframes rsout{to{opacity:0}}
+.wflag{position:relative;width:64px;height:64px;flex:none;background:#14150F;border:3px solid #1B1C1A;overflow:hidden;}
+.wflag .wpole{position:absolute;left:12px;top:7px;width:4px;height:46px;background:#EDE8DD;box-shadow:2px 0 0 #000;}
+.wflag .wpole:before{content:"";position:absolute;top:-4px;left:-1px;width:6px;height:4px;background:#D9B07A;}
+.wflag .wcloth{position:absolute;left:16px;top:8px;display:flex;clip-path:polygon(0 0,100% 50%,0 100%);filter:drop-shadow(2px 2px 0 rgba(0,0,0,.5));}
+.wflag .wcloth i{display:block;width:5px;height:24px;background:#B84A32;box-shadow:inset 0 -3px 0 #8E3826;animation:pnwave 1.1s steps(4) infinite;}
+.wflag .wgreen{position:absolute;left:0;right:0;bottom:0;height:8px;background:#2C4536;border-top:3px solid #3E6B4B;}
+.slidein{animation:slidein .3s steps(5) both;}
+@keyframes slidein{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}
 .shk{animation:shake .4s steps(6) 1;}
 .tip{border-bottom:2px dotted var(--muted);cursor:help;text-align:inherit;}
 .tipsheet{position:fixed;inset:0;max-width:430px;margin:0 auto;z-index:70;display:flex;align-items:flex-end;background:rgba(0,0,0,.55);}
@@ -1326,6 +1356,19 @@ const GOOD = {
   fire: { rank: 2, art: "flames", word: "ON FIRE", label: "On fire x3", color: "#B84A32", bg: "#FFFDF7", tilt: -6, sound: "mult" },
   roll: { rank: 1, art: "flames", word: "ON A ROLL", label: "On a roll x2", color: "#B84A32", bg: "#FFFDF7", tilt: -6, sound: "mult" },
 };
+// What a score is called, for the tag on each player's row.
+function scoreName(v, par) {
+  const d = v - par;
+  if (v === 1 && par > 2) return { label: "HOLE IN ONE", bg: "#CFE6C9" };
+  if (d <= -3) return { label: "ALBATROSS", bg: "#8EC5E8" };
+  if (d === -2) return { label: "EAGLE", bg: "#8EC5E8" };
+  if (d === -1) return { label: "BIRDIE", bg: "#BFE0F2" };
+  if (d === 0) return { label: "PAR", bg: "#E7E2D5" };
+  if (d === 1) return { label: "BOGEY", bg: "#F2D9C4" };
+  if (d === 2) return { label: "DOUBLE BOGEY", bg: "#F2B8A8" };
+  if (d === 3) return { label: "TRIPLE BOGEY", bg: "#E89A86" };
+  return { label: `+${d}`, bg: "#E89A86" };
+}
 function holeScreens({ good, bad }, hh, people) {
   const nm = id => (people[id] ? people[id].name : "Someone");
   const out = [];
@@ -1723,16 +1766,17 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
       </div>
       <div style={{ padding: "0 12px", marginTop: -36, display: "grid", gap: 11 }}>
         <button onClick={onStart} style={{ background: "var(--flag)", color: "var(--dk)", borderRadius: 24, padding: "16px 16px", textAlign: "left", display: "flex", alignItems: "center", gap: 11, boxShadow: "0 6px 0 var(--night)", border: "3px solid var(--night)" }}>
-          <div className="tile"><Sprite name="flag" size={5} /></div>
+          <WaveFlag />
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.4 }}>Start a round</div>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>Pick the course and your group.</div>
+            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.4 }}>Start a round</div>
+            <div style={{ fontSize: 13, opacity: 0.8 }}>Pick the course and your group.</div>
           </div>
         </button>
 
-        <button className="card" onClick={onJoin} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", textAlign: "left", width: "100%" }}>
-          <div><div style={{ fontWeight: 700 }}>Join a live round</div><div className="cap">A mate started the round? Scan their QR or enter the code.</div></div>
-          <ChevronRight size={18} />
+        <button onClick={onJoin} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", textAlign: "left", width: "100%", background: "var(--pine)", color: "#F4F0E6", border: "3px solid var(--night)", boxShadow: "0 5px 0 var(--night)" }}>
+          <div style={{ width: 44, height: 44, flex: "none", display: "grid", placeItems: "center", background: "#F4F0E6", color: "var(--pine)", border: "3px solid var(--night)" }}><QrIcon size={26} /></div>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 17, fontWeight: 800 }}>Join a live round</div><div style={{ fontSize: 13, opacity: 0.85 }}>A mate started the round? Scan their QR or type the code.</div></div>
+          <ChevronRight size={22} />
         </button>
 
 
@@ -2219,18 +2263,15 @@ function AboutSheet({ onClose }) {
           <h2 className="h2" style={{ display: "flex", alignItems: "center", gap: 10 }}><Tiles size={18} /><span className="pill" style={{ background: "var(--flag)" }}>ALPHA {APP_VERSION}</span></h2>
           <button onClick={onClose} aria-label="Close"><X size={22} /></button>
         </div>
-        <p style={{ marginTop: 8 }}>A points-only side game that runs alongside your normal comp. Bank your points or bust and lose the pot.</p>
-        <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
-          <p><b>Working:</b> banking and busting, streaks, Blessings & Curses, bonuses and penalties, nearest the pin, free for all or 2v2, handicap strokes and cushion, prize pool maths, course finder, paused rounds.</p>
-          <p><b>New and still being tested:</b> live rounds. Everyone follows the round on their own phone, joining by QR code or join code. Choose one scorer, or everyone enters their own score with bank calls kept secret until the group moves on.</p>
-          <p><b>New:</b> accounts. Sign in with Google or an email link, and your rounds, scoresheets and stats are saved to your account in the cloud, the same on any phone.</p>
-          <p><b>New:</b> handicaps for players without one. Pick what you usually shoot for a starting estimate (marked EST). After 3 live rounds with at least one other player on their own phone, {APP_NAME} works out your handicap from your scores the World Handicap System way (marked APP): it drops straight after a good round but rises by no more than 1.0 a round. Rounds scored on your own don't count. Handicaps you type in are left alone.</p>
-          <p><b>New:</b> friends. Anyone who signs up from your link is your friend straight away; otherwise share your friend code or QR and they accept. Friends see each other's handicap and stats, and you can pick them for a round. Unfriend any time.</p>
-          <p><b>Your data:</b> stored with Google Firebase, in your account, where only you can see it. Your friends see a small card: your first name, last initial, handicap and stats. Your phone keeps a temporary offline copy so scoring works with no signal; signing out clears it. You can wipe or delete your account from the Me tab.</p>
-          <p><b>Live rounds:</b> the round (course, players' first names, last initials and handicaps, scores) is shared with the players in it. Anyone with the join code can see it. Bank calls stay hidden until they're revealed. Finished live rounds are kept for everyone who played, even if one player deletes theirs.</p>
-          <p><b>Samples:</b> the sample courses are made up, for trying the app.</p>
-          <p><b>Course data:</b> course names come from OpenStreetMap. Slope, rating, par and stroke index are typed in by the player. This is not official Golf Australia data and has no connection to Golf Australia. {APP_NAME} handicaps (EST and APP) are not official GA handicaps, and official handicaps can't be verified yet.</p>
-          <p><b>Money:</b> the prize pool is a scoreboard only. {APP_NAME} never takes or moves money.</p>
+        <div style={{ display: "grid", gap: 8, marginTop: 10, fontSize: 14 }}>
+          <p>A side game for your round. Score as normal, bank your points, or push your luck and risk going bust.</p>
+          <p>Play live together. Everyone follows on their own phone: scan the host's QR code or type the join code.</p>
+          <p>Blessings and curses on the hardest and easiest holes keep everyone in it.</p>
+          <p>No handicap? Pick what you usually shoot, and Puntaro works one out from your rounds.</p>
+          <p>Add friends with your code or QR to see their stats and pick them for a round.</p>
+          <p>Your rounds and stats are saved to your account, so they follow you to any phone. Friends only see your first name, last initial, handicap and stats.</p>
+          <p>The prize pool is just a scoreboard. Puntaro never takes or moves money.</p>
+          <p className="cap">Not connected to Golf Australia. Puntaro handicaps aren't official handicaps.</p>
         </div>
       </div>
     </div>
@@ -2581,7 +2622,8 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                   {can.enteredBy && v != null && can.enteredBy(id, h) && <span>{` · by ${can.enteredBy(id, h)}`}</span>}
                   {can.edited && v != null && can.edited(id, h) && <span>{" · edited"}</span>}
                 </div>
-                {v != null && (v === 1 && PAR[h] > 2 || v - PAR[h] <= -1) && <span className="pill px" style={{ background: v === 1 && PAR[h] > 2 ? "#CFE6C9" : v - PAR[h] <= -2 ? "#8EC5E8" : "#BFE0F2", padding: "1px 6px", fontSize: 11, marginTop: 3, marginRight: 4 }}>{v === 1 && PAR[h] > 2 ? "HOLE IN ONE" : v - PAR[h] <= -3 ? "ALBATROSS" : v - PAR[h] === -2 ? "EAGLE" : "BIRDIE"}</span>}
+                {v != null && (() => { const n = scoreName(v, PAR[h]); return <span className="pill px" style={{ background: n.bg, padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}>{n.label}</span>; })()}
+                {pc && v != null && pc[id].potStart[h] != null && <span className="cap" style={{ fontWeight: 700, color: bust ? "#fff" : "var(--ink)", marginRight: 4 }}>Pot {pc[id].potStart[h]} → {pc[id].potAt[h] != null ? pc[id].potAt[h] : pc[id].pot}</span>}
                 {(() => { const gap = round.scores[id].slice(0, h).findIndex(x => x == null); return gap >= 0 && t.thru > 0 ? <div className="cap" role="note" style={{ color: bust ? "#fff" : "var(--red)", fontWeight: 700 }}>No score on hole {gap + 1}. <button onClick={() => api.setHole(gap)} style={{ textDecoration: "underline", fontWeight: 700, color: "inherit" }}>Fill it in</button></div> : null; })()}
                 {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</Tip></span>}
                 {pc && v != null && !bust && /Safety net saved/.test(pc[id].log[h] || "") && <span className="pill px" style={{ background: "var(--mint)", padding: "1px 6px", fontSize: 13, marginTop: 3 }}>SAFETY NET SAVED THE POT</span>}
@@ -3766,11 +3808,14 @@ function Game({ user, cloud, profile, now0, finished }) {
     if (r.opts.cards) range18.forEach(h => {
       if (!cardHole(h)) return;
       if (!canDeal(h, liveDoc)) { r.draws[h] = null; return; }
-      if (dealt.current[h]) { r.draws[h] = dealt.current[h]; return; }
-      if (!r.draws[h]) return;
-      const fair = drawCards(r, h, mulberry32(r.drawSeed + h * 977));
-      if (JSON.stringify(fair) !== JSON.stringify(Object.fromEntries(r.playerIds.map(id => [id, r.draws[h][id]])))) warn.push(h);
-      dealt.current[h] = fair; r.draws[h] = fair;
+      if (!r.draws[h]) { if (dealt.current[h]) r.draws[h] = dealt.current[h]; return; } // not saved yet: this phone's own deal
+      // The saved deal is what everyone plays with. It's checked against the shuffle: each card must be one the seed
+      // could have dealt that player (blessing or curse, depending on the catch-up odds). Editing an earlier score
+      // later changes the odds, so the saved deal is never re-dealt because of that.
+      const saved = Object.fromEntries(r.playerIds.map(id => [id, r.draws[h][id]]));
+      if (dealOk(r.drawSeed, h, r.playerIds, saved)) { dealt.current[h] = saved; r.draws[h] = saved; return; }
+      const fair = dealt.current[h] || drawCards(r, h, mulberry32(r.drawSeed + h * 977));
+      warn.push(h); dealt.current[h] = fair; r.draws[h] = fair;
     });
     warn.forEach(h => note(`The cards on hole ${h + 1} didn't match the shuffle, so this phone dealt them fairly itself.`));
     setRound(prev => ({ ...r, hole: prev ? prev.hole : firstOpenHole(liveDoc), seen: prev ? prev.seen : r.seen }));
@@ -4170,31 +4215,41 @@ function ProfileSetup({ cloud, user, onDone }) {
       onDone(profile, now);
     } catch (e) { setErr(explain(e)); setBusy(false); }
   };
+  // One question at a time: your name, then your handicap.
+  const [step, setStep] = useState(0);
+  const next = () => { if (!first.trim()) { setErr("Enter your first name."); return; } setErr(""); setStep(1); };
+  const dots = <div style={{ display: "flex", gap: 6, justifyContent: "center" }} aria-label={`Step ${step + 1} of 2`}>{[0, 1].map(k => <span key={k} style={{ width: k === step ? 22 : 10, height: 10, background: k <= step ? "var(--pine)" : "var(--line)", border: "2px solid var(--night)" }} />)}</div>;
   return (
     <div style={screen}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}><Tiles size={22} /></div>
-      <h1 style={{ textAlign: "center" }}>Welcome to Puntaro</h1>
-      <p className="cap" style={{ textAlign: "center" }}>Signed in as {user.email || "you"}. A couple of things for your scorecard.</p>
+      {dots}
       {inviter && <p style={{ textAlign: "center", fontWeight: 700 }}>Invited by {inviter.name}. You'll be friends straight away.</p>}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <input aria-label="First name" placeholder="First name" maxLength={20} value={first} onChange={e => setFirst(e.target.value)} style={inp} />
-        <input aria-label="Last name" placeholder="Last name" maxLength={20} value={last} onChange={e => setLast(e.target.value)} style={inp} />
-      </div>
-      <div>
-        <div className="cap" style={{ fontWeight: 600, marginBottom: 5 }}>Your handicap</div>
-        <HcpPicker value={hp} onChange={v => { setHp(v); setErr(""); }} />
-        <p className="cap" style={{ marginTop: 6 }}>Only your last initial is ever shown to other players.</p>
-      </div>
-      {local && (
-        <div className="card" style={{ padding: 11, display: "flex", gap: 9, alignItems: "center" }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700 }}>Bring this phone's rounds into your account</div>
-            <div className="cap">{[local.counts.rounds ? `${local.counts.rounds} finished round${local.counts.rounds > 1 ? "s" : ""} and stats` : null, local.counts.courses ? `${local.counts.courses} saved course${local.counts.courses > 1 ? "s" : ""}` : null, local.counts.playing ? "a round in progress" : null].filter(Boolean).join(", ")}. Either way, it's removed from the phone.</div>
-          </div>
-          <Toggle on={bring} onChange={setBring} />
+      {step === 0 ? (
+        <div key="name" className="slidein" style={{ display: "grid", gap: 10 }}>
+          <h1 style={{ textAlign: "center" }}>Welcome! What's your name?</h1>
+          <p className="cap" style={{ textAlign: "center" }}>Signed in as {user.email || "you"}. Only your last initial is ever shown to other players.</p>
+          <input aria-label="First name" placeholder="First name" maxLength={20} value={first} onChange={e => { setFirst(e.target.value); setErr(""); }} onKeyDown={e => { if (e.key === "Enter") next(); }} style={{ ...inp, fontSize: 18, padding: "12px 12px" }} />
+          <input aria-label="Last name" placeholder="Last name" maxLength={20} value={last} onChange={e => setLast(e.target.value)} onKeyDown={e => { if (e.key === "Enter") next(); }} style={{ ...inp, fontSize: 18, padding: "12px 12px" }} />
+          <button className="cta" onClick={next}>Next</button>
+        </div>
+      ) : (
+        <div key="hcp" className="slidein" style={{ display: "grid", gap: 10 }}>
+          <h1 style={{ textAlign: "center" }}>Nice to meet you, {first.trim()}. Do you have a handicap?</h1>
+          <p className="cap" style={{ textAlign: "center" }}>No handicap is fine. Puntaro works one out for you.</p>
+          <HcpPicker value={hp} onChange={v => { setHp(v); setErr(""); }} />
+          {local && (
+            <div className="card" style={{ padding: 11, display: "flex", gap: 9, alignItems: "center" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700 }}>Bring this phone's rounds into your account</div>
+                <div className="cap">{[local.counts.rounds ? `${local.counts.rounds} finished round${local.counts.rounds > 1 ? "s" : ""} and stats` : null, local.counts.courses ? `${local.counts.courses} saved course${local.counts.courses > 1 ? "s" : ""}` : null, local.counts.playing ? "a round in progress" : null].filter(Boolean).join(", ")}. Either way, it's removed from the phone.</div>
+              </div>
+              <Toggle on={bring} onChange={setBring} />
+            </div>
+          )}
+          <button className="cta" disabled={busy} onClick={go}>{busy ? "Saving…" : "Let's play"}</button>
+          <button className="chip" onClick={() => { setErr(""); setStep(0); }} style={{ padding: "8px 0", textAlign: "center" }}>Back</button>
         </div>
       )}
-      <button className="cta" disabled={busy} onClick={go}>{busy ? "Saving…" : "Let's play"}</button>
       {err && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, textAlign: "center" }}>{err}</p>}
     </div>
   );
