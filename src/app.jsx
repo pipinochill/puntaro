@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.74";
+const APP_VERSION = "0.75";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1829,13 +1829,14 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}><Tiles size={20} hang toy /><button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 }}>
-          <div style={{ minWidth: 0 }}>
-            <p className="greet" style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.3 }}>{(([a, n, b]) => <>{a}<b className="hd">{n}</b>{b}</>)(greeting(people.me))}</p>
-            <p style={{ fontWeight: 600, marginTop: 4, opacity: .85 }}>HCP {fmtHcp(people.me)}</p>
-          </div>
-          <button className="px" aria-label="Rules" onClick={onRules} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--card)", color: "var(--ink)", border: "3px solid var(--night)", boxShadow: "3px 3px 0 var(--night)", padding: "6px 12px", fontSize: 20, lineHeight: 1 }}><BookIcon size={18} />RULES</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}>
+          <Tiles size={20} hang toy />
+          <button className="pill px" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)", padding: "1px 7px", fontSize: 15 }}>ALPHA</button>
+          <button className="px" aria-label="Rules" onClick={onRules} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, background: "var(--card)", color: "var(--ink)", border: "3px solid var(--night)", boxShadow: "3px 3px 0 var(--night)", padding: "5px 10px", fontSize: 18, lineHeight: 1 }}><BookIcon size={16} />RULES</button>
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <p className="greet" style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.3 }}>{(([a, n, b]) => <>{a}<b className="hd">{n}</b>{b}</>)(greeting(people.me))}</p>
+          <p style={{ fontWeight: 600, marginTop: 4, opacity: .85 }}>HCP {fmtHcp(people.me)}</p>
         </div>
       </div>
       <div style={{ padding: "0 12px", marginTop: -36, display: "grid", gap: 11 }}>
