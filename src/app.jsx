@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, createContext, useContext } from "react";
+import { useState, useRef, useEffect, useMemo, createContext, useContext } from "react";
 import { backend, newCode, cleanCode, joinLink, inviteLink, newRefCode, cleanRef, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain, EMAIL_KEY } from "./live.js";
 import { makeDecoder, cameraProblem } from "./scan.js";
 import { qrPath } from "./qr.js";
@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.76";
+const APP_VERSION = "0.77";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -344,6 +344,54 @@ function HapticRow() {
     <div className="card" style={{ padding: "8px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
       <div><div style={{ fontWeight: 700, fontSize: 13 }}>Vibration</div><div className="cap">{HAPTIC.supported() === false ? "This phone or browser doesn't support vibration." : "A buzz for banks, busts, birdies, cards and moving holes. iPhones only do a single light tap."}</div></div>
       <Toggle on={on} onChange={v => { HAPTIC.set(v); setOn(v); }} />
+    </div>
+  );
+}
+
+/* Screen on during a round: the phone doesn't lock between shots. After a quiet spell the app darkens
+   itself (saves battery on most phones); a tap brings it back. Locking the phone still works as normal. */
+const AWAKE = (() => {
+  let on = true;
+  try { on = localStorage.getItem("puntaro.awake") !== "off"; } catch (e) { /* default on */ }
+  return { isOn: () => on, supported: () => typeof navigator !== "undefined" && "wakeLock" in navigator,
+    set: v => { on = v; try { localStorage.setItem("puntaro.awake", v ? "on" : "off"); } catch (e) { /* fine */ } window.dispatchEvent(new Event("puntaro-awake")); } };
+})();
+const DIM_AFTER_MS = 30000;
+function KeepAwake({ active, hole }) {
+  const [on, setOn] = useState(AWAKE.isOn());
+  const [dim, setDim] = useState(false);
+  useEffect(() => { const f = () => setOn(AWAKE.isOn()); window.addEventListener("puntaro-awake", f); return () => window.removeEventListener("puntaro-awake", f); }, []);
+  const live = active && on;
+  useEffect(() => {
+    if (!live || !("wakeLock" in navigator)) return undefined;
+    let lock = null, gone = false;
+    const get = () => { if (document.visibilityState !== "visible") return; navigator.wakeLock.request("screen").then(l => { if (gone) l.release(); else lock = l; }).catch(() => { /* not allowed right now */ }); };
+    const vis = () => { if (document.visibilityState === "visible") get(); };
+    get(); document.addEventListener("visibilitychange", vis);
+    return () => { gone = true; document.removeEventListener("visibilitychange", vis); if (lock) lock.release().catch(() => {}); };
+  }, [live]);
+  useEffect(() => {
+    if (!live) { setDim(false); return undefined; }
+    let t = null;
+    const poke = () => { clearTimeout(t); t = setTimeout(() => setDim(true), DIM_AFTER_MS); };
+    poke(); ["pointerdown", "keydown", "scroll"].forEach(e => window.addEventListener(e, poke, { passive: true }));
+    return () => { clearTimeout(t); ["pointerdown", "keydown", "scroll"].forEach(e => window.removeEventListener(e, poke)); };
+  }, [live]);
+  if (!live || !dim) return null;
+  const wake = e => { e.preventDefault(); e.stopPropagation(); setDim(false); };
+  return (
+    <div className="dimmer" role="button" aria-label="Tap to wake the screen" onPointerDown={wake} onClick={wake}>
+      <div className="px" style={{ fontSize: 22, color: "#8A8F86" }}>HOLE {hole}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "#6B7068", marginTop: 6 }}>Tap to wake</div>
+    </div>
+  );
+}
+function AwakeRow() {
+  const [on, setOn] = useState(AWAKE.isOn());
+  return (
+    <div className="card" style={{ padding: "8px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
+      <div><div style={{ fontWeight: 700, fontSize: 13 }}>Keep screen on in a round</div><div className="cap">{AWAKE.supported() ? "Your phone won't lock between shots. The app darkens itself after 30 seconds; tap to wake." : "This phone or browser can't keep the screen on, so it locks as usual."}</div></div>
+      <Toggle on={on} onChange={v => { AWAKE.set(v); setOn(v); }} />
     </div>
   );
 }
@@ -1077,6 +1125,7 @@ const CSS = `
 .mrw{font-family:Silkscreen,monospace;font-weight:700;font-size:16px;line-height:1.1;}
 .mrn{font-size:15px;font-weight:700;color:#1B1C1A;}
 .mtap{font-size:14px;font-weight:700;color:#FBF6EA;margin-top:4px;}
+.dimmer{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.86);display:flex;flex-direction:column;align-items:center;justify-content:center;animation:mfade .6s ease both;cursor:pointer;touch-action:none;}
 .mcap{max-width:326px;width:100%;background:#FBF6EA;color:#1B1C1A;border:3px solid #1B1C1A;box-shadow:5px 5px 0 #1B1C1A;padding:12px 14px;text-align:center;font-size:16px;font-weight:600;line-height:1.35;}
 .rowstamp{position:absolute;right:58px;top:50%;transform:translateY(-50%);z-index:3;pointer-events:none;animation:rsout .4s steps(4) 2.6s forwards;}
 @keyframes rsout{to{opacity:0}}
@@ -2363,12 +2412,19 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
   );
 }
 
-function AboutSheet({ onClose }) {
+function AboutSheet({ onClose, onFeedback }) {
+  const [fb, setFb] = useState("");
+  const [state, setState] = useState(""); // "", "sending", "sent", "failed"
+  const send = async () => {
+    if (!fb.trim() || state === "sending") return;
+    setState("sending");
+    try { await onFeedback(fb.trim().slice(0, 2000)); setFb(""); setState("sent"); } catch (e) { setState("failed"); }
+  };
   return (
     <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={onClose}>
       <div className="sheet card" role="dialog" aria-label={`About ${APP_NAME}`} onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none", maxHeight: "85vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 className="h2" style={{ display: "flex", alignItems: "center", gap: 10 }}><Tiles size={18} /><span className="pill" style={{ background: "var(--flag)" }}>ALPHA {APP_VERSION}</span></h2>
+          <h2 className="h2" style={{ display: "flex", alignItems: "center", gap: 10 }}><Tiles size={18} /><span className="pill px" style={{ background: "var(--flag)", padding: "1px 7px", fontSize: 15 }}>ALPHA {APP_VERSION}</span></h2>
           <button onClick={onClose} aria-label="Close"><X size={22} /></button>
         </div>
         <div style={{ display: "grid", gap: 8, marginTop: 10, fontSize: 14 }}>
@@ -2381,6 +2437,23 @@ function AboutSheet({ onClose }) {
           <p>The prize pool is just a scoreboard. Puntaro never takes or moves money.</p>
           <p className="cap">Not connected to Golf Australia. Puntaro handicaps aren't official handicaps.</p>
         </div>
+        {onFeedback && (
+          <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+            <h3 style={{ fontSize: 15 }}>Send feedback</h3>
+            <p className="cap" style={{ marginTop: 2 }}>Something broken, confusing or great? Tell us. It goes straight to the people making Puntaro.</p>
+            {state === "sent" ? (
+              <div role="status" style={{ marginTop: 8, background: "var(--mint)", color: "var(--dk)", padding: "10px 12px", border: "3px solid var(--night)", fontWeight: 700 }}>
+                Thanks! Got it. <button onClick={() => setState("")} style={{ textDecoration: "underline", fontWeight: 700, color: "inherit", marginLeft: 6 }}>Send another</button>
+              </div>
+            ) : (
+              <>
+                <textarea aria-label="Your feedback" placeholder="e.g. The bank button was hard to find on hole 9" value={fb} maxLength={2000} rows={4} onChange={e => setFb(e.target.value)} style={{ ...inp, marginTop: 8, resize: "vertical", fontFamily: "inherit", lineHeight: 1.35 }} />
+                {state === "failed" && <p role="alert" style={{ color: "var(--red)", fontWeight: 600, marginTop: 5 }}>Couldn't send. Check your connection and try again.</p>}
+                <button className="cta" disabled={!fb.trim() || state === "sending"} onClick={send} style={{ marginTop: 8, padding: 11, fontSize: 15, opacity: fb.trim() ? 1 : 0.5 }}>{state === "sending" ? "Sending…" : "Send feedback"}</button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2891,6 +2964,107 @@ function Scorecard({ round, people }) {
   );
 }
 
+/* ───────────── RESULT CARD: an image of the result for the group chat ───────────── */
+const SITE_URL = "pipinochill.github.io/puntaro";
+function cardFacts(round, people, at) {
+  const pc = puntCalc(round);
+  const pars = range18.map(i => (round.course.holes ? round.course.holes[i].par : DEF_PAR[i]));
+  const isTeam = round.mode === "2v2" && !!round.teams;
+  const ids = [...round.playerIds].sort((a, b) => pc[b].total - pc[a].total);
+  const ntp = {}; Object.values(round.ntp || {}).forEach(v => { if (v && v !== "none") ntp[v] = (ntp[v] || 0) + 1; });
+  const rows = ids.map(id => {
+    const sc = round.scores[id] || [];
+    let birdies = 0, eagles = 0;
+    sc.forEach((v, i) => { if (v == null) return; const d = v - pars[i]; if (d <= -2) eagles++; else if (d === -1) birdies++; });
+    const bits = [eagles ? `${eagles} eagle${eagles > 1 ? "s" : ""}` : null, birdies ? `${birdies} birdie${birdies > 1 ? "s" : ""}` : null,
+      pc[id].busts ? `${pc[id].busts} bust${pc[id].busts > 1 ? "s" : ""}` : "no busts", ntp[id] ? `${ntp[id]} NTP` : null].filter(Boolean);
+    const nm = id === "me" ? ((people.me && people.me.first) || "You").trim().split(/\s+/)[0] : (people[id] && people[id].name) || "?";
+    return { id, name: nm, pts: pc[id].total, line: bits.join(" · ") };
+  });
+  rows.forEach((r, i) => { r.rank = i && r.pts === rows[i - 1].pts ? rows[i - 1].rank : i + 1; }); // ties share a place
+  let head, sub;
+  if (isTeam) {
+    const tr = teamRows(round, pc).sort((x, y) => y.total - x.total);
+    const tie = tr[0].total === tr[1].total;
+    head = tie ? "DEAD HEAT" : `TEAM ${tr[0].k + 1} WINS`;
+    const nmOf = id => (rows.find(r => r.id === id) || {}).name || "?";
+    sub = tie ? `${tr[0].total} PTS EACH` : `${tr[0].ids.map(id => nmOf(id).toUpperCase()).join(" & ")} · ${tr[0].total} PTS`;
+  } else {
+    const top = rows.filter(r => r.pts === rows[0].pts);
+    head = top.length > 1 ? "IT'S A TIE" : rows[0].name === "You" ? "YOU WIN" : `${rows[0].name.toUpperCase()} WINS`;
+    sub = `${top.length > 1 && top.length < 4 ? top.map(r => r.name.toUpperCase()).join(" & ") + " · " : ""}${rows[0].pts} ${rows[0].pts === 1 ? "PT" : "PTS"}`;
+  }
+  const date = new Date(at || Date.now()).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  return { head, sub, rows, course: round.course.name, date, text: `${head.charAt(0) + head.slice(1).toLowerCase()} at ${round.course.name} on Puntaro. Bank it or bust.` };
+}
+async function drawResultCard(f) {
+  const W = 1080, H = 1350, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  try { await Promise.all(['700 52px "Bitter"', '600 30px "Figtree"', '400 60px "Jersey 15"', '700 50px "Pixelify Sans"'].map(x => document.fonts.load(x))); } catch (e) { /* draw with what's there */ }
+  const PX = '"Jersey 15", "Pixelify Sans", monospace', SERIF = '"Bitter", Georgia, serif', SANS = '"Figtree", system-ui, sans-serif';
+  const text = (t, x, y, font, color, align = "center") => { g.font = font; g.fillStyle = color; g.textAlign = align; g.textBaseline = "alphabetic"; g.fillText(t, x, y); };
+  const fit = (t, max, size, fam, weight = "") => { let s = size; g.font = `${weight} ${s}px ${fam}`; while (g.measureText(t).width > max && s > 20) { s -= 2; g.font = `${weight} ${s}px ${fam}`; } return `${weight} ${s}px ${fam}`; };
+  // background and striped header
+  g.fillStyle = "#F1EADB"; g.fillRect(0, 0, W, H);
+  const HB = 600;
+  for (let x = 0; x < W; x += 120) { g.fillStyle = "#2F4A3A"; g.fillRect(x, 0, 60, HB); g.fillStyle = "#34513F"; g.fillRect(x + 60, 0, 60, HB); }
+  g.fillStyle = "#1B1C1A"; g.fillRect(0, HB, W, 10);
+  // PUNTARO tiles
+  const word = "PUNTARO", tw = 86, gap = 6, tx0 = (W - (word.length * tw + (word.length - 1) * gap)) / 2;
+  g.fillStyle = "#14150F"; g.fillRect(tx0 - 10, 50, word.length * (tw + gap) + 14, tw + 20);
+  [...word].forEach((ch, i) => { const x = tx0 + i * (tw + gap); g.fillStyle = "#EDE8DD"; g.fillRect(x, 60, tw, tw); g.fillStyle = "#CFC9B8"; g.fillRect(x, 60 + tw - 8, tw, 8); text(ch, x + tw / 2, 60 + tw - 22, '700 54px "Pixelify Sans", monospace', "#2F4A3A"); });
+  text(f.course, W / 2, 245, fit(f.course, 940, 54, SERIF, "700"), "#F1EADB");
+  text(f.date, W / 2, 295, `600 32px ${SANS}`, "rgba(241,234,219,.75)");
+  // crown
+  const crown = SPRITES.crown, cs = 14, cw = crown[0].length * cs, cx = (W - cw) / 2;
+  crown.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") { g.fillStyle = PAL[ch]; g.fillRect(cx + x * cs, 330 + y * cs, cs, cs); } }));
+  g.save(); g.shadowColor = "#14150F"; g.shadowOffsetX = 6; g.shadowOffsetY = 6;
+  text(f.head, W / 2, 480, fit(f.head, 980, 124, PX), "#F1EADB");
+  text(f.sub, W / 2, 560, fit(f.sub, 980, 66, PX), "#D9B07A");
+  g.restore();
+  // leaderboard card
+  const n = f.rows.length, rh = n <= 4 ? 128 : n <= 6 ? 100 : 82, top = 660, cardH = n * rh + 30;
+  g.fillStyle = "#1B1C1A"; g.fillRect(70, top + 12, 952, cardH);
+  g.fillStyle = "#FBF6EA"; g.fillRect(58, top, 952, cardH); g.strokeStyle = "#1B1C1A"; g.lineWidth = 6; g.strokeRect(58, top, 952, cardH);
+  f.rows.forEach((r, i) => {
+    const y = top + 15 + i * rh, mid = y + rh / 2;
+    if (i) { g.fillStyle = "#DDD5C3"; g.fillRect(90, y, 888, 3); }
+    text(String(r.rank), 120, mid + 22, `400 ${Math.round(rh * 0.55)}px ${PX}`, r.rank === 1 ? "#B4472E" : "#8A8577");
+    text(r.name, 180, mid + (rh > 90 ? 2 : 6), fit(r.name, 560, Math.round(rh * 0.36), SERIF, "700"), "#1B1C1A", "left");
+    if (rh > 90) text(r.line, 180, mid + 40, `600 ${Math.round(rh * 0.22)}px ${SANS}`, "#6B675C", "left");
+    text(`${r.pts}`, 930, mid + 20, `400 ${Math.round(rh * 0.6)}px ${PX}`, "#1B1C1A", "right");
+    text(r.pts === 1 ? "PT" : "PTS", 978, mid + 20, `400 ${Math.round(rh * 0.26)}px ${PX}`, "#6B675C", "right");
+  });
+  // footer
+  text("BANK IT OR BUST", W / 2, H - 92, `400 44px ${PX}`, "#2F4A3A");
+  text(`Played with Puntaro · ${SITE_URL}`, W / 2, H - 46, `600 28px ${SANS}`, "#6B675C");
+  return c;
+}
+function ResultCardSheet({ round, people, at, onClose }) {
+  const [img, setImg] = useState(null);
+  const [blob, setBlob] = useState(null);
+  const [msg, setMsg] = useState("");
+  const facts = useMemo(() => cardFacts(round, people, at), [round, people, at]);
+  useEffect(() => {
+    let gone = false;
+    drawResultCard(facts).then(c => { if (gone) return; setImg(c.toDataURL("image/png")); c.toBlob(b => { if (!gone) setBlob(b); }, "image/png"); });
+    return () => { gone = true; };
+  }, [facts]);
+  const file = blob ? new File([blob], `puntaro-${facts.course.replace(/\W+/g, "-").toLowerCase()}.png`, { type: "image/png" }) : null;
+  const canShare = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
+  const share = async () => { try { await navigator.share({ files: [file], text: facts.text }); } catch (e) { if (e && e.name !== "AbortError") setMsg("Couldn't open sharing. Save the image instead."); } };
+  return (
+    <Sheet title="Share the result" onClose={onClose}>
+      <div style={{ display: "grid", gap: 10 }}>
+        {img ? <img src={img} alt={`Result card: ${facts.head}, ${facts.sub}`} style={{ width: "100%", border: "3px solid var(--night)", display: "block" }} /> : <p className="cap" role="status">Making the card…</p>}
+        {canShare && <button className="cta" onClick={share}>Share to the group</button>}
+        {img && <a className={canShare ? "chip" : "cta"} href={img} download={file ? file.name : "puntaro.png"} style={{ textAlign: "center", padding: "9px 0", textDecoration: "none" }}>Save image</a>}
+        {msg && <p role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{msg}</p>}
+      </div>
+    </Sheet>
+  );
+}
+
 function Summary({ round, people, onSave, onBack, footer, record }) {
   const comp = round.playerIds.map(id => ({ id, ...totalsFor(round, id) })).sort((a, b) => (round.useHcp ? a.netPar - b.netPar : a.grossPar - b.grossPar));
   const hasPunt = round.games.includes("punt");
@@ -2906,6 +3080,7 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
   const nets = {}; round.playerIds.forEach(id => (nets[id] = Math.round((pay[id] - round.stake) * 100) / 100));
   const owes = settle(nets);
   const sign = v => (v > 0 ? `+${money(v)}` : v < 0 ? `${MINUS}${money(-v)}` : "$0");
+  const [sharing, setSharing] = useState(false);
 
   return (
     <div style={{ flex: 1 }}>
@@ -2915,6 +3090,8 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
         <p style={{ opacity: 0.8, marginTop: 3 }}>{record ? `${fmtDay(record.at)}${record.live ? " · live round" : ""}` : round.course.name}</p>
       </div>
       <div style={{ padding: record ? "12px 12px 24px" : "12px 12px 86px", display: "grid", gap: 11 }}>
+        <button className="cta px" onClick={() => setSharing(true)} style={{ fontSize: 24, lineHeight: 1, padding: "12px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 9 }}><Sprite name="crown" size={3} />SHARE THE RESULT</button>
+        {sharing && <ResultCardSheet round={round} people={people} at={record ? record.at : null} onClose={() => setSharing(false)} />}
         <Scorecard round={round} people={people} />
         <div className="card" style={{ padding: "5px 11px" }}>
           <div style={{ padding: "9px 0 0" }}>
@@ -3368,6 +3545,7 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
         </div>
         <SoundRow />
         <HapticRow />
+        <AwakeRow />
         <div className="card" style={{ padding: 12 }}>
           <div className="cap" style={{ fontWeight: 600 }}>Your initials</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 5 }}>
@@ -4134,7 +4312,7 @@ function Game({ user, cloud, profile, now0, finished }) {
       <Moment m={moment} more={moments.length > 1} onDone={nextMoment} />
       {friendAsk && !friendList.some(f => f.id === friendAsk.owner) && <FriendAsk who={friendAsk} onSend={() => sendFriendRequest(friendAsk)} onClose={() => setFriendAsk(null)} />}
       <TipSheet k={tipK} onClose={() => setTipK(null)} />
-      {about && <AboutSheet onClose={() => setAbout(false)} />}
+      {about && <AboutSheet onClose={() => setAbout(false)} onFeedback={text => backend().then(b => b.sendFeedback(text, { name: displayName(people.me), version: APP_VERSION, device: (navigator.userAgent || "").slice(0, 200) }))} />}
       {askNew && round && (
         <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={() => setAskNew(false)}>
           <div className="sheet card" role="dialog" aria-label="Round in progress" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
@@ -4166,6 +4344,7 @@ function Game({ user, cloud, profile, now0, finished }) {
         </div>
       )}
       {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{ setFriendIds, myRef, makeRef, onFind: findFriendCode, onSend: sendFriendRequest, onAddFriend: addFriend }} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
+      <KeepAwake active={view === "round" && !!round} hole={round ? round.hole + 1 : 1} />
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} rowFx={rowFx} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
       {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} footer={liveFooter()} />}

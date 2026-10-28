@@ -189,6 +189,8 @@ async function firebaseBackend() {
        friends/{uid}/list/{friendUid} who you're friends with; each friendship is written to both lists
        requests/{to}/in/{from}        a friend request waiting to be accepted */
     setProfile: data => F.setDoc(F.doc(db, "profiles", me()), { ...data, updatedAt: F.serverTimestamp() }),
+    // Alpha feedback: anyone signed in can leave a note; only the Firebase console can read them.
+    sendFeedback: (text, meta) => F.addDoc(F.collection(db, "feedback"), { uid: me(), text, ...meta, at: F.serverTimestamp() }),
     deleteProfile: () => F.deleteDoc(F.doc(db, "profiles", me())),
     watchProfile: (uid, cb, onErr) => F.onSnapshot(F.doc(db, "profiles", uid), s => cb(s.exists() ? s.data() : null), onErr),
     watchFriends: (cb, onErr) => F.onSnapshot(F.collection(db, "friends", me(), "list"), q => cb(q.docs.map(d => ({ id: d.id, via: d.data().via || "" }))), onErr),

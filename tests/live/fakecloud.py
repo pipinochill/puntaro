@@ -54,6 +54,7 @@ window.__puntaroLiveBackend = {
   putBank: (c, i, h, v) => call('__fc_putbank', c, i, h, v), getBank: (c, i, h) => call('__fc_getbank', c, i, h),
   watch: (c, cb) => poll(() => call('__fc_get', c), cb),
   setProfile: d => call('__fc_setprofile', d),
+  sendFeedback: (text, meta) => call('__fc_feedback', text, meta),
   deleteProfile: () => call('__fc_delprofile'),
   watchProfile: (u, cb, err) => poll(() => call('__fc_getprofile', u).catch(e => { if (err) err(e); return '__denied'; }).then(v => v === '__denied' ? null : v), cb),
   watchFriends: cb => poll(() => call('__fc_friends'), cb),
@@ -131,6 +132,8 @@ class Cloud:
                         if path in self.docs: return self._no('raw join overwrite')
                         if not R.join_create(ref, self.docs.get(f'users/{me}'), parts[3], {**(data or {}), '_code': parts[1]}, me, (data or {}).get('at')): return self._no('raw join create')
             t = self.now()
+            if parts[0] == 'feedback' and op != 'set': return self._no('raw feedback ' + op)
+            if parts[0] == 'feedback' and op == 'set' and not R.feedback_create({**(data or {}), 'at': t}, me, t): return self._no('raw feedback create')
             if parts[0] == 'profiles':
                 if op == 'get' and not R.profile_read(self.docs, parts[1], me): return self._no('raw profile read')
                 if op == 'set' and not R.profile_write(parts[1], {**(data or {}), 'updatedAt': t}, me, t): return self._no('raw profile write')
@@ -224,6 +227,10 @@ class Cloud:
             d = json.loads(d); t = self.now(); d = {**d, 'updatedAt': t}
             if not R.profile_write(me, d, me, t): return self._no('profile write')
             self.docs[f'profiles/{me}'] = d; return self._ok()
+        async def feedback(me, text, meta):
+            t = self.now(); d = {'uid': me, 'text': json.loads(text), **json.loads(meta), 'at': t}
+            if not R.feedback_create(d, me, t): return self._no('feedback')
+            self.docs[f'feedback/{len([k for k in self.docs if k.startswith("feedback/")]) + 1}'] = d; return self._ok()
         async def delprofile(me):
             if me is None: return self._no('signed out')
             self.docs.pop(f'profiles/{me}', None); return self._ok()
@@ -258,7 +265,7 @@ class Cloud:
         async def unfriend(me, f):
             f = json.loads(f)
             return batch(me, [('delete', fl(me, f), None), ('delete', fl(f, me), None)])
-        for n, f in [('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
+        for n, f in [('__fc_feedback', feedback), ('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
                      ('__fc_hasreq', hasreq), ('__fc_accept', accept), ('__fc_decline', decline), ('__fc_befriend', befriend), ('__fc_unfriend', unfriend)]:
             await c.expose_function(n, f)
         for n, f in [('__fc_getref', getref), ('__fc_mkref', mkref), ('__fc_addjoin', addjoin), ('__fc_joins', joins), ('__fc_raw', raw), ('__fc_uget', uget), ('__fc_uset', uset), ('__fc_udel', udel), ('__fc_ulist', ulist), ('__fc_dellogin', dellogin),

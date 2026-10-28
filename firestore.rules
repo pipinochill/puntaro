@@ -80,6 +80,15 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Alpha feedback. Write-only from the app: read them in the Firebase console.
+    match /feedback/{id} {
+      allow create: if authed() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'text', 'name', 'version', 'device', 'at'])
+        && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+        && request.resource.data.at == request.time;
+      allow read, update, delete: if false;
+    }
+
     // Friendships live in both people's lists. You can add one only by accepting their request,
     // or because you signed up from their invite. Either of you can end it.
     match /friends/{uid}/list/{fid} {

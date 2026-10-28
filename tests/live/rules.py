@@ -146,3 +146,9 @@ def friend_create(docs, uid, fid, data, auth, now):
     if auth == fid: return asked(docs, fid, uid) or invited_by(docs, fid, uid, via)
     return False
 def friend_delete(uid, fid, auth): return auth is not None and auth in (uid, fid)
+
+FEEDBACK_KEYS = {'uid', 'text', 'name', 'version', 'device', 'at'}
+def feedback_create(data, auth, now):
+    t = data.get('text')
+    return (auth is not None and data.get('uid') == auth and set(data) <= FEEDBACK_KEYS and isinstance(t, str)
+            and 0 < len(t) <= 2000 and data.get('at') == now)
