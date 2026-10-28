@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.75";
+const APP_VERSION = "0.76";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3387,16 +3387,6 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
           <div className="cap" style={{ fontWeight: 600, marginTop: 10 }}>Golf ID (optional)</div>
           <input aria-label="Golf ID" inputMode="numeric" placeholder="Your Golf Australia Golf ID" maxLength={12} value={me.golfId || ""} onChange={e => setPeople(p => ({ ...p, me: { ...p.me, golfId: e.target.value.replace(/[^0-9]/g, "").slice(0, 12) } }))} style={{ ...inp, marginTop: 4 }} />
           <p className="cap" style={{ marginTop: 4 }}>Golf Australia doesn't let apps check handicaps yet. Add your Golf ID and Puntaro can verify your handicap with a GA badge if they do.</p>
-        </div>
-        <div className="card" style={{ padding: "11px 12px" }}>
-          <h3 style={{ fontWeight: 800, fontSize: 15 }}>Strokes you get on each course</h3>
-          <p className="cap" style={{ marginTop: 2 }}>Your index adjusted for slope and rating.</p>
-          {[...saved, ...COURSES].flatMap(c => c.tees.map((x, k) => ({ key: c.id + k, name: c.tees.length > 1 ? `${c.name} (${x.name})` : c.name, sample: c.source === "sample", x, par: c.par }))).map((c, i) => (
-            <div key={c.key} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none", marginTop: i ? 0 : 8 }}>
-              <div><div className="hd" style={{ fontWeight: 700 }}>{c.name}</div><div className="cap">{c.sample ? "Sample. " : ""}Slope {c.x.slope}, rating {c.x.rating}, par {c.par}</div></div>
-              <div style={{ fontWeight: 800, fontSize: 17 }}>{courseHcp(me.hi, { slope: c.x.slope, rating: c.x.rating, par: c.par })}</div>
-            </div>
-          ))}
         </div>
         <button className="chip" onClick={onAbout} style={{ padding: "8px 0", textAlign: "center" }}>About this alpha</button>
         <div className="card" style={{ padding: 12 }}>
