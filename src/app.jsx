@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.66";
+const APP_VERSION = "0.67";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1793,13 +1793,47 @@ function HoldRow({ onHold, onTap, children, style, className }) {
   );
 }
 
+/* A hello on Home: a new line each time the app opens, never the same one twice in a row. */
+function breakTarget(p) {
+  const hi = p && p.hi != null ? Number(p.hi) : null;
+  if (hi == null || (p.hk === "est" && hi >= 54)) return "break 120";
+  if (hi >= 26) return "break 100";
+  if (hi >= 16) return "break 90";
+  if (hi >= 6) return "break 80";
+  return "go under par";
+}
+let GREET = null;
+function greeting(p) {
+  const lines = [
+    n => ["Who's taking your money today, ", n, "?"],
+    n => [`Ready to ${breakTarget(p)}, `, n, "?"],
+    n => ["Glorious day to lose some balls ay, ", n, "?"],
+    n => ["Fingers crossed, no 4-putts today, ", n, "?"],
+    n => ["Bank early, bank often, ", n, "."],
+    n => ["Somebody's busting today. Not you, ", n, "."],
+    n => ["Who's shouting the first round, ", n, "?"],
+    n => ["Keep it on the short stuff today, ", n, "."],
+  ];
+  if (new Date().getHours() < 11) lines.push(n => ["Morning, ", n, ". Coffee first, then birdies."]);
+  if (GREET == null || GREET >= lines.length) {
+    let last = -1; try { last = Number(localStorage.getItem("puntaro.greet") ?? -1); } catch (e) { /* storage is optional */ }
+    GREET = Math.floor(Math.random() * (lines.length - 1)); if (GREET >= last && last >= 0) GREET += 1;
+    if (GREET >= lines.length) GREET = 0;
+    try { localStorage.setItem("puntaro.greet", String(GREET)); } catch (e) { /* storage is optional */ }
+  }
+  const name = String((p && p.first) || "").trim().split(/\s+/)[0] || "mate";
+  return lines[GREET](name);
+}
 function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, liveCode, onLiveDetails, parked = [], onResumeParked, onDropParked, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}><Tiles size={20} hang toy /><button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 }}>
-          <p style={{ fontWeight: 600 }}>HCP {fmtHcp(people.me)}</p>
+          <div style={{ minWidth: 0 }}>
+            <p className="greet" style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.3 }}>{(([a, n, b]) => <>{a}<b style={{ fontWeight: 800 }}>{n}</b>{b}</>)(greeting(people.me))}</p>
+            <p style={{ fontWeight: 600, marginTop: 4, opacity: .85 }}>HCP {fmtHcp(people.me)}</p>
+          </div>
           <button onClick={onRules} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--card)", color: "var(--ink)", border: "3px solid var(--night)", boxShadow: "3px 3px 0 var(--night)", padding: "7px 12px", fontWeight: 700, fontSize: 15 }}><BookIcon size={18} />Rules</button>
         </div>
       </div>
