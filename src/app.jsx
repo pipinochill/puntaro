@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.69";
+const APP_VERSION = "0.70";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -2391,7 +2391,7 @@ const EXTRA_INFO = {
   ntp: ["Nearest the pin", "Closest to the pin on a par 3 earns +3. You pick the winner before moving on."],
   penalties: ["Penalties", "Lost ball -3, wet one -2, four putt halves your pot."],
 };
-function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onGo }) {
+function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGuest, onBack, onGo }) {
   const [course, setCourse] = useState(COURSES[0]);
   const [liveOn, setLiveOn] = useState(false);
   const [scoring, setScoring] = useState("each");
@@ -2424,7 +2424,11 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
   const autoBalance = () => { const s = [...sel].sort((x, y) => people[x].hi - people[y].hi); setTeams({ [s[0]]: 0, [s[3]]: 0, [s[1]]: 1, [s[2]]: 1 }); };
   const addPlayer = id => setSel(s => (s.includes(id) || s.length >= MAXP ? s : [...s, id]));
   const removePlayer = id => { if (id !== "me") setSel(s => s.filter(x => x !== id)); };
-  const pickList = [...friendIds, ...Object.keys(people).filter(id => people[id].guest)].filter(id => people[id] && people[id].name.toLowerCase().includes(q.trim().toLowerCase()));
+  const [forgot, setForgot] = useState(null); // the guest just removed from the list, so it can be put back
+  useEffect(() => { if (!forgot) return undefined; const t = setTimeout(() => setForgot(null), 10000); return () => clearTimeout(t); }, [forgot]);
+  const forget = id => { onForgetGuest(id, true); setSel(s => s.filter(x => x !== id)); setForgot({ id, name: people[id].name }); };
+  const unforget = () => { if (forgot) onForgetGuest(forgot.id, false); setForgot(null); };
+  const pickList = [...friendIds, ...Object.keys(people).filter(id => people[id].guest && !people[id].forgot)].filter(id => people[id] && people[id].name.toLowerCase().includes(q.trim().toLowerCase()));
   const Label = ({ children, sub }) => (
     <div style={{ margin: "14px 0 6px" }}><h2 className="h2">{children}</h2>{sub && <p className="cap" style={{ marginTop: 2 }}>{sub}</p>}</div>
   );
@@ -2488,7 +2492,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
         {effMode === "2v2" && teamCount !== 2 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, marginTop: 5 }}>Two players per team. Tap a Team pill to switch someone.</p>}
 
         {sheet === "friend" && (
-          <Sheet title="Add a friend" onClose={() => { setSheet(null); setQ(""); }}>
+          <Sheet title="Add a friend" onClose={() => { setSheet(null); setQ(""); setForgot(null); }}>
             <input aria-label="Search friends" placeholder="Search your friends and past guests" value={q} onChange={e => setQ(e.target.value)} style={inp} />
             <div style={{ marginTop: 8 }}>
               {pickList.length === 0 && <p className="cap">No one matches. Try a guest instead.</p>}
@@ -2497,9 +2501,16 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
                   <Avatar p={people[id]} size={28} />
                   <div style={{ flex: 1 }}><div className="hd" style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}{people[id].guest ? " · guest" : ""}</div></div>
                   <button className="chip" disabled={sel.includes(id) || sel.length >= MAXP} onClick={() => addPlayer(id)}>{sel.includes(id) ? "Added" : "Add"}</button>
+                  {people[id].guest && <button aria-label={`Remove ${people[id].name} from recent guests`} onClick={() => forget(id)} style={{ padding: 6, marginRight: -6, color: "var(--muted)" }}><X size={18} /></button>}
                 </div>
               ))}
             </div>
+            {forgot && (
+              <div role="status" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, background: "var(--night)", color: "#FBF6EA", padding: "9px 12px", border: "3px solid var(--night)" }}>
+                <div style={{ flex: 1, fontWeight: 600 }}>{forgot.name} removed from recent guests.</div>
+                <button onClick={unforget} style={{ fontWeight: 800, color: "var(--flag)", padding: "2px 4px" }}>Undo</button>
+              </div>
+            )}
           </Sheet>
         )}
         {sheet === "guest" && (
@@ -3758,6 +3769,8 @@ function Game({ user, cloud, profile, now0, finished }) {
     return id;
   };
   const addGuest = g => newPerson(g, true);
+  // Hidden rather than deleted, so past rounds with this guest still show their name, and Undo can bring them back.
+  const forgetGuest = (id, on) => setPeople(p => (p[id] ? { ...p, [id]: { ...p[id], forgot: on || undefined } } : p));
   const addFriend = f => { const id = newPerson(f, false); setFriendIds(x => [...x, id]); };
   const saveCourse = c => setSaved(s => [c, ...s.filter(x => x.id !== c.id)]);
   const [trash, setTrash] = useState(() => (Array.isArray(start.trash) ? start.trash.filter(x => Date.now() - x.at < TRASH_MS) : []));
@@ -4159,7 +4172,7 @@ function Game({ user, cloud, profile, now0, finished }) {
           </div>
         </div>
       )}
-      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} rowFx={rowFx} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
       {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} footer={liveFooter()} />}
