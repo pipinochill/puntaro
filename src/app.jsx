@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.67";
+const APP_VERSION = "0.68";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -872,15 +872,16 @@ function buildRound(cfg, people, seed) {
 /* ───────────── SMALL PARTS ───────────── */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Jersey+15&family=IBM+Plex+Sans:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Jersey+15&family=Figtree:wght@400;500;600;700;800&family=Bitter:wght@600;700&display=swap');
 .sg{--ink:#1B1C1A;--muted:#55524A;--chalk:#F1EADB;--card:#FBF6EA;--sel:#D3DACB;--night:#1B1C1A;--dk:#1B1C1A;--pine:#2F4A3A;--mint:#A9BFA3;--fair:#3E6B4B;--lime:#D9BE8E;--flag:#C69C6D;--red:#B84A32;--bogey:#B84A32;--line:#C9C0A8;--track:#E7E2D5;--water:#8B6B4A;--head1:#2F4A3A;--head2:#294133;--grid:rgba(36,38,34,.05);--on-bg:#2A2C28;--on-fg:#F4F0E6;--hi:#F1ECDF;}
 .sg.dark{--ink:#EDE8DD;--muted:#B3AEA2;--chalk:#1B1C1A;--card:#252724;--sel:#2C4033;--night:#454841;--pine:#4F7A5A;--fair:#7FA886;--lime:#E0C799;--red:#CC5A3E;--bogey:#CC5A3E;--line:#383A35;--track:#1B1C1A;--head1:#2C4536;--head2:#27402F;--grid:rgba(232,227,214,.03);--on-bg:#C69C6D;--on-fg:#1B1C1A;}
-.sg{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;font-weight:500;font-size:13px;line-height:1.28;letter-spacing:0;color:var(--ink);background-color:var(--chalk);
+.sg{font-family:'Figtree',system-ui,-apple-system,sans-serif;font-weight:500;font-size:13px;line-height:1.28;letter-spacing:0;color:var(--ink);background-color:var(--chalk);
  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:8px 8px;
  font-variant-numeric:tabular-nums;max-width:430px;margin:0 auto;min-height:100vh;position:relative;display:flex;flex-direction:column;}
 .sg *{box-sizing:border-box;border-radius:0 !important;}
 .sg *{font-synthesis:none;}
 .sg h1,.sg h2,.sg h3,.sg p{margin:0;}
+.sg h1,.sg h2,.sg h3,.sg .hd{font-family:'Bitter',Georgia,serif;font-weight:700 !important;letter-spacing:0 !important;}
 .sg h1,.sg h2,.sg h3,.sg .px,.sg .cta{font-weight:700 !important;letter-spacing:0 !important;}
 .sg .px{font-family:'Jersey 15','Pixelify Sans',ui-monospace,monospace;font-weight:400 !important;letter-spacing:.02em !important;}
 .sg h1{font-size:20px !important;line-height:1.15 !important;}
@@ -1224,7 +1225,7 @@ function NtpPick({ round, people, ids, h, api, disabled, onPicked }) {
           <button key={id} onClick={() => pick(id)} disabled={disabled} aria-label={`Nearest the pin: ${people[id].name}`} aria-pressed={v === id} className={`chip ${v === id ? "on" : ""}`}
             style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", minHeight: 52, opacity: v && v !== id ? 0.45 : 1, textAlign: "left" }}>
             <Avatar p={people[id]} size={32} />
-            <span style={{ fontWeight: 800, fontSize: 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[id].name}</span>
+            <span className="hd" style={{ fontWeight: 800, fontSize: 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[id].name}</span>
           </button>
         ))}
       </div>
@@ -1241,7 +1242,7 @@ function NtpCard({ round, people, ids, h, api, disabled }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: open ? 8 : 0 }}>
         <Sprite name="flag" size={3} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.1 }}><Tip k="ntp">Par 3: nearest the pin</Tip></div>
+          <div className="hd" style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.1 }}><Tip k="ntp">Par 3: nearest the pin</Tip></div>
           <div style={{ fontSize: 12.5, lineHeight: 1.2 }}>{v ? (v === "none" ? "No one found the green. No points this hole." : "Closest ball earns +3.") : disabled ? "The scorer picks who was closest." : "Closest ball earns +3. Who was it?"}</div>
         </div>
         {v && !open && !disabled && <button className="chip" onClick={() => setOpen(true)} style={{ padding: "2px 9px", fontSize: 12, color: "var(--ink)" }}>Change</button>}
@@ -1252,7 +1253,7 @@ function NtpCard({ round, people, ids, h, api, disabled }) {
           <div className="flagp"><Sprite name="flag" size={4} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="cap" style={{ color: "#C7D6BF" }}>Nearest the pin</div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{people[v].name} {v === "me" ? "stick" : "sticks"} it close</div>
+            <div className="hd" style={{ fontWeight: 700, fontSize: 16 }}>{people[v].name} {v === "me" ? "stick" : "sticks"} it close</div>
           </div>
           <div className="plus">+3</div>
           <Burst colors={BURST_B} n={14} reach={60} />
@@ -1448,7 +1449,7 @@ function CardZoom({ id, who, onClose }) {
         <PCard id={id} cw={180} rot={-2} />
         <div className="card" style={{ padding: "8px 12px", maxWidth: 300, boxShadow: "none", textAlign: "center" }}>
           <div className="cap">{who ? `${who} drew` : c.kind === "bless" ? "Blessing" : "Curse"}</div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>
+          <div className="hd" style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>
           <div>{c.text}</div>
         </div>
         <button className="chip" onClick={onClose} style={{ padding: "4px 18px" }}>Close</button>
@@ -1555,7 +1556,7 @@ function GamePanel({ gid, round, people, h, api }) {
                 style={{ padding: 8, marginTop: 8, boxShadow: "3px 3px 0 var(--night)", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Avatar p={people[id]} size={26} />
-                  <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
+                  <div className="hd" style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
                   <div style={{ textAlign: "right", minWidth: 62 }}><span className={hot ? "beat" : ""} style={{ fontWeight: 800, fontSize: 17 }}>{s.pot}</span><Tip k="pot"><span className="cap"> in pot</span></Tip></div>
                   <div style={{ textAlign: "right", minWidth: 72 }}><span style={{ fontWeight: 800, fontSize: 17 }}>{s.banked}</span><Tip k="banked"><span className="cap"> banked</span></Tip></div>
                 </div>
@@ -1768,7 +1769,7 @@ function GamePanel({ gid, round, people, h, api }) {
   return (
     <div style={{ border: "1.5px dashed var(--muted)", borderRadius: 14, padding: 14, textAlign: "center" }}>
       <Sparkles size={22} color="var(--fair)" />
-      <div style={{ fontWeight: 800, marginTop: 5 }}>{meta.name}</div>
+      <div className="hd" style={{ fontWeight: 800, marginTop: 5 }}>{meta.name}</div>
       <p className="cap" style={{ marginTop: 3 }}>Your own game plugs in here once the rules are set.</p>
     </div>
   );
@@ -1831,7 +1832,7 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700 }}><Tiles size={20} hang toy /><button className="pill" onClick={onAbout} aria-label="About this alpha" style={{ background: "var(--flag)", color: "var(--dk)" }}>ALPHA</button></div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 14 }}>
           <div style={{ minWidth: 0 }}>
-            <p className="greet" style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.3 }}>{(([a, n, b]) => <>{a}<b style={{ fontWeight: 800 }}>{n}</b>{b}</>)(greeting(people.me))}</p>
+            <p className="greet" style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.3 }}>{(([a, n, b]) => <>{a}<b className="hd">{n}</b>{b}</>)(greeting(people.me))}</p>
             <p style={{ fontWeight: 600, marginTop: 4, opacity: .85 }}>HCP {fmtHcp(people.me)}</p>
           </div>
           <button onClick={onRules} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--card)", color: "var(--ink)", border: "3px solid var(--night)", boxShadow: "3px 3px 0 var(--night)", padding: "7px 12px", fontWeight: 700, fontSize: 15 }}><BookIcon size={18} />Rules</button>
@@ -1841,14 +1842,14 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
         <button onClick={onStart} style={{ background: "var(--flag)", color: "var(--dk)", borderRadius: 24, padding: "16px 16px", textAlign: "left", display: "flex", alignItems: "center", gap: 11, boxShadow: "0 6px 0 var(--night)", border: "3px solid var(--night)" }}>
           <WaveFlag />
           <div>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.4 }}>Start a round</div>
+            <div className="hd" style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.4 }}>Start a round</div>
             <div style={{ fontSize: 13, opacity: 0.8 }}>Pick the course and your group.</div>
           </div>
         </button>
 
         <button onClick={onJoin} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", textAlign: "left", width: "100%", background: "var(--pine)", color: "#F4F0E6", border: "3px solid var(--night)", boxShadow: "0 5px 0 var(--night)" }}>
           <div style={{ width: 44, height: 44, flex: "none", display: "grid", placeItems: "center", background: "#F4F0E6", color: "var(--pine)", border: "3px solid var(--night)" }}><QrIcon size={26} /></div>
-          <div style={{ flex: 1 }}><div style={{ fontSize: 17, fontWeight: 800 }}>Join a live round</div><div style={{ fontSize: 13, opacity: 0.85 }}>A mate started the round? Scan their QR or type the code.</div></div>
+          <div style={{ flex: 1 }}><div className="hd" style={{ fontSize: 17, fontWeight: 800 }}>Join a live round</div><div style={{ fontSize: 13, opacity: 0.85 }}>A mate started the round? Scan their QR or type the code.</div></div>
           <ChevronRight size={22} />
         </button>
 
@@ -2407,7 +2408,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
         <div className="card" style={{ padding: "10px 12px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>{course.name}</div>
+              <div className="hd" style={{ fontWeight: 800, fontSize: 15 }}>{course.name}</div>
               <div className="cap">{course.source === "sample" ? "Sample course (made up)" : course.source === "osm" ? "From OpenStreetMap, ratings entered by you" : "Added by hand"}</div>
             </div>
             <button className="chip" onClick={() => setFinding(true)}>Change</button>
@@ -2430,7 +2431,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
             <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
               <Avatar p={people[id]} size={26} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700 }}>{people[id].name}</div>
+                <div className="hd" style={{ fontWeight: 700 }}>{people[id].name}</div>
                 <div className="cap">HCP {fmtHcp(people[id])}{people[id].guest ? " · guest" : ""}</div>
               </div>
               {effMode === "2v2" && (
@@ -2461,7 +2462,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
               {pickList.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                   <Avatar p={people[id]} size={28} />
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}{people[id].guest ? " · guest" : ""}</div></div>
+                  <div style={{ flex: 1 }}><div className="hd" style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}{people[id].guest ? " · guest" : ""}</div></div>
                   <button className="chip" disabled={sel.includes(id) || sel.length >= MAXP} onClick={() => addPlayer(id)}>{sel.includes(id) ? "Added" : "Add"}</button>
                 </div>
               ))}
@@ -2508,7 +2509,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onBack, onG
           <div className="card" style={{ padding: "3px 11px", marginTop: 8 }}>
             {extraKeys.map((k, i) => (
               <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
-                <div><div style={{ fontWeight: 700, fontSize: 15 }}>{EXTRA_INFO[k][0]}</div><div className="cap">{EXTRA_INFO[k][1]}</div></div>
+                <div><div className="hd" style={{ fontWeight: 700, fontSize: 15 }}>{EXTRA_INFO[k][0]}</div><div className="cap">{EXTRA_INFO[k][1]}</div></div>
                 <Toggle on={opts[k]} onChange={v => setOpts(o => ({ ...o, [k]: v }))} />
               </div>
             ))}
@@ -2688,7 +2689,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
             <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, padding: "6px 7px 6px 9px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
               <Avatar p={people[id]} size={30} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 10, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
+                <div className="hd" style={{ fontWeight: 700, fontSize: 15 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 10, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
                 <div className="cap" style={{ fontSize: 12, fontWeight: 600 }}>
                   {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
@@ -2758,7 +2759,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                 return (
                   <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                     <Avatar p={people[id]} size={26} />
-                    <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
+                    <div className="hd" style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
                     {mult > 1 && <span className="pill" style={{ background: "var(--flag)", color: "var(--dk)" }}>x{mult} streak</span>}
                     <div style={{ minWidth: 54, textAlign: "right" }}><span style={{ fontWeight: 800, fontSize: 17 }}>{banking ? s.banked : potBefore}</span><span className="cap">{banking ? " banked" : " in pot"}</span></div>
                     <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={(potBefore === 0 && !banking) || !can.bank(id, h)} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
@@ -2879,7 +2880,7 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
           {comp.map((r, i) => (
             <div key={r.id} style={{ display: "grid", gridTemplateColumns: "28px 1fr 56px 56px", gap: 5, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line)" }}>
               <div style={{ fontWeight: 800, color: i === 0 ? "var(--fair)" : "var(--muted)" }}>{i === 0 ? <Sprite name="crown" size={4} /> : i + 1}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}><Avatar p={people[r.id]} size={26} />{people[r.id].name}</div>
+              <div className="hd" style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}><Avatar p={people[r.id]} size={26} />{people[r.id].name}</div>
               <div style={{ textAlign: "right", fontWeight: 600 }}>{r.gross}</div>
               <div style={{ textAlign: "right", fontWeight: 800 }}>{round.useHcp ? r.net : r.gross} <span className="cap">{fmtPar(round.useHcp ? r.netPar : r.grossPar)}</span></div>
             </div>
@@ -2925,7 +2926,7 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
               {ranked.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                   <Avatar p={people[id]} size={22} />
-                  <div style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
+                  <div className="hd" style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
                   <div style={{ fontWeight: 800, color: nets[id] > 0 ? "var(--fair)" : nets[id] < 0 ? "var(--red)" : "var(--ink)" }}>{sign(nets[id])}</div>
                 </div>
               ))}
@@ -3084,7 +3085,7 @@ function AddFriendSheet({ people, friendIds, setFriendIds, myRef, makeRef, onFin
         </div>
         {found && (
           <div className="card" style={{ padding: 10, display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{found.name}</div><div className="cap">{found.friend ? "Already your friend." : `Code ${found.code}`}</div></div>
+            <div style={{ flex: 1 }}><div className="hd" style={{ fontWeight: 700 }}>{found.name}</div><div className="cap">{found.friend ? "Already your friend." : `Code ${found.code}`}</div></div>
             {!found.friend && <button className="cta" style={{ width: "auto", minHeight: 40, padding: "6px 12px", fontSize: "14px" }} disabled={busy} onClick={send}>Send friend request</button>}
           </div>
         )}
@@ -3099,7 +3100,7 @@ function AddFriendSheet({ people, friendIds, setFriendIds, myRef, makeRef, onFin
               {sample.map(id => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
                   <Avatar p={people[id]} size={28} />
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}</div></div>
+                  <div style={{ flex: 1 }}><div className="hd" style={{ fontWeight: 700 }}>{people[id].name}</div><div className="cap">HCP {fmtHcp(people[id])}</div></div>
                   <button onClick={() => setFriendIds(f => [...f, id])} className="chip">Add</button>
                 </div>
               ))}
@@ -3210,7 +3211,7 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friend
               return (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderTop: "1px solid var(--line)", marginTop: 6 }}>
                   <Avatar p={{ name: r.name, first: c ? c.first : r.name, last: c ? c.li : "", color: (c && c.color) || "#5E6B66" }} size={30} />
-                  <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700 }}>{r.name}</div>{c && <div className="cap">HCP {fmtHcp(c)}</div>}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}><div className="hd" style={{ fontWeight: 700 }}>{r.name}</div>{c && <div className="cap">HCP {fmtHcp(c)}</div>}</div>
                   <button className="chip" disabled={busy === r.id} onClick={() => act(r.id, onDecline)}>Decline</button>
                   <button className="chip on" disabled={busy === r.id} onClick={() => act(r.id, onAccept)} aria-label={`Accept ${r.name}`}>Accept</button>
                 </div>
@@ -3345,7 +3346,7 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
           <p className="cap" style={{ marginTop: 2 }}>Your index adjusted for slope and rating.</p>
           {[...saved, ...COURSES].flatMap(c => c.tees.map((x, k) => ({ key: c.id + k, name: c.tees.length > 1 ? `${c.name} (${x.name})` : c.name, sample: c.source === "sample", x, par: c.par }))).map((c, i) => (
             <div key={c.key} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none", marginTop: i ? 0 : 8 }}>
-              <div><div style={{ fontWeight: 700 }}>{c.name}</div><div className="cap">{c.sample ? "Sample. " : ""}Slope {c.x.slope}, rating {c.x.rating}, par {c.par}</div></div>
+              <div><div className="hd" style={{ fontWeight: 700 }}>{c.name}</div><div className="cap">{c.sample ? "Sample. " : ""}Slope {c.x.slope}, rating {c.x.rating}, par {c.par}</div></div>
               <div style={{ fontWeight: 800, fontSize: 17 }}>{courseHcp(me.hi, { slope: c.x.slope, rating: c.x.rating, par: c.par })}</div>
             </div>
           ))}
@@ -3561,7 +3562,7 @@ function LiveSheet({ code, doc, uid, onClose, onScoring, onRelease, onLeave, ref
               {doc.base.playerIds.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                   <Avatar p={{ id, ...doc.people[id] }} size={24} />
-                  <div style={{ flex: 1, fontWeight: 700 }}>{doc.people[id].name}</div>
+                  <div className="hd" style={{ flex: 1, fontWeight: 700 }}>{doc.people[id].name}</div>
                   <span className="cap" style={{ color: doc.claims && doc.claims[id] ? "var(--fair)" : "var(--muted)", fontWeight: 600 }}>{doc.claims && doc.claims[id] ? (doc.claims[id] === uid ? "You" : "Joined") : "Not joined"}</span>
                   {host && doc.claims && doc.claims[id] && doc.claims[id] !== uid && <button className="chip" style={{ padding: "1px 6px", fontSize: 11 }} onClick={() => onRelease(id)}>Free seat</button>}
                 </div>
