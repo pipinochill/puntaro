@@ -31,6 +31,6 @@ async def main():
         check('...and their row says which hole has no score', 'No score on hole 3' in await nic.inner_text())
         check('Everyone else busts as normal (unless a Safety net card saves them)', all(['bust' in (await r.get_attribute('class')) or 'SAFETY NET SAVED' in await r.inner_text() for r in rows]))
         await nic.get_by_role('button', name='Fill it in').click(); await A.wait_for_timeout(400)
-        check('Fill it in jumps to the blank hole', await A.locator('.stripes .px').first.inner_text() == '3')
+        check('Fill it in jumps to the blank hole', await A.locator('.holeno').first.inner_text() == '3')
         print('page errors:', A.errs); print(f'{sum(res)}/{len(res)} passed'); await b.close()
 asyncio.run(main())

@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.71";
+const APP_VERSION = "0.74";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1583,8 +1583,8 @@ function GamePanel({ gid, round, people, h, api }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                   {!hot && !bust && <span className="cap"><Tip k="streak">Streak {s.streak}</Tip></span>}
                   {banking && <span className="cap">{s.vaults > 0 ? "Vault keeps your streak" : "Streak resets"}</span>}
-                  {s.shields > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Safety net held</span>}
-                  {s.vaults > 0 && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 11 }}>Vault held</span>}
+                  {s.shields > 0 && <span className="pill px" style={{ background: "var(--mint)", color: "var(--dk)", padding: "1px 6px", fontSize: 13 }}>SAFETY NET HELD</span>}
+                  {s.vaults > 0 && <span className="pill px" style={{ background: "var(--mint)", color: "var(--dk)", padding: "1px 6px", fontSize: 13 }}>VAULT HELD</span>}
                   {s.leak > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 11 }}>Leaking {s.leak}</span>}
                   {(() => { const ad = !banking && !heavy && !locked && bankAdvice(round, id, h, s); return ad ? <span className="cap" title="A rough guide, not a rule" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Tip k="risk">Bust risk next hole {Math.round(ad.risk * 100)}%</Tip><Tip k="advice"><span className="pill" style={{ background: ad.level === "bank" ? "var(--red)" : ad.level === "think" ? "var(--flag)" : "var(--mint)", color: ad.level === "bank" ? "#fff" : "var(--dk)", fontSize: 11 }}>{ad.level === "bank" ? "Bank it" : ad.level === "think" ? "Think about it" : "Hold"}</span></Tip>{ad.cardNext && ad.level !== "hold" ? <span className="cap">cards next</span> : null}</span> : null; })()}
                   {(() => {
@@ -1602,7 +1602,7 @@ function GamePanel({ gid, round, people, h, api }) {
                   <div style={{ marginTop: 6 }}>
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
                       {active.map(k => (
-                        <span key={k} className="pill" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: EVENTS[k].kind === "bonus" ? "var(--lime)" : "var(--red)", color: EVENTS[k].kind === "bonus" ? "var(--dk)" : "#fff", fontSize: 11 }}><EventBadge k={k} px={1} /><Tip k={k}>{EVENTS[k].name}</Tip></span>
+                        <span key={k} className="pill px" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: EVENTS[k].kind === "bonus" ? "var(--lime)" : "var(--red)", color: EVENTS[k].kind === "bonus" ? "var(--dk)" : "#fff", padding: "1px 6px", fontSize: 13 }}><EventBadge k={k} px={1} /><Tip k={k}>{EVENTS[k].name.toUpperCase()}</Tip></span>
                       ))}
                       <button className="chip" aria-expanded={open === id} onClick={() => setOpen(open === id ? null : id)} style={{ padding: "1px 6px", fontSize: 12, marginLeft: active.length ? 0 : "auto" }}>
                         {open === id ? "Done" : "+ Bonus or penalty"}
@@ -1835,7 +1835,7 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
             <p className="greet" style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.3 }}>{(([a, n, b]) => <>{a}<b className="hd">{n}</b>{b}</>)(greeting(people.me))}</p>
             <p style={{ fontWeight: 600, marginTop: 4, opacity: .85 }}>HCP {fmtHcp(people.me)}</p>
           </div>
-          <button onClick={onRules} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--card)", color: "var(--ink)", border: "3px solid var(--night)", boxShadow: "3px 3px 0 var(--night)", padding: "7px 12px", fontWeight: 700, fontSize: 15 }}><BookIcon size={18} />Rules</button>
+          <button className="px" aria-label="Rules" onClick={onRules} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--card)", color: "var(--ink)", border: "3px solid var(--night)", boxShadow: "3px 3px 0 var(--night)", padding: "6px 12px", fontSize: 20, lineHeight: 1 }}><BookIcon size={18} />RULES</button>
         </div>
       </div>
       <div style={{ padding: "0 12px", marginTop: -36, display: "grid", gap: 11 }}>
@@ -1856,7 +1856,7 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
 
         {round && (
           <HoldRow className="card" onHold={() => askDelete("round")} style={{ padding: 12 }}>
-            <div className="cap" style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>Round in progress{round.sample && <span className="pill" style={{ background: "var(--mint)", color: "var(--dk)", fontSize: 10 }}>SAMPLE</span>}{liveCode && <button className="pill" onClick={onLiveDetails} aria-label="Show join code" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", fontSize: 10 }}>LIVE {liveCode} · SHOW CODE</button>}</div>
+            <div className="cap" style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>Round in progress{round.sample && <span className="pill px" style={{ background: "var(--mint)", color: "var(--dk)", padding: "1px 6px", fontSize: 13 }}>SAMPLE</span>}{liveCode && <button className="pill px" onClick={onLiveDetails} aria-label="Show join code" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, background: "var(--red)", borderColor: "var(--red)", color: "#fff", padding: "2px 8px", fontSize: 15 }}><span className="blink" style={{ width: 6, height: 6, background: "#fff", display: "block" }} />LIVE</button>}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
               <h3 style={{ fontSize: 15, fontWeight: 800 }}>{round.course.name}</h3>
               <span style={{ fontWeight: 700 }}>Hole {round.hole + 1} of 18</span>
@@ -1876,7 +1876,7 @@ function Home({ people, round, recent, board, onOpenRound, onStart, onJoin, live
                 return (
                   <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>{x.round.course.name}{x.live && <span className="pill" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", fontSize: 10 }}>LIVE</span>}</div>
+                      <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>{x.round.course.name}{x.live && <span className="pill px" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", padding: "1px 6px", fontSize: 13 }}>LIVE</span>}</div>
                       <div className="cap">Hole {x.round.hole + 1} of 18 · {hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`} left</div>
                     </div>
                     <button className="chip" onClick={() => onResumeParked(x)}>Resume</button>
@@ -2686,16 +2686,16 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button onClick={onBack} aria-label="Back" style={{ display: "flex", alignItems: "center", gap: 4, minHeight: 44 }}><ChevronLeft size={22} /><Tiles size={15} /></button>
           <div style={{ display: "flex", gap: 6 }}>
-            {can.live && <button onClick={onLive} aria-label="Live round details" style={{ fontWeight: 700, background: "var(--red)", color: "#fff", padding: "5px 9px", display: "flex", alignItems: "center", gap: 5 }}><span className="blink" style={{ width: 7, height: 7, background: "#fff", display: "block" }} />LIVE</button>}
-            <button onClick={onRules} style={{ fontWeight: 700, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 11px" }}>Rules</button>
-            <button onClick={onFinish} style={{ fontWeight: 700, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 11px" }}>Finish</button>
+            {can.live && <button className="px" onClick={onLive} aria-label="Live round details" style={{ fontSize: 18, lineHeight: 1, background: "var(--red)", color: "#fff", padding: "6px 9px", display: "flex", alignItems: "center", gap: 5 }}><span className="blink" style={{ width: 7, height: 7, background: "#fff", display: "block" }} />LIVE</button>}
+            <button className="px" aria-label="Rules" onClick={onRules} style={{ fontSize: 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "6px 11px" }}>RULES</button>
+            <button className="px" aria-label="Finish" onClick={onFinish} style={{ fontSize: 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "6px 11px" }}>FINISH</button>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
           <button onClick={() => api.setHole(Math.max(0, h - 1))} aria-label="Previous hole" disabled={h === 0} style={{ width: 38, height: 38, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 0 ? 0.35 : 1 }}><ChevronLeft size={26} /></button>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.9 }}>{round.course.name}</div>
-            <div className="px" aria-label={`Hole ${h + 1}`} style={{ fontSize: 50, lineHeight: .9, margin: "2px 0 2px" }}>{h + 1}</div>
+            <div className="px holeno" aria-label={`Hole ${h + 1}`} style={{ fontSize: 50, lineHeight: .9, margin: "2px 0 2px" }}>{h + 1}</div>
             <div style={{ fontWeight: 700, fontSize: 13 }}>Par {PAR[h]} · Index {SI[h]}</div>
           </div>
           <button onClick={goNext} aria-label="Next hole" disabled={h === 17} style={{ width: 38, height: 38, background: "#F4F0E6", color: "#1B1C1A", border: "3px solid #1B1C1A", boxShadow: "3px 3px 0 #1B1C1A", display: "grid", placeItems: "center", opacity: h === 17 ? 0.35 : 1 }}><ChevronRight size={26} /></button>
@@ -2735,7 +2735,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
             <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, padding: "6px 7px 6px 9px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
               <Avatar p={people[id]} size={30} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="hd" style={{ fontWeight: 700, fontSize: 15 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 10, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
+                <div className="hd" style={{ fontWeight: 700, fontSize: 15 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill px" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 13, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
                 <div className="cap" style={{ fontSize: 12, fontWeight: 600 }}>
                   {t.thru === 0 ? "Not started" : `${fmtPar(round.useHcp ? t.netPar : t.grossPar)} thru ${t.thru}`}
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
@@ -2745,7 +2745,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                 {v != null && (() => { const n = scoreName(v, PAR[h]); return <span className="pill px" style={{ background: n.bg, padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}>{n.label}</span>; })()}
                 {pc && v != null && pc[id].potStart[h] != null && <span className="cap" style={{ fontWeight: 700, color: bust ? "#fff" : "var(--ink)", marginRight: 4 }}>Pot {pc[id].potStart[h]} → {pc[id].potAt[h] != null ? pc[id].potAt[h] : pc[id].pot}</span>}
                 {(() => { const gap = round.scores[id].slice(0, h).findIndex(x => x == null); return gap >= 0 && t.thru > 0 ? <div className="cap" role="note" style={{ color: bust ? "#fff" : "var(--red)", fontWeight: 700 }}>No score on hole {gap + 1}. <button onClick={() => api.setHole(gap)} style={{ textDecoration: "underline", fontWeight: 700, color: "inherit" }}>Fill it in</button></div> : null; })()}
-                {st > 0 && <span className="pill" style={{ background: "var(--flag)", padding: "2px 7px", fontSize: 11, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "Gets a stroke" : `Gets ${st} strokes`}</Tip></span>}
+                {st > 0 && <span className="pill px" style={{ background: "var(--flag)", padding: "1px 6px", fontSize: 13, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "GETS A STROKE" : `GETS ${st} STROKES`}</Tip></span>}
                 {pc && v != null && !bust && /Safety net saved/.test(pc[id].log[h] || "") && <span className="pill px" style={{ background: "var(--mint)", padding: "1px 6px", fontSize: 13, marginTop: 3 }}>SAFETY NET SAVED THE POT</span>}
                 {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 17 }}>BUST</span></div>}
                 {hot && <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 3 }}>{Array.from({ length: pc[id].mult }).map((_, k) => <Sprite key={k} name="flame" size={3} className="flick" />)}<span className="px" style={{ fontSize: 17 }}>x{pc[id].mult}</span></div>}
@@ -2806,7 +2806,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                   <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                     <Avatar p={people[id]} size={26} />
                     <div className="hd" style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
-                    {mult > 1 && <span className="pill" style={{ background: "var(--flag)", color: "var(--dk)" }}>x{mult} streak</span>}
+                    {mult > 1 && <span className="pill px" style={{ background: "var(--flag)", color: "var(--dk)", padding: "1px 6px", fontSize: 13 }}>X{mult} STREAK</span>}
                     <div style={{ minWidth: 54, textAlign: "right" }}><span style={{ fontWeight: 800, fontSize: 17 }}>{banking ? s.banked : potBefore}</span><span className="cap">{banking ? " banked" : " in pot"}</span></div>
                     <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={(potBefore === 0 && !banking) || !can.bank(id, h)} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
                       {can.hidden && can.hidden(id, h) ? "Hidden" : banking ? "Banking" : potBefore === 0 ? "Empty" : "Bank it"}
@@ -3246,7 +3246,7 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friend
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "20px 16px 18px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <h1>Friends</h1>
-        <button onClick={() => setSheet(true)} style={{ background: "var(--flag)", color: "var(--dk)", border: "3px solid var(--night)", padding: "6px 12px", fontWeight: 700, display: "flex", gap: 5, alignItems: "center" }}><UserPlus size={18} />Add</button>
+        <button className="px" aria-label="Add" onClick={() => setSheet(true)} style={{ background: "var(--flag)", color: "var(--dk)", border: "3px solid var(--night)", padding: "6px 12px", fontSize: 20, lineHeight: 1, display: "flex", gap: 6, alignItems: "center" }}><UserPlus size={18} />ADD FRIEND</button>
       </div>
       <div style={{ padding: 12, display: "grid", gap: 10 }}>
         {requests.length > 0 && (
