@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.70";
+const APP_VERSION = "0.71";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -2391,7 +2391,7 @@ const EXTRA_INFO = {
   ntp: ["Nearest the pin", "Closest to the pin on a par 3 earns +3. You pick the winner before moving on."],
   penalties: ["Penalties", "Lost ball -3, wet one -2, four putt halves your pot."],
 };
-function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGuest, onBack, onGo }) {
+function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGuest, friendKit, onBack, onGo }) {
   const [course, setCourse] = useState(COURSES[0]);
   const [liveOn, setLiveOn] = useState(false);
   const [scoring, setScoring] = useState("each");
@@ -2505,6 +2505,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
                 </div>
               ))}
             </div>
+            {friendKit && <button className="chip" onClick={() => { setSheet("invite"); setQ(""); setForgot(null); }} style={{ marginTop: 10, width: "100%", padding: "9px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 700 }}><QrIcon size={18} />Add a new friend: QR or code</button>}
             {forgot && (
               <div role="status" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, background: "var(--night)", color: "#FBF6EA", padding: "9px 12px", border: "3px solid var(--night)" }}>
                 <div style={{ flex: 1, fontWeight: 600 }}>{forgot.name} removed from recent guests.</div>
@@ -2513,6 +2514,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
             )}
           </Sheet>
         )}
+        {sheet === "invite" && friendKit && <AddFriendSheet people={people} friendIds={friendIds} {...friendKit} onClose={() => setSheet("friend")} />}
         {sheet === "guest" && (
           <Sheet title="Add a guest" onClose={() => setSheet(null)}>
             <p className="cap" style={{ marginBottom: 8 }}>For mates who aren't on the app. You score for them.</p>
@@ -4172,7 +4174,7 @@ function Game({ user, cloud, profile, now0, finished }) {
           </div>
         </div>
       )}
-      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{ setFriendIds, myRef, makeRef, onFind: findFriendCode, onSend: sendFriendRequest, onAddFriend: addFriend }} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} rowFx={rowFx} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
       {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} footer={liveFooter()} />}
