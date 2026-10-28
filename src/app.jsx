@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.68";
+const APP_VERSION = "0.69";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -2083,13 +2083,16 @@ const kmBetween = (a, b, c, d) => {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 };
-const NOMINATIM = "https://nominatim.openstreetmap.org/search?format=json&limit=15&q=";
+const NOMINATIM = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=15&q=";
 const isGolf = r => r.type === "golf_course" || r.class === "leisure" && r.type === "golf_course";
 const nomCourse = (r, lat, lon) => ({
   osm: `${r.osm_type}-${r.osm_id}`, type: r.osm_type, id: r.osm_id, name: r.name || r.display_name.split(",")[0],
-  lat: +r.lat, lon: +r.lon, dist: lat == null ? null : kmBetween(lat, lon, +r.lat, +r.lon), place: r.display_name.split(", ").slice(1, 3).join(", "),
+  lat: +r.lat, lon: +r.lon, dist: lat == null ? null : kmBetween(lat, lon, +r.lat, +r.lon), place: (a => [a.suburb || a.town || a.village || a.city, a.state].filter(Boolean).join(", "))(r.address || {}) || r.display_name.split(", ").slice(1, 3).join(", "),
 });
+let nomNext = 0; // the map service asks for no more than one request a second, from anywhere in the app
 async function nominatim(path) {
+  const wait = nomNext - Date.now(); nomNext = Math.max(Date.now(), nomNext) + 1000;
+  if (wait > 0) await new Promise(ok => setTimeout(ok, wait));
   const res = await fetch(NOMINATIM + path, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error("nominatim " + res.status);
   return res.json();
@@ -2120,14 +2123,42 @@ async function findCoursesNear(lat, lon) {
   const seen = new Set();
   return found.filter(c => (seen.has(c.name) ? false : seen.add(c.name))).sort((a, b) => a.dist - b.dist).slice(0, 15);
 }
-// Type a course name or a town. Course names come back as a list; a town becomes a nearby search.
+// Which country to search first: from the phone's region or time zone (en-AU, Australia/Melbourne -> au).
+function homeCountry() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    if (/^Australia\//.test(tz)) return "au";
+    if (/^Pacific\/Auckland|^NZ/.test(tz)) return "nz";
+    const langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ""];
+    for (const l of langs) { const m = /-([A-Za-z]{2})$/.exec(l); if (m) return m[1].toLowerCase(); }
+  } catch (e) { /* fall through */ }
+  return "";
+}
+const isPlace = r => r.class === "place" || r.class === "boundary";
+// Type a course name or a town. Golf courses that match come back as a list (home country first);
+// otherwise a town becomes a nearby search, named so you can see where it looked.
 async function searchPlaces(q) {
-  let rows = await nominatim(encodeURIComponent(q));
-  let golf = rows.filter(isGolf);
-  if (!golf.length && rows.length) { const more = await nominatim(encodeURIComponent(q + " golf")); golf = more.filter(isGolf); }
-  if (golf.length) { const seen = new Set(); return { courses: golf.map(r => nomCourse(r)).filter(c => (seen.has(c.osm) ? false : seen.add(c.osm))).slice(0, 10) }; }
-  if (!rows.length) throw new Error("notfound");
-  return { town: { lat: +rows[0].lat, lon: +rows[0].lon } };
+  const cc = homeCountry();
+  const words = q.toLowerCase().replace(/\b(golf|club|course|links|country)\b/g, " ").split(/[^a-z0-9']+/).filter(Boolean);
+  const run = async where => {
+    const extra = where ? `&countrycodes=${where}` : "";
+    const ask = t => nominatim(encodeURIComponent(t) + extra).catch(() => []);
+    const base = /golf/i.test(q) ? q : `${q} golf`;
+    // one at a time, stopping once courses turn up
+    const a = await ask(base); if (a.some(isGolf)) return { golf: a.filter(isGolf), all: a };
+    const c = await ask(q); return { golf: c.filter(isGolf), all: [...c, ...a] };
+  };
+  let r = await run(cc);
+  if (cc && !r.golf.length && !r.all.some(isPlace)) r = await run("");
+  if (r.golf.length) {
+    const seen = new Set();
+    const score = c => { const n = c.name.toLowerCase(); return words.filter(w => n.includes(w)).length; };
+    const list = r.golf.map(x => nomCourse(x)).filter(c => (seen.has(c.osm) ? false : seen.add(c.osm)));
+    return { courses: list.sort((x, y) => score(y) - score(x)).slice(0, 10) };
+  }
+  const town = r.all.find(isPlace) || r.all[0];
+  if (!town) throw new Error("notfound");
+  return { town: { lat: +town.lat, lon: +town.lon, name: town.display_name.split(", ").slice(0, 2).join(", ") } };
 }
 async function loadOsmHoles(c) {
   if (c.type === "node") return null;
@@ -2237,6 +2268,7 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
   const [results, setResults] = useState(null);
   const [q, setQ] = useState("");
   const [draft, setDraft] = useState(null);
+  const [where, setWhere] = useState("");
 
   const near = async (lat, lon) => {
     setBusy("Looking for courses…");
@@ -2251,6 +2283,7 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
     setMsg("");
     if (!navigator.geolocation) { setMsg("This device can't share its location. Type a town below instead."); return; }
     setBusy("Getting your location…");
+    setWhere("Near you");
     navigator.geolocation.getCurrentPosition(p => near(p.coords.latitude, p.coords.longitude), () => { setBusy(""); setMsg("Location is off or blocked. Type a town below instead."); }, { timeout: 10000, maximumAge: 3600000, enableHighAccuracy: false });
   };
   const search = async () => {
@@ -2258,8 +2291,8 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
     setBusy("Searching…"); setMsg("");
     try {
       const r = await searchPlaces(q.trim());
-      if (r.courses) { setResults(r.courses); setBusy(""); }
-      else await near(r.town.lat, r.town.lon);
+      if (r.courses) { setResults(r.courses); setWhere(`Golf courses matching "${q.trim()}"`); setBusy(""); }
+      else { await near(r.town.lat, r.town.lon); setWhere(`No course called "${q.trim()}" found, so here's what's near ${r.town.name}`); }
     } catch (e) { setBusy(""); setMsg(e.message === "notfound" ? "Couldn't find that place or course. Try the town name, or add it by hand." : "Couldn't reach the map service. Check your connection, or add the course by hand."); }
   };
   const choose = async c => {
@@ -2283,18 +2316,18 @@ function CourseFinder({ saved, onPick, onSaveCourse, onBack }) {
       <div style={{ padding: "10px 12px 24px", display: "grid", gap: 10 }}>
         <button className="cta" onClick={locate} disabled={!!busy}><MapPin size={18} />Courses near me</button>
         <div style={{ display: "flex", gap: 6 }}>
-          <input aria-label="Search by town" placeholder="Or type a town, e.g. Byron Bay" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} style={inp} />
+          <input aria-label="Search by town" placeholder="Course name or town, e.g. Woodlands" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} style={inp} />
           <button className="chip" onClick={search} disabled={!!busy} aria-label="Search"><Search size={18} /></button>
         </div>
         {busy && <p className="cap" role="status">{busy}</p>}
         {msg && <p role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{msg}</p>}
         {results && results.length > 0 && (
           <div>
-            <div className="cap" style={{ marginBottom: 4 }}>Courses found (from OpenStreetMap)</div>
+            <div className="cap" style={{ marginBottom: 4 }}>{where || "Courses found"} (from OpenStreetMap)</div>
             <div style={{ display: "grid", gap: 6 }}>
               {results.map(c => (
                 <button key={c.osm} className="card" onClick={() => choose(c)} style={{ padding: "9px 11px", textAlign: "left", display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ fontWeight: 700 }}>{c.name}</span><span className="cap">{c.dist == null ? c.place : c.dist < 10 ? c.dist.toFixed(1) : Math.round(c.dist)} {c.dist == null ? "" : "km"}</span>
+                  <span style={{ fontWeight: 700 }}>{c.name}</span><span className="cap" style={{ textAlign: "right" }}>{c.dist == null ? c.place : `${c.dist < 10 ? c.dist.toFixed(1) : Math.round(c.dist)} km`}</span>
                 </button>
               ))}
             </div>
