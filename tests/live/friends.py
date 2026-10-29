@@ -13,7 +13,7 @@ async def signup(pg, first, q=''):
     await fc.open_app(pg, URL, q=q)
     await pg.get_by_role('button', name='Continue with Google').click(); await pg.wait_for_timeout(700)
     await pg.get_by_label('First name').fill(first); await pg.get_by_label('Last name').fill('Smith'); await fc.fill_hcp(pg, 12)
-    await pg.get_by_role('button', name="Let's play").click(); await pg.wait_for_timeout(1500)
+    await fc.lets_play(pg); await pg.wait_for_timeout(1500)
 
 async def friends_tab(pg):
     await pg.get_by_role('button', name='Friends', exact=True).click(); await pg.wait_for_timeout(600)
@@ -32,7 +32,7 @@ async def main():
         await N.get_by_role('button', name='Continue with Google').click(); await N.wait_for_timeout(700)
         check('Sign-up says you\'ll be friends with whoever invited you', await N.get_by_text("You'll be friends straight away").count() == 1)
         await N.get_by_label('First name').fill('Nic'); await N.get_by_label('Last name').fill('Smith'); await fc.fill_hcp(N, 8.4)
-        await N.get_by_role('button', name="Let's play").click(); await N.wait_for_timeout(2000)
+        await fc.lets_play(N); await N.wait_for_timeout(2000)
         check('Signing up from an invite makes you friends, both ways', friends_of('u_nic') == ['u_pierre'] and friends_of('u_pierre') == ['u_nic'])
         await friends_tab(P); await P.wait_for_timeout(1200)
         check('Pierre sees Nic in Friends, marked as an app user', await P.get_by_role('button', name='View Nic').count() == 1)

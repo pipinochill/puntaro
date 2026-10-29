@@ -321,11 +321,16 @@ async def open_app(pg, url, q='', setup=None):
     await pg.wait_for_timeout(400)
     if setup and await pg.get_by_label('First name').count():
         await pg.get_by_label('First name').fill(setup[0]); await fill_hcp(pg, setup[1])
-        await pg.get_by_role('button', name="Let's play").click(); await pg.wait_for_timeout(700)
+        await lets_play(pg); await pg.wait_for_timeout(700)
 
 async def next_step(pg):
     """Sign-up asks one question at a time: move from your name to your handicap if we're still on the name."""
     if await pg.get_by_role('button', name='Next', exact=True).count(): await pg.get_by_role('button', name='Next', exact=True).click(); await pg.wait_for_timeout(250)
+
+async def lets_play(pg):
+    """Finish sign-up: past the handicap question (and the optional friend-code step, if it's asked), then Let's play."""
+    if await pg.get_by_role('button', name='Next', exact=True).count(): await pg.get_by_role('button', name='Next', exact=True).click(); await pg.wait_for_timeout(250)
+    if await pg.get_by_role('button', name="Let's play").count(): await pg.get_by_role('button', name="Let's play").click()
 
 async def fill_hcp(pg, v):
     """Sign-up asks whether you have a handicap first; say yes and type it."""

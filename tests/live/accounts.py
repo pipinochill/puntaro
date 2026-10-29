@@ -54,9 +54,9 @@ async def main():
         check('...counting real rounds only (not the sample ones)', '2 finished rounds and stats' in txt and '1 saved course' in txt and 'a round in progress' in txt, txt[txt.find('Bring'):txt.find('Bring') + 160])
         await A.screenshot(path=f'{OUT}/acc_setup.png')
         await fc.fill_hcp(A, '99')
-        await A.get_by_role('button', name="Let's play").click()
+        await fc.lets_play(A)
         check('Setup checks the handicap', await A.get_by_text('Handicap index should be between').count() == 1)
-        await fc.fill_hcp(A, '14.2'); await A.get_by_role('button', name="Let's play").click(); await A.wait_for_timeout(1000)
+        await fc.fill_hcp(A, '14.2'); await fc.lets_play(A); await A.wait_for_timeout(1000)
         prof = cloud.user('u_pierre') or {}
         check('The profile is saved in the account', prof.get('first') == 'Pierre' and prof.get('hi') == 14.2)
         fin = cloud.finished('u_pierre')

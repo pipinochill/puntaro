@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.83";
+const APP_VERSION = "0.84";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -4721,6 +4721,7 @@ const forgetPhoneData = () => { try { localStorage.removeItem(STATE_KEY); localS
 function ProfileSetup({ cloud, user, onDone }) {
   const local = useState(phoneData)[0];
   const [inviter, setInviter] = useState(null); // { code, name }
+  const inviterNow = inviter;
   useEffect(() => {
     const code = unstash(REF_KEY); if (!code) return;
     cloud.getRef(code).then(r => { if (r && r.owner !== user.uid) setInviter({ code, name: r.name, owner: r.owner }); }).catch(() => {});
@@ -4732,7 +4733,8 @@ function ProfileSetup({ cloud, user, onDone }) {
   const [bring, setBring] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const go = async () => {
+  const go = async (inv0) => {
+    const inviter = inv0 && inv0.code ? inv0 : inviterNow; // a code checked this very tap is used straight away
     const picked = pickHcp(hp);
     if (!first.trim()) { setErr("Enter your first name."); return; }
     if (picked.err) { setErr(picked.err); return; }
@@ -4758,16 +4760,50 @@ function ProfileSetup({ cloud, user, onDone }) {
       onDone(profile, now);
     } catch (e) { setErr(explain(e)); setBusy(false); }
   };
-  // One question at a time: your name, then your handicap.
+  // One question at a time: your name, your handicap, then (only if no invite link or QR was used) a mate's code.
   const [step, setStep] = useState(0);
+  const [askedInvite] = useState(() => !unstash(REF_KEY)); // decided once: a link or QR brought a code, or it didn't
+  const steps = askedInvite ? 3 : 2;
   const next = () => { if (!first.trim()) { setErr("Enter your first name."); return; } setErr(""); setStep(1); };
-  const dots = <div style={{ display: "flex", gap: 6, justifyContent: "center" }} aria-label={`Step ${step + 1} of 2`}>{[0, 1].map(k => <span key={k} style={{ width: k === step ? 22 : 10, height: 10, background: k <= step ? "var(--pine)" : "var(--line)", border: "2px solid var(--night)" }} />)}</div>;
+  const toInvite = () => { const picked = pickHcp(hp); if (picked.err) { setErr(picked.err); return; } setErr(""); setStep(2); };
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
+  const checkCode = async () => {
+    const c = cleanRef(code);
+    if (!c) { setErr("That doesn't look like a friend code. They look like pierre-7k2m."); return false; }
+    setChecking(true); setErr("");
+    try {
+      const r = await cloud.getRef(c);
+      setChecking(false);
+      if (!r || r.owner === user.uid) { setErr("Couldn't find that code. Check it with your mate, or skip for now."); return false; }
+      const inv = { code: c, name: r.name, owner: r.owner }; setInviter(inv); return inv;
+    } catch (e) { setChecking(false); setErr("Couldn't check the code. Check your connection, or skip for now."); return false; }
+  };
+  const dots = <div style={{ display: "flex", gap: 6, justifyContent: "center" }} aria-label={`Step ${step + 1} of ${steps}`}>{[...Array(steps).keys()].map(k => <span key={k} style={{ width: k === step ? 22 : 10, height: 10, background: k <= step ? "var(--pine)" : "var(--line)", border: "2px solid var(--night)" }} />)}</div>;
   return (
     <div style={screen}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}><Tiles size={22} /></div>
       {dots}
-      {inviter && <p style={{ textAlign: "center", fontWeight: 700 }}>Invited by {inviter.name}. You'll be friends straight away.</p>}
-      {step === 0 ? (
+      {inviter && step < 2 && <p style={{ textAlign: "center", fontWeight: 700 }}>Invited by {inviter.name}. You'll be friends straight away.</p>}
+      {step === 2 ? (
+        <div key="invite" className="slidein" style={{ display: "grid", gap: 10 }}>
+          <h1 style={{ textAlign: "center" }}>Did a mate invite you?</h1>
+          {inviter ? (
+            <div className="card" role="status" style={{ padding: 12, textAlign: "center", background: "var(--mint)", color: "var(--dk)" }}>
+              <div style={{ fontWeight: 800, fontSize: 17 }}>Invited by {inviter.name}</div>
+              <div style={{ marginTop: 2 }}>You'll be friends straight away.</div>
+              <button onClick={() => { setInviter(null); setCode(""); }} style={{ marginTop: 6, textDecoration: "underline", fontWeight: 600, color: "inherit" }}>Not them? Change</button>
+            </div>
+          ) : (<>
+            <p className="cap" style={{ textAlign: "center" }}>Type their friend code and you'll be friends straight away. You'll find it in their Friends tab under Add friend.</p>
+            <input aria-label="Friend code" placeholder="e.g. pierre-7k2m" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={20} value={code} onChange={e => { setCode(e.target.value); setErr(""); }} onKeyDown={e => { if (e.key === "Enter") checkCode(); }} style={{ ...inp, fontSize: 18, padding: "12px 12px", textAlign: "center" }} />
+            {code.trim() && <button className="chip" disabled={checking} onClick={checkCode} style={{ padding: "9px 0", textAlign: "center", fontWeight: 700 }}>{checking ? "Checking…" : "Check code"}</button>}
+          </>)}
+          <button className="cta" disabled={busy || checking} onClick={async () => { let inv = inviter; if (!inv && code.trim()) { inv = await checkCode(); if (!inv) return; } go(inv); }}>{busy ? "Saving…" : "Let's play"}</button>
+          {!inviter && !code.trim() && <p className="cap" style={{ textAlign: "center" }}>No code? Just tap Let's play. You can add friends any time.</p>}
+          <button className="chip" onClick={() => { setErr(""); setStep(1); }} style={{ padding: "8px 0", textAlign: "center" }}>Back</button>
+        </div>
+      ) : step === 0 ? (
         <div key="name" className="slidein" style={{ display: "grid", gap: 10 }}>
           <h1 style={{ textAlign: "center" }}>Welcome! What's your name?</h1>
           <p className="cap" style={{ textAlign: "center" }}>Signed in as {user.email || "you"}. Only your last initial is ever shown to other players.</p>
@@ -4789,7 +4825,9 @@ function ProfileSetup({ cloud, user, onDone }) {
               <Toggle on={bring} onChange={setBring} />
             </div>
           )}
-          <button className="cta" disabled={busy} onClick={go}>{busy ? "Saving…" : "Let's play"}</button>
+          {askedInvite
+            ? <button className="cta" onClick={toInvite}>Next</button>
+            : <button className="cta" disabled={busy} onClick={() => go()}>{busy ? "Saving…" : "Let's play"}</button>}
           <button className="chip" onClick={() => { setErr(""); setStep(0); }} style={{ padding: "8px 0", textAlign: "center" }}>Back</button>
         </div>
       )}

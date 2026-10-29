@@ -12,7 +12,7 @@ async def main():
         await A.get_by_role('button', name='Continue with Google').click(); await A.wait_for_timeout(700)
         await A.get_by_label('First name').fill('Pierre'); await A.get_by_label('Last name').fill('Bobillier'); await fc.next_step(A)
         await A.get_by_role('button', name='I have a handicap', exact=True).click(); await A.get_by_label('Handicap index').fill('18.4')
-        await A.get_by_role('button', name="Let's play").click(); await A.wait_for_timeout(900)
+        await fc.lets_play(A); await A.wait_for_timeout(900)
         g = A.locator('.greet')
         t = await g.inner_text() if await g.count() else ''
         check('Home greets you by first name', 'Pierre' in t and 'Bobillier' not in t, t)
