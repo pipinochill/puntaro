@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.86";
+const APP_VERSION = "0.87";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -780,7 +780,7 @@ function countEvents(r, id) {
   let b = 0, p = 0;
   (r.events[id] || []).forEach(e => {
     if (!e) return;
-    Object.keys(e).forEach(k => { if (e[k]) { if (EVENTS[k].kind === "bonus") b++; else p++; } });
+    Object.keys(e).forEach(k => { if (e[k] && EVENTS[k]) { if (EVENTS[k].kind === "bonus") b++; else p++; } }); // (a pick-up isn't a bonus or penalty)
   });
   const ntpWins = r.opts.ntp ? r.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0;
   return { b: (r.opts.bonuses ? b : 0) + ntpWins, p: r.opts.penalties ? p : 0 };
@@ -1195,8 +1195,13 @@ function Avatar({ p, size = 38, ring }) {
 
 /* Birdies are chamfered "round" boxes, bogeys are square. Doubles get a second ring. */
 const CH = "polygon(25% 0,75% 0,100% 25%,100% 75%,75% 100%,25% 100%,0 75%,0 25%)";
-function ScoreMark({ v, par, size = 50 }) {
+// A pick-up: the player stopped playing the hole. It counts as net double bogey (the most a hole can count for a
+// handicap), so it's a bust in Puntaro. Kept as a mark on the hole's events, so it syncs in live rounds.
+const isPickup = (r, id, h) => !!(r.events && r.events[id] && r.events[id][h] && r.events[id][h].pickup);
+const pickupScore = (r, id, h) => PAR[h] + 2 + (r.useHcp ? strokesOn(r.hcp[id], h) : 0);
+function ScoreMark({ v, par, size = 50, pick }) {
   const wrap = { width: size, height: size, display: "grid", placeItems: "center", flex: "none" };
+  if (pick && v != null) return <div style={wrap} title={`Picked up (counts as ${v})`}><div style={{ width: 46, height: 46, background: "var(--red)", display: "grid", placeItems: "center" }}><div style={{ width: 39, height: 39, background: "var(--card)", display: "grid", placeItems: "center" }}><span key="p" className="pop px" style={{ fontSize: 26, lineHeight: 1, color: "var(--red)" }}>P</span></div></div></div>;
   if (v == null) return <div style={wrap} title={`Tap + or − to start at par ${par}`}><div className="score-empty" aria-label={`No score yet. Tap plus or minus to start at par ${par}`}><b>{par}</b><small>PAR</small></div></div>;
   const d = v - par;
   const g = "var(--fair)", r = "var(--red)", m = "var(--mint)", w = "var(--card)";
@@ -2070,6 +2075,7 @@ function Rules({ onBack }) {
           <RuleRow k="Net par" v="2 points" />
           <RuleRow k="Net bogey" v="1 point" />
           <RuleRow k="Net double or worse" v="Bust. You lose your whole pot." />
+          <RuleRow k="Picked up (P)" v="Counts as net double bogey, so it's a bust." />
         </RuleSection>
         <RuleSection title="Pot, bank and bust">
           <p>Points sit in your pot until you bank them. You can bank after any hole. Banked points can never be lost.</p>
@@ -2862,7 +2868,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                   {can.enteredBy && v != null && can.enteredBy(id, h) && <span>{` · by ${can.enteredBy(id, h)}`}</span>}
                   {can.edited && v != null && can.edited(id, h) && <span>{" · edited"}</span>}
                 </div>
-                {v != null && (() => { const n = scoreName(v, PAR[h]); return <span className="pill px" style={{ background: n.bg, padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}>{n.label}</span>; })()}
+                {v != null && (() => { const n = isPickup(round, id, h) ? { label: `PICK UP (${v})`, bg: "#F2B8A8" } : scoreName(v, PAR[h]); return <span className="pill px" style={{ background: n.bg, padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}>{n.label}</span>; })()}
                 {pc && v != null && pc[id].potStart[h] != null && <span className="cap" style={{ fontWeight: 700, color: bust ? "#fff" : "var(--ink)", marginRight: 4 }}>Pot {pc[id].potStart[h]} → {pc[id].potAt[h] != null ? pc[id].potAt[h] : pc[id].pot}</span>}
                 {(() => { const gap = round.scores[id].slice(0, h).findIndex(x => x == null); return gap >= 0 && t.thru > 0 ? <div className="cap" role="note" style={{ color: bust ? "#fff" : "var(--red)", fontWeight: 700 }}>No score on hole {gap + 1}. <button onClick={() => api.setHole(gap)} style={{ textDecoration: "underline", fontWeight: 700, color: "inherit" }}>Fill it in</button></div> : null; })()}
                 {cbLast[id] && <span className="pill px" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}><Tip k="comeback">{h === 17 ? "LAST PLACE X4" : "LAST PLACE X2"}</Tip></span>}
@@ -2873,7 +2879,10 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
               </div>
               {rowFx[id] && <div className="rowstamp" key={rowFx[id].key}><StampMark small word={rowFx[id].word} sub={rowFx[id].sub} color={rowFx[id].color} tilt={-8} /></div>}
               <StepBtn onClick={() => bump(id, -1)} label={`${people[id].name} minus one`}><Minus size={22} /></StepBtn>
-              <ScoreMark v={v} par={PAR[h]} />
+              <div style={{ display: "grid", justifyItems: "center", gap: 2, flex: "none" }}>
+                <ScoreMark v={v} par={PAR[h]} pick={isPickup(round, id, h)} />
+                <button className="px" onClick={() => { const on = !isPickup(round, id, h); try { (on ? SFX.down : SFX.up)(); } catch (e) { /* optional */ } api.setPickup(id, h, on); }} aria-pressed={isPickup(round, id, h)} aria-label={`${people[id].name} picked up`} title="Picked up" style={{ width: 34, height: 20, lineHeight: 1, fontSize: 16, border: "2px solid var(--night)", background: isPickup(round, id, h) ? "var(--red)" : "var(--chalk)", color: isPickup(round, id, h) ? "#fff" : "var(--ink)" }}>P</button>
+              </div>
               <StepBtn plus onClick={() => bump(id, 1)} label={`${people[id].name} plus one`}><Plus size={22} /></StepBtn>
             </div>
           );
@@ -2974,7 +2983,7 @@ function Scorecard({ round, people }) {
   return (
     <div className="card" style={{ padding: "9px 11px" }}>
       <h3 style={{ fontWeight: 800, fontSize: 15 }}>Scoresheet</h3>
-      <p className="cap">Gross scores. B banked after the hole, X bust.</p>
+      <p className="cap">Gross scores. P picked up (counts as net double bogey), B banked after the hole, X bust.</p>
       <div style={{ overflowX: "auto", marginTop: 6 }}>
         <div style={{ minWidth: 70 + ids.length * (w + 2) }}>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 2, paddingBottom: 4 }}>
@@ -2990,7 +2999,7 @@ function Scorecard({ round, people }) {
                   const bust = pc[id].bustAt[h]; const bank = round.bank[id][h] && !bust;
                   return (
                     <div key={id} style={{ ...cell, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
-                      <span style={{ display: "inline-grid", placeItems: "center", minWidth: 20, height: 20, fontWeight: 700, color: d < 0 ? "var(--fair)" : d > 0 ? "var(--red)" : "var(--ink)", border: v == null ? "none" : d < 0 ? "2px solid var(--fair)" : d > 0 ? "2px solid var(--red)" : "none", borderRadius: d < 0 ? "50%" : 0 }}>{v == null ? "·" : v}</span>
+                      <span style={{ display: "inline-grid", placeItems: "center", minWidth: 20, height: 20, fontWeight: 700, color: d < 0 ? "var(--fair)" : d > 0 ? "var(--red)" : "var(--ink)", border: v == null ? "none" : d < 0 ? "2px solid var(--fair)" : d > 0 ? "2px solid var(--red)" : "none", borderRadius: d < 0 ? "50%" : 0 }} title={isPickup(round, id, h) ? `Picked up (counts as ${v})` : undefined}>{v == null ? "·" : isPickup(round, id, h) ? "P" : v}</span>
                       {(bank || bust) && <span className="px" style={{ fontSize: 11, color: bust ? "var(--red)" : "var(--fair)" }}>{bust ? "X" : "B"}</span>}
                     </div>
                   );
@@ -4686,9 +4695,14 @@ function Game({ user, cloud, profile, now0, finished }) {
 
   const api = {
     celebrate, moment: showMoment, moments: showMoments, rowStamp,
-    setScore: (id, h, v) => {
+    setScore: (id, h, v, keepPick) => {
       const prev = round.scores[id][h]; const who = (live && live.myId) || "watch";
       const pairs = [[["s", id, h], v], [["by", bankKey(id, h)], who]];
+      if (!keepPick && isPickup(round, id, h)) { // changing the score by hand means they didn't pick up after all
+        const { pickup, ...rest } = round.events[id][h]; const ev = Object.keys(rest).length ? rest : null;
+        pairs.push([["ev", id, h], ev]);
+        setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? ev : x)) } }));
+      }
       // Tapping +/- while on the hole is just entering the score. It's an edit when the hole is
       // already finished: the group has moved past it, or this phone has.
       const holeDone = liveDoc && (h < revealUpTo(liveDoc) || (live.myId && h < ((liveDoc.at || {})[live.myId] || 0)));
@@ -4705,6 +4719,15 @@ function Game({ user, cloud, profile, now0, finished }) {
       return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } }));
     },
     setNtp: (h, id) => { push([[["ntp", h], round.ntp[h] === id ? null : id]]); setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)) })); },
+    setPickup: (id, h, on) => {
+      const cur = round.events[id][h] || null;
+      let ev;
+      if (on) ev = { ...(cur || {}), pickup: true };
+      else { const { pickup, ...rest } = cur || {}; ev = Object.keys(rest).length ? rest : null; }
+      if (on) api.setScore(id, h, pickupScore(round, id, h), true);
+      push([[["ev", id, h], ev]]);
+      setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? ev : x)) } }));
+    },
     setEvent: (id, h, k) => { push([[["ev", id, h], nextEvent(round.events[id][h], k)]]); setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? nextEvent(x, k) : x)) } })); },
     setWolf: (h, v) => { push([[["wolf", h], v]]); setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })); },
     setBbb: (h, k, id) => { const x = round.bbb[h]; push([[["bbb", h], { ...(x || {}), [k]: x && x[k] === id ? null : id }]]); setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })); },

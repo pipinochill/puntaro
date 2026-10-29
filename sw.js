@@ -1,4 +1,4 @@
-const V = "puntaro-0.86";
+const V = "puntaro-0.87";
 const FILES = ["./", "index.html", "app.js", "manifest.webmanifest", "icons/tile-192.png", "icons/tile-512.png"];
 const SDK = "https://www.gstatic.com/firebasejs/";
 const JSQR = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
