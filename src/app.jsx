@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.80";
+const APP_VERSION = "0.81";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3113,7 +3113,7 @@ function ResultCardSheet({ round, people, at, onClose }) {
 
 /* ───────────── USAGE LOG + DEV TAB (admin only) ───────────── */
 // The admin's Firebase account ID. The database rules hold the same ID, so nobody else can read this data.
-const ADMINS = ["ADMIN_UID"];
+const ADMINS = ["wXejcmHxZQWMfzyp27LzLrguag02"];
 const isAdmin = user => !!(user && ADMINS.includes(user.uid));
 const TRACK = { n: 0, errs: 0 };
 function track(name, data) {

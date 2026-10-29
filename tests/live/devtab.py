@@ -5,7 +5,7 @@ from playwright.async_api import async_playwright
 sys.path.insert(0, sys.argv[3]); import rules, fakecloud as fc
 URL, OUT = sys.argv[1], sys.argv[2]; res = []
 def check(n, ok, d=''): ok = bool(ok); res.append(ok); print(('PASS ' if ok else 'FAIL ') + n + (f'  [{d}]' if d and not ok else ''))
-ADMIN = 'ADMIN_UID'  # the placeholder in the app and the rules until the real account ID goes in
+ADMIN = 'wXejcmHxZQWMfzyp27LzLrguag02'  # the admin account ID, same as in the app and the rules
 cloud = fc.Cloud(rules)
 async def play_round(A):
     await A.get_by_role('button', name='Start a round').click(); await A.wait_for_timeout(300)
@@ -50,7 +50,7 @@ async def main():
         ev = [v for k, v in cloud.docs.items() if k.startswith('events/') and v['name'] == 'open']
         check('...with no location or personal details, just app and version', ev and set(ev[0]['data']) <= {'v', 'app', 'os'}, str(ev[:1]))
         r1 = await P.evaluate("window.__fake.raw('events/1', 'get').then(() => 'read', e => 'denied')")
-        r2 = await P.evaluate("window.__fake.raw('users/ADMIN_UID', 'get').then(() => 'read', e => 'denied')")
+        r2 = await P.evaluate("window.__fake.raw('users/wXejcmHxZQWMfzyp27LzLrguag02', 'get').then(() => 'read', e => 'denied')")
         r3 = await P.evaluate("window.__puntaroLiveBackend.adminLoad().then(() => 'read', e => 'denied')")
         check("A player can't read the log, other accounts or the admin view", (r1, r2, r3) == ('denied', 'denied', 'denied'), str((r1, r2, r3)))
         fid = [k for k in cloud.docs if k.startswith('feedback/')][0].split('/')[1]

@@ -13,8 +13,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // The admin (the Dev tab in the app) can read everything below, but never change players' data.
-    // Put your Firebase account ID (Authentication > Users > User UID) here.
-    function isAdmin() { return request.auth != null && request.auth.uid in ['ADMIN_UID']; }
+    // Pierre's Firebase account ID (Authentication > Users > User UID). Add more IDs to the list to add admins.
+    function isAdmin() { return request.auth != null && request.auth.uid in ['wXejcmHxZQWMfzyp27LzLrguag02']; }
 
     // Admin: read every account's finished rounds and every live round in one query.
     match /{path=**}/rounds/{id} {

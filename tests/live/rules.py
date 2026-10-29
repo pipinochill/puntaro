@@ -153,7 +153,7 @@ def feedback_create(data, auth, now):
     return (auth is not None and data.get('uid') == auth and set(data) <= FEEDBACK_KEYS and isinstance(t, str)
             and 0 < len(t) <= 2000 and data.get('at') == now)
 
-ADMINS = {'ADMIN_UID'}
+ADMINS = {'wXejcmHxZQWMfzyp27LzLrguag02'}
 def is_admin(auth): return auth is not None and auth in ADMINS
 def event_create(data, auth, now):
     return (auth is not None and data.get('uid') == auth and set(data) <= {'uid', 'name', 'data', 'at'} and isinstance(data.get('name'), str)
