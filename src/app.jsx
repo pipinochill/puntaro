@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.85";
+const APP_VERSION = "0.86";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -914,6 +914,7 @@ function buildRound(cfg, people, seed) {
     course, holes, mode: cfg.mode || "ffa", teams: cfg.teams || null, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
     opts: { ...(cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true, cushion: true }), comeback: true },
     draws: Array(18).fill(null), seen: Array(18).fill(false), drawSeed: seed ? 20241024 : Math.floor(Math.random() * 1e9),
+    startedAt: Date.now(), holeAt: Array(18).fill(null), // when the round began, and when each hole's first score went in (for the fair-play checks)
     ntp: Array(18).fill(null),
     ntpOk: Array(18).fill(false),
     stake: cfg.stake ?? 0, split: cfg.split || "603010",
@@ -2015,8 +2016,8 @@ function History({ recent, askDelete, onOpenRound, trash, now, onRestore }) {
             {recent.map((r, i) => (
               <HoldRow key={r.id || i} onHold={() => askDelete("recent", i)} onTap={r.id ? () => onOpenRound(r.id) : undefined} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                 <div>
-                  <div style={{ fontWeight: 700 }}>{r.course}</div>
-                  <div className="cap">{r.sample ? "Sample round. " : `${r.when}. `}{r.note}</div>
+                  <div style={{ fontWeight: 700 }}>{r.course}{r.voided && <span className="pill px" style={{ marginLeft: 6, background: "var(--red)", borderColor: "var(--red)", color: "#fff", padding: "0 6px", fontSize: 13 }}>VOIDED</span>}</div>
+                  <div className="cap">{r.sample ? "Sample round. " : `${r.when}. `}{r.voided ? "Doesn't count towards stats or ladders." : r.note}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontWeight: 800, fontSize: 15 }}>{r.net}</div>
@@ -3111,6 +3112,38 @@ function ResultCardSheet({ round, people, at, onClose }) {
   );
 }
 
+/* ───────────── FAIR PLAY ─────────────
+   Nothing is ever blocked: these checks only flag a round for the admin to look at in the Dev tab.
+   A voided round stops counting on ladders and in stats everywhere, but stays in the player's history, marked. */
+const FAIR = { fastMinutes: 20, fastHoles: 14, underBy: 8, aces: 2, raises: 3, raiseTotal: 4, raiseDays: 30 };
+const voidKey = (rec, owner) => (rec.live && rec.live.code ? `L-${rec.live.code}` : `S-${owner}-${rec.id}`);
+function roundFlags(rec) {
+  const r = parseJSON(rec.round, null); if (!r || !r.playerIds || !r.scores) return [];
+  const out = []; const names = parseJSON(rec.people, {}) || {};
+  const nm = id => { const p = names[id]; return (p && (p.first || p.name)) || (id === "me" ? "The scorer" : "A player"); };
+  const t = (r.holeAt || []).filter(Boolean);
+  if (t.length >= FAIR.fastHoles) {
+    const mins = Math.max(1, Math.round((Math.max(...t) - Math.min(...t)) / 60000));
+    if (mins < FAIR.fastMinutes) out.push(`${t.length} holes entered in ${mins} minute${mins === 1 ? "" : "s"}`);
+  }
+  try {
+    withHoles(r.holes, () => r.playerIds.forEach(id => {
+      const sc = r.scores[id]; if (!sc || sc.some(v => v == null)) return;
+      const gross = sc.reduce((a, v) => a + v, 0); const par = PAR.reduce((a, v) => a + v, 0); const ch = (r.hcp && r.hcp[id]) || 0;
+      const under = par + ch - gross;
+      if (under >= FAIR.underBy) out.push(`${nm(id)}: gross ${gross} off a course handicap of ${ch} (${under} under)`);
+      const aces = sc.filter((v, h) => v === 1 && PAR[h] > 2).length;
+      if (aces >= FAIR.aces) out.push(`${nm(id)}: ${aces} holes-in-one`);
+    }));
+  } catch (e) { /* a round that won't replay just isn't checked */ }
+  return out;
+}
+function raiseFlag(raises, now) {
+  const recent = (raises || []).filter(x => now - x.at < FAIR.raiseDays * 864e5);
+  const total = recent.reduce((a, x) => a + (x.to - x.from), 0);
+  return recent.length >= FAIR.raises || total >= FAIR.raiseTotal ? { times: recent.length, total: Math.round(total * 10) / 10 } : null;
+}
+
 /* ───────────── USAGE LOG + DEV TAB (admin only) ───────────── */
 // The admin's Firebase account ID. The database rules hold the same ID, so nobody else can read this data.
 const ADMINS = ["wXejcmHxZQWMfzyp27LzLrguag02"];
@@ -3126,12 +3159,17 @@ const shortDay = t => new Date(t).toLocaleDateString("en-AU", { day: "numeric", 
 function withHoles(holes, f) { const p = [...PAR], q = [...SI]; try { applyHoles(holes || null); return f(); } finally { PAR.splice(0, 18, ...p); SI.splice(0, 18, ...q); } }
 function devStats(d, now) {
   const users = [...d.users].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const voidMap = Object.fromEntries((d.voids || []).map(v => [v.key, v]));
   const byRef = Object.fromEntries(d.users.filter(u => u.refCode).map(u => [u.refCode, u]));
   // one entry per real round: live rounds are saved by everyone who joined, so keep one copy per code
   const seen = new Set(); const rounds = [];
   [...d.rounds].sort((a, b) => (b.at || 0) - (a.at || 0)).forEach(x => { const k = x.live && x.live.code ? "L" + x.live.code : x.owner + x.id; if (seen.has(k)) return; seen.add(k); rounds.push(x); });
+  const userBy = Object.fromEntries(d.users.map(u => [u.uid, u]));
+  const flagged = rounds.map(x => ({ x, key: voidKey(x, x.owner), flags: roundFlags(x), owner: userBy[x.owner] })).map(f => ({ ...f, v: voidMap[f.key] })).filter(f => f.flags.length || (f.v && f.v.status === "void"));
+  const watch = d.users.map(u => ({ u, f: raiseFlag(u.raises, now) })).filter(x => x.f);
   const bal = { n: 0, players: 0, busts: 0, pts: 0, comebacks: 0, comebackRounds: 0, band: { "Under 10": [0, 0, 0], "10 to 19": [0, 0, 0], "20 and up": [0, 0, 0] } };
   rounds.forEach(x => {
+    if ((voidMap[voidKey(x, x.owner)] || {}).status === "void") return;
     const r = parseJSON(x.round, null); if (!r || !r.playerIds || r.playerIds.length < 2 || !(r.games || []).includes("punt")) return;
     try {
       withHoles(r.holes, () => {
@@ -3148,7 +3186,7 @@ function devStats(d, now) {
   const opens = days.map(t => { const k = dayKey(t); const es = ev.filter(e => e.name === "open" && e.at && dayKey(e.at) === k); return { t, n: es.length, people: new Set(es.map(e => e.uid)).size }; });
   const counts = {}; ev.forEach(e => (counts[e.name] = (counts[e.name] || 0) + 1));
   return {
-    users, byRef, rounds, bal, opens, counts,
+    users, byRef, rounds, bal, opens, counts, flagged, watch,
     newWeek: users.filter(u => u.createdAt && now - u.createdAt < 7 * DAY).length,
     active7: new Set(ev.filter(e => e.at && now - e.at < 7 * DAY).map(e => e.uid)).size,
     roundsWeek: rounds.filter(x => x.at && now - x.at < 7 * DAY).length,
@@ -3185,6 +3223,12 @@ function DevTab({ user }) {
   useEffect(load, []);
   const now = Date.now();
   const st = useMemo(() => (d ? devStats(d, now) : null), [d]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setVoid = async (f, status) => {
+    const key = f.key;
+    setD(x => ({ ...x, voids: [...(x.voids || []).filter(v => v.key !== key), ...(status ? [{ key, status, reason: f.flags.join("; "), at: Date.now() }] : [])] }));
+    try { const b = await backend(); await (status ? b.adminSetVoid(key, status, f.flags.join("; ")) : b.adminClearVoid(key)); }
+    catch (e) { setErr("Couldn't save that. Check the rules are published, then refresh."); }
+  };
   const done = (id, v) => { setD(x => ({ ...x, feedback: x.feedback.map(f => (f.id === id ? { ...f, done: v } : f)) })); backend().then(b => b.adminFeedbackDone(id, v)).catch(() => setErr("Couldn't update that feedback.")); };
   const Tile = ({ n, l }) => <div className="card" style={{ padding: "8px 10px" }}><div className="px" style={{ fontSize: 32, lineHeight: 1 }}>{n}</div><div className="cap" style={{ marginTop: 2 }}>{l}</div></div>;
   const Box = ({ title, children, sub }) => <div className="card" style={{ padding: "10px 12px" }}><h3 style={{ fontSize: 15 }}>{title}</h3>{sub && <p className="cap" style={{ marginTop: 2 }}>{sub}</p>}<div style={{ marginTop: 8 }}>{children}</div></div>;
@@ -3218,6 +3262,34 @@ function DevTab({ user }) {
               </div>
             ))}
             {st.feedback.some(f => f.done) && <button onClick={() => setShowDone(v => !v)} style={{ marginTop: 6, textDecoration: "underline", fontWeight: 600, color: "var(--muted)" }}>{showDone ? "Hide done" : "Show done too"}</button>}
+          </Box>
+          <Box title={`Fair play (${st.flagged.filter(f => !f.v).length} to check)`} sub="Rounds that look too good or too quick. Nothing is blocked: Void stops a round counting on ladders and in stats; Fine clears the flag.">
+            {st.flagged.filter(f => !f.v).length === 0 && <p className="cap">Nothing flagged.</p>}
+            {st.flagged.filter(f => !f.v).map(f => (
+              <div key={f.key} style={{ padding: "8px 0", borderTop: "1px solid var(--line)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span className="hd" style={{ fontWeight: 700 }}>{f.x.course}</span><span className="cap">{f.x.at ? shortDay(f.x.at) : ""}</span></div>
+                <div className="cap">Saved by {f.owner ? `${f.owner.first} ${f.owner.last ? f.owner.last[0] + "." : ""}`.trim() : "?"}{f.x.live ? " · live round" : " · one phone"}</div>
+                <ul style={{ margin: "4px 0 0 18px", fontWeight: 600 }}>{f.flags.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                  <button className="chip" onClick={() => setVoid(f, "ok")} style={{ flex: 1, padding: "6px 0", textAlign: "center" }}>Fine</button>
+                  <button className="chip" onClick={() => setVoid(f, "void")} style={{ flex: 1, padding: "6px 0", textAlign: "center", color: "var(--red)", fontWeight: 800 }}>Void</button>
+                </div>
+              </div>
+            ))}
+            {st.flagged.some(f => f.v && f.v.status === "void") && (
+              <div style={{ marginTop: 8 }}>
+                <div className="cap" style={{ fontWeight: 800 }}>VOIDED</div>
+                {st.flagged.filter(f => f.v && f.v.status === "void").map(f => (
+                  <Row key={f.key} a={<><span style={{ fontWeight: 700 }}>{f.x.course}</span><div className="cap">{f.x.at ? shortDay(f.x.at) : ""} · {f.v.reason || f.flags.join("; ")}</div></>} b={<button className="chip" onClick={() => setVoid(f, null)} style={{ padding: "2px 9px", fontSize: 12 }}>Undo</button>} />
+                ))}
+              </div>
+            )}
+            {st.watch.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div className="cap" style={{ fontWeight: 800 }}>HANDICAP WATCH</div>
+                {st.watch.map(({ u, f }) => <Row key={u.uid} a={<span className="hd" style={{ fontWeight: 700 }}>{`${u.first} ${u.last ? u.last[0] + "." : ""}`.trim()}</span>} b={`+${f.total}`} c={`raised ${f.times} time${f.times === 1 ? "" : "s"} in ${FAIR.raiseDays} days`} />)}
+              </div>
+            )}
           </Box>
           <Box title="App opens, last 14 days" sub={`${st.installed} player${st.installed === 1 ? "" : "s"} opened it from the home screen (installed).`}>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 90 }}>
@@ -3960,7 +4032,13 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
   const me = people.me;
   const [ask, setAsk] = useState(null); // "fresh" | "delete"
   // Changing it by hand keeps an official handicap official; otherwise it becomes your own estimate.
-  const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(MAX_INDEX, Math.max(-10, v)) * 10) / 10, hk: p.me.hk === "ga" ? "ga" : "est" } }));
+  const setHi = v => setPeople(p => {
+    const hi = Math.round(Math.min(MAX_INDEX, Math.max(-10, v)) * 10) / 10;
+    // Raising it by hand is remembered (for the fair-play checks in the Dev tab). Taps a few seconds apart count as one change.
+    let raises = p.me.raises || [];
+    if (hi > p.me.hi) { const last = raises[raises.length - 1]; raises = last && Date.now() - last.at < 60000 ? [...raises.slice(0, -1), { ...last, to: hi, at: Date.now() }] : [...raises, { at: Date.now(), from: p.me.hi, to: hi }].slice(-12); }
+    return { ...p, me: { ...p.me, hi, hk: p.me.hk === "ga" ? "ga" : "est", raises } };
+  });
   const counted = history.length; // finished rounds, for the explanation below
   const champ = championOf(ctx);
   return (
@@ -4244,10 +4322,15 @@ function Game({ user, cloud, profile, now0, finished }) {
   useEffect(() => { try { window.scrollTo(0, 0); } catch (e) { /* fine */ } }, [view, tab]);
   const [round, setRound] = useState(() => { if (start.round) applyHoles(start.round.holes || null); return start.round || null; });
   // Finished rounds live in your account (users/{uid}/rounds). Removing one from the list only hides it: stats keep it.
-  const recent = finished.filter(r => !r.hidden).sort((a, b) => b.at - a.at).map(r => ({ id: r.id, course: r.course, when: fmtDay(r.at), gross: r.gross, net: r.net, note: r.note, hasCard: !!r.round }));
-  const history = finished.map(r => ({ at: r.at, course: r.course, players: r.players || {} }));
+  // Rounds the admin voided stop counting (they stay in History, marked).
+  const [voids, setVoids] = useState({});
+  useEffect(() => { backend().then(b => (b.listVoids ? b.listVoids() : [])).then(list => setVoids(Object.fromEntries(list.map(v => [v.key, v.status])))).catch(() => {}); }, []);
+  const isVoid = r => voids[voidKey(r, user.uid)] === "void";
+  const counting = finished.filter(r => !isVoid(r));
+  const recent = finished.filter(r => !r.hidden).sort((a, b) => b.at - a.at).map(r => ({ id: r.id, course: r.course, when: fmtDay(r.at), gross: r.gross, net: r.net, note: r.note, hasCard: !!r.round, voided: isVoid(r) }));
+  const history = counting.map(r => ({ at: r.at, course: r.course, players: r.players || {} }));
   // Hidden (deleted) rounds still count, so a bad round can't be wiped from your stats.
-  const myRounds = useMemo(() => finished.map(richRound).filter(Boolean), [finished]);
+  const myRounds = useMemo(() => counting.map(richRound).filter(Boolean), [finished, voids]); // eslint-disable-line react-hooks/exhaustive-deps
   const [openRec, setOpenRec] = useState(null);
   // Witnessed 18-hole rounds, oldest first, for the Puntaro handicap.
   const hcpDiffs = finished.filter(f => f.witnessed && typeof f.diff === "number").sort((a, b) => a.at - b.at).map(f => f.diff);
@@ -4610,7 +4693,7 @@ function Game({ user, cloud, profile, now0, finished }) {
       // already finished: the group has moved past it, or this phone has.
       const holeDone = liveDoc && (h < revealUpTo(liveDoc) || (live.myId && h < ((liveDoc.at || {})[live.myId] || 0)));
       if (live && holeDone && prev != null && prev !== v && liveDoc.s && liveDoc.s[id] && liveDoc.s[id][h] != null) pairs.push([["ed", bankKey(id, h)], who]);
-      push(pairs); setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) } }));
+      push(pairs); setRound(r => ({ ...r, scores: { ...r.scores, [id]: r.scores[id].map((x, i) => (i === h ? v : x)) }, holeAt: r.holeAt && !r.holeAt[h] ? r.holeAt.map((x, i) => (i === h ? Date.now() : x)) : r.holeAt }));
     },
     setBank: (id, h, v) => {
       if (v) { SFX.bank(); try { const st = puntCalc(round)[id]; const pot = st.potAt[h] != null ? st.potAt[h] : st.pot; if (pot > 0) rowStamp(id, "BANKING", `AFTER HOLE ${h + 1}`, "#2F4A3A"); } catch (e) { /* fine */ } }

@@ -119,6 +119,18 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Fair play. The admin voids a round (it stops counting on ladders) or marks a flagged round as fine.
+    // Everyone can read the list, so each phone leaves voided rounds out of its stats.
+    match /voids/{key} {
+      allow read: if authed();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['status', 'reason', 'by', 'at'])
+        && request.resource.data.status in ['void', 'ok']
+        && request.resource.data.reason is string && request.resource.data.reason.size() <= 200
+        && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time;
+      allow delete: if isAdmin();
+    }
+
     // Friendships live in both people's lists. You can add one only by accepting their request,
     // or because you signed up from their invite. Either of you can end it.
     match /friends/{uid}/list/{fid} {

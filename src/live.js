@@ -194,22 +194,30 @@ async function firebaseBackend() {
     /* Dev tab: everything the admin needs in one go. The rules refuse this for anyone else. */
     adminLoad: async (days = 30) => {
       const since = F.Timestamp.fromMillis(Date.now() - days * 864e5);
-      const [u, r, f, e] = await Promise.all([
+      const [u, r, f, e, v] = await Promise.all([
         F.getDocs(F.collection(db, "users")),
         F.getDocs(F.collectionGroup(db, "rounds")),
         F.getDocs(F.collection(db, "feedback")),
         F.getDocs(F.query(F.collection(db, "events"), F.where("at", ">=", since))),
+        F.getDocs(F.collection(db, "voids")),
       ]);
+      const raisesOf = x => { try { return ((JSON.parse(x.people || "{}") || {}).me || {}).raises || []; } catch (err) { return []; } };
       const ms = v => (v && v.toMillis ? v.toMillis() : v || null);
       return {
-        users: u.docs.map(d => { const x = d.data(); return { uid: d.id, first: x.first || "", last: x.last || "", email: x.email || "", hi: x.hi, hcpKind: x.hcpKind || "", createdAt: ms(x.createdAt), referredBy: x.referredBy || null, refCode: x.refCode || null }; }),
+        users: u.docs.map(d => { const x = d.data(); return { uid: d.id, first: x.first || "", last: x.last || "", email: x.email || "", hi: x.hi, hcpKind: x.hcpKind || "", createdAt: ms(x.createdAt), referredBy: x.referredBy || null, refCode: x.refCode || null, raises: raisesOf(x) }; }),
         rounds: r.docs.filter(d => d.ref.parent.parent && d.ref.parent.parent.parent.id === "users").map(d => ({ owner: d.ref.parent.parent.id, ...d.data() })),
         live: r.docs.filter(d => !d.ref.parent.parent).map(d => { const x = d.data(); return { code: d.id, done: !!x.done, createdAt: ms(x.createdAt), updatedAt: ms(x.updatedAt) }; }),
         feedback: f.docs.map(d => { const x = d.data(); return { id: d.id, ...x, at: ms(x.at) }; }),
         events: e.docs.map(d => { const x = d.data(); return { uid: x.uid, name: x.name, data: x.data || {}, at: ms(x.at) }; }),
+        voids: v.docs.map(d => { const x = d.data(); return { key: d.id, status: x.status, reason: x.reason || "", at: ms(x.at) }; }),
       };
     },
     adminFeedbackDone: (id, done) => F.updateDoc(F.doc(db, "feedback", id), { done }),
+    /* Fair play: the admin voids a round (it stops counting on ladders and in stats) or clears a flag ("ok").
+       Everyone reads the list so their own stats leave voided rounds out. */
+    listVoids: async () => (await F.getDocs(F.collection(db, "voids"))).docs.map(d => ({ key: d.id, ...d.data() })),
+    adminSetVoid: (key, status, reason) => F.setDoc(F.doc(db, "voids", key), { status, reason: String(reason || "").slice(0, 200), by: me(), at: F.serverTimestamp() }),
+    adminClearVoid: key => F.deleteDoc(F.doc(db, "voids", key)),
     /* Dev tab: delete everything a player has stored (not their login: only Firebase itself can remove that).
        Rounds they played live stay in the other players' histories. */
     adminDeleteUser: async uid => {

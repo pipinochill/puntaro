@@ -161,3 +161,7 @@ def event_create(data, auth, now):
 def feedback_done(before, after, auth):
     changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
     return is_admin(auth) and changed <= {'done'} and isinstance(after.get('done'), bool)
+
+def void_write(data, auth, now):
+    return (is_admin(auth) and set(data) <= {'status', 'reason', 'by', 'at'} and data.get('status') in ('void', 'ok')
+            and isinstance(data.get('reason'), str) and len(data['reason']) <= 200 and data.get('by') == auth and data.get('at') == now)

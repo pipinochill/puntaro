@@ -59,6 +59,9 @@ window.__puntaroLiveBackend = {
   adminLoad: () => call('__fc_adminload'),
   adminFeedbackDone: (id, done) => call('__fc_fbdone', id, done),
   adminDeleteUser: uid => call('__fc_admindel', uid),
+  listVoids: () => call('__fc_voids'),
+  adminSetVoid: (key, status, reason) => call('__fc_setvoid', key, status, reason),
+  adminClearVoid: key => call('__fc_clearvoid', key),
   deleteProfile: () => call('__fc_delprofile'),
   watchProfile: (u, cb, err) => poll(() => call('__fc_getprofile', u).catch(e => { if (err) err(e); return '__denied'; }).then(v => v === '__denied' ? null : v), cb),
   watchFriends: cb => poll(() => call('__fc_friends'), cb),
@@ -136,6 +139,8 @@ class Cloud:
                         if path in self.docs: return self._no('raw join overwrite')
                         if not R.join_create(ref, self.docs.get(f'users/{me}'), parts[3], {**(data or {}), '_code': parts[1]}, me, (data or {}).get('at')): return self._no('raw join create')
             t = self.now()
+            if parts[0] == 'voids' and op == 'get' and me is not None: return self._ok(copy.deepcopy(self.docs.get(path)))
+            if parts[0] == 'voids' and op != 'get' and not (op == 'set' and R.void_write({**(data or {}), 'at': t}, me, t)) and not (op == 'delete' and R.is_admin(me)): return self._no('raw voids ' + op)
             if parts[0] == 'events' and not (op == 'get' and R.is_admin(me)) and not (op == 'set' and path not in self.docs and R.event_create({**(data or {}), 'at': t}, me, t)): return self._no('raw events ' + op)
             if parts[0] == 'feedback' and op == 'get' and R.is_admin(me): return self._ok(copy.deepcopy(self.docs.get(path)))
             if parts[0] == 'feedback' and op != 'set': return self._no('raw feedback ' + op)
@@ -244,12 +249,27 @@ class Cloud:
         async def adminload(me):
             if not R.is_admin(me): return self._no('admin load')
             D = self.docs
-            users = [{'uid': k.split('/')[1], **{f: v.get(f) for f in ('first', 'last', 'email', 'hi', 'hcpKind', 'createdAt', 'referredBy', 'refCode')}} for k, v in D.items() if k.startswith('users/') and k.count('/') == 1]
+            def raises(v):
+                try: return ((json.loads(v.get('people') or '{}') or {}).get('me') or {}).get('raises') or []
+                except Exception: return []
+            users = [{'uid': k.split('/')[1], **{f: v.get(f) for f in ('first', 'last', 'email', 'hi', 'hcpKind', 'createdAt', 'referredBy', 'refCode')}, 'raises': raises(v)} for k, v in D.items() if k.startswith('users/') and k.count('/') == 1]
             rounds = [{'owner': k.split('/')[1], **v} for k, v in D.items() if k.startswith('users/') and k.count('/') == 3 and k.split('/')[2] == 'rounds']
             live = [{'code': k.split('/')[1], 'done': bool(v.get('done')), 'createdAt': v.get('createdAt')} for k, v in D.items() if k.startswith('rounds/') and k.count('/') == 1]
             fb = [{'id': k.split('/')[1], **v} for k, v in D.items() if k.startswith('feedback/')]
             ev = [v for k, v in D.items() if k.startswith('events/')]
-            return self._ok(copy.deepcopy({'users': users, 'rounds': rounds, 'live': live, 'feedback': fb, 'events': ev}))
+            vo = [{'key': k.split('/')[1], **v} for k, v in D.items() if k.startswith('voids/')]
+            return self._ok(copy.deepcopy({'users': users, 'rounds': rounds, 'live': live, 'feedback': fb, 'events': ev, 'voids': vo}))
+        async def voids(me):
+            if me is None: return self._no('signed out')
+            return self._ok([{'key': k.split('/')[1], **v} for k, v in self.docs.items() if k.startswith('voids/')])
+        async def setvoid(me, key, status, reason):
+            key, status, reason = json.loads(key), json.loads(status), json.loads(reason); t = self.now()
+            d = {'status': status, 'reason': str(reason or '')[:200], 'by': me, 'at': t}
+            if not R.void_write(d, me, t): return self._no('void')
+            self.docs[f'voids/{key}'] = d; return self._ok()
+        async def clearvoid(me, key):
+            if not R.is_admin(me): return self._no('clear void')
+            self.docs.pop(f'voids/{json.loads(key)}', None); return self._ok()
         async def admindel(me, uid):
             uid = json.loads(uid)
             if not R.is_admin(me) or uid == me: return self._no('admin delete')
@@ -301,7 +321,7 @@ class Cloud:
         async def unfriend(me, f):
             f = json.loads(f)
             return batch(me, [('delete', fl(me, f), None), ('delete', fl(f, me), None)])
-        for n, f in [('__fc_admindel', admindel), ('__fc_event', event), ('__fc_adminload', adminload), ('__fc_fbdone', fbdone), ('__fc_feedback', feedback), ('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
+        for n, f in [('__fc_voids', voids), ('__fc_setvoid', setvoid), ('__fc_clearvoid', clearvoid), ('__fc_admindel', admindel), ('__fc_event', event), ('__fc_adminload', adminload), ('__fc_fbdone', fbdone), ('__fc_feedback', feedback), ('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
                      ('__fc_hasreq', hasreq), ('__fc_accept', accept), ('__fc_decline', decline), ('__fc_befriend', befriend), ('__fc_unfriend', unfriend)]:
             await c.expose_function(n, f)
         for n, f in [('__fc_getref', getref), ('__fc_mkref', mkref), ('__fc_addjoin', addjoin), ('__fc_joins', joins), ('__fc_raw', raw), ('__fc_uget', uget), ('__fc_uset', uset), ('__fc_udel', udel), ('__fc_ulist', ulist), ('__fc_dellogin', dellogin),
