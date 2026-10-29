@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.82";
+const APP_VERSION = "0.83";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3730,6 +3730,37 @@ function InviteCard({ myRef, makeRef, cloud }) {
   );
 }
 
+/* Your name, as you entered it at sign-up. Shown plainly; Edit is there to fix a mistake. */
+function NameCard({ me, onSave }) {
+  const [edit, setEdit] = useState(null); // { first, last } while editing
+  const full = `${(me.first || "").trim()} ${(me.last || "").trim()}`.trim();
+  const save = () => { const first = edit.first.trim(), last = edit.last.trim(); if (!first) return; onSave(first, last); setEdit(null); };
+  return (
+    <div className="card" style={{ padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div className="cap" style={{ fontWeight: 600 }}>Your name</div>
+          {!edit && <div className="hd" style={{ fontWeight: 700, fontSize: 17, marginTop: 2, overflowWrap: "anywhere" }}>{full || "Not set"}</div>}
+        </div>
+        {!edit && <button className="chip" onClick={() => setEdit({ first: me.first || "", last: me.last || "" })} style={{ flex: "none" }}>Edit</button>}
+      </div>
+      {edit ? (
+        <>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            <label><div className="cap" style={{ marginBottom: 3 }}>First name</div><input aria-label="Your first name" maxLength={20} value={edit.first} onChange={e => setEdit({ ...edit, first: e.target.value })} style={inp} /></label>
+            <label><div className="cap" style={{ marginBottom: 3 }}>Last name</div><input aria-label="Your last name" maxLength={20} value={edit.last} onChange={e => setEdit({ ...edit, last: e.target.value })} style={inp} /></label>
+          </div>
+          <p className="cap" style={{ marginTop: 6 }}>Only for fixing a mistake. Your friends will see the new name.</p>
+          {!edit.first.trim() && <p role="alert" style={{ color: "var(--red)", fontWeight: 600, marginTop: 4 }}>Your first name can't be blank.</p>}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+            <button className="chip" onClick={() => setEdit(null)} style={{ padding: "8px 0", textAlign: "center" }}>Cancel</button>
+            <button className="cta" disabled={!edit.first.trim()} onClick={save} style={{ padding: 9, fontSize: 15 }}>Save</button>
+          </div>
+        </>
+      ) : <p className="cap" style={{ marginTop: 4 }}>Friends see {full ? `${(me.first || "").trim()}${me.last ? ` ${me.last.trim()[0].toUpperCase()}.` : ""}` : "your first name and last initial"}.</p>}
+    </div>
+  );
+}
 function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, onSignOut, onStartFresh, onDeleteAccount, myRef, makeRef, cloud }) {
   const me = people.me;
   const [ask, setAsk] = useState(null); // "fresh" | "delete"
@@ -3742,7 +3773,7 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "23px 16px 20px", display: "flex", alignItems: "center", gap: 11 }}>
         <Avatar p={me} size={54} />
-        <div><h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.8 }}>You</h1><p style={{ opacity: 0.8 }}>Season stats</p></div>
+        <div style={{ minWidth: 0 }}><h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.8, overflowWrap: "anywhere" }}>{`${(me.first || "").trim()} ${(me.last || "").trim()}`.trim() || "You"}</h1><p style={{ opacity: 0.8 }}>Season stats</p></div>
       </div>
       <div style={{ padding: 12, display: "grid", gap: 11 }}>
         <InviteCard myRef={myRef} makeRef={makeRef} cloud={cloud} />
@@ -3753,14 +3784,7 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
         <SoundRow />
         <HapticRow />
         <AwakeRow />
-        <div className="card" style={{ padding: 12 }}>
-          <div className="cap" style={{ fontWeight: 600 }}>Your initials</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 5 }}>
-            <input aria-label="Your first name" placeholder="First name" maxLength={20} value={me.first || ""} onChange={e => setPeople(p => ({ ...p, me: { ...p.me, first: e.target.value } }))} style={inp} />
-            <input aria-label="Your last name" placeholder="Last name" maxLength={20} value={me.last || ""} onChange={e => setPeople(p => ({ ...p, me: { ...p.me, last: e.target.value } }))} style={inp} />
-          </div>
-          <p className="cap" style={{ marginTop: 5 }}>Shown on your avatar. Everyone still calls you "You" on your own phone.</p>
-        </div>
+        <NameCard me={me} onSave={(first, last) => setPeople(p => ({ ...p, me: { ...p.me, first, last } }))} />
         <div className="card" style={{ padding: 12 }}>
           <div className="cap" style={{ fontWeight: 600 }}>Handicap index{hcpTag(me.hk) ? ` · ${hcpTag(me.hk)}` : ""}</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 5 }}>
