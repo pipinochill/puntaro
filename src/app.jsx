@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.78";
+const APP_VERSION = "0.79";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -2296,7 +2296,7 @@ function ScorecardForm({ draft, onCancel, onSave }) {
           <input aria-label="Course name" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} style={inp} />
         </div>
         <div>
-          <div className="cap" style={{ marginBottom: 3 }}>Tees (name, slope, course rating)</div>
+          <div className="cap" style={{ marginBottom: 3 }}>Tees: name, slope and course (scratch) rating</div>
           <div style={{ display: "grid", gap: 5 }}>
             {f.tees.map((t, i) => (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: 5, alignItems: "center" }}>
@@ -2323,7 +2323,7 @@ function ScorecardForm({ draft, onCancel, onSave }) {
             ))}
           </div>
         </div>
-        <p className="cap">Your own entries are saved on this device only. They are not official Golf Australia data.</p>
+        <p className="cap">Saved to your account for next time. Not official Golf Australia data.</p>
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
         {err && <p role="alert" style={{ color: "var(--red)", fontWeight: 600, marginBottom: 6 }}>{err}</p>}
@@ -2508,6 +2508,12 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
   const cpar = course.holes ? course.holes.reduce((a, h) => a + h.par, 0) : course.par;
   const cinfo = { slope: tee.slope, rating: tee.rating, par: cpar };
   const pickCourse = c => { setCourse(c); setTeeI(0); setFinding(false); };
+  const [editing, setEditing] = useState(false);
+  // Editing a course: sample courses become your own copy; your courses are updated in place.
+  const editDraft = () => ({
+    id: course.source === "sample" ? undefined : course.id, name: course.name, source: course.source === "sample" ? "hand" : course.source, lat: course.lat, lon: course.lon,
+    tees: course.tees, holes: course.holes || range18.map(i => ({ par: DEF_PAR[i], si: DEF_SI[i] })),
+  });
   const [sheet, setSheet] = useState(null);
   const [q, setQ] = useState("");
   const [mode, setMode] = useState("ffa");
@@ -2529,6 +2535,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
   );
 
   if (finding) return <CourseFinder saved={saved} onPick={pickCourse} onSaveCourse={onSaveCourse} onBack={() => setFinding(false)} />;
+  if (editing) return <ScorecardForm draft={editDraft()} onCancel={() => setEditing(false)} onSave={c => { onSaveCourse(c); setCourse(c); setTeeI(i => Math.min(i, c.tees.length - 1)); setEditing(false); }} />;
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <div className="stripes" style={{ padding: "14px 12px 17px" }}>
@@ -2543,7 +2550,10 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
               <div className="hd" style={{ fontWeight: 800, fontSize: 15 }}>{course.name}</div>
               <div className="cap">{course.source === "sample" ? "Sample course (made up)" : course.source === "osm" ? "From OpenStreetMap, ratings entered by you" : "Added by hand"}</div>
             </div>
-            <button className="chip" onClick={() => setFinding(true)}>Change</button>
+            <div style={{ display: "flex", gap: 6, flex: "none" }}>
+              <button className="chip" onClick={() => setEditing(true)}>Edit</button>
+              <button className="chip" onClick={() => setFinding(true)}>Change</button>
+            </div>
           </div>
           {course.tees.length > 1 && (
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>

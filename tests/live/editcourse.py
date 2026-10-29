@@ -1,0 +1,42 @@
+"""Editing the course from the new-round screen: tees, slope, rating, pars and stroke indexes."""
+import asyncio, json, sys
+from playwright.async_api import async_playwright
+sys.path.insert(0, sys.argv[3]); import rules, fakecloud as fc
+URL, OUT = sys.argv[1], sys.argv[2]; res = []
+def check(n, ok, d=''): ok = bool(ok); res.append(ok); print(('PASS ' if ok else 'FAIL ') + n + (f'  [{d}]' if d and not ok else ''))
+cloud = fc.Cloud(rules)
+async def main():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(); cloud.seed('u_e', fc.profile('Pierre'))
+        A = await cloud.phone(b, 'u_e'); await fc.open_app(A, URL)
+        await A.get_by_role('button', name='Start a round').click(); await A.wait_for_timeout(300)
+        check('The course card has an Edit button', await A.get_by_role('button', name='Edit', exact=True).count() == 1)
+        await A.get_by_role('button', name='Edit', exact=True).click(); await A.wait_for_timeout(300)
+        check('It opens the course details, filled in', await A.get_by_label('Course name').input_value() == 'Pebble Hollow' and await A.get_by_label('Tee 1 slope').input_value() == '131' and await A.get_by_label('Hole 1 stroke index').input_value() == '7')
+        await A.get_by_label('Course name').fill('Woodlands Golf Club')
+        await A.get_by_label('Tee 1 slope').fill('128'); await A.get_by_label('Tee 1 rating').fill('70.5')
+        await A.get_by_role('button', name='+ Add tee').click()
+        await A.get_by_label('Tee 2 name').fill('Blue'); await A.get_by_label('Tee 2 slope').fill('135'); await A.get_by_label('Tee 2 rating').fill('73.1')
+        await A.get_by_role('button', name='Hole 1 par 5').click()
+        await A.get_by_label('Hole 1 stroke index').fill('3'); await A.get_by_label('Hole 8 stroke index').fill('7')
+        await A.screenshot(path=f'{OUT}/editcourse_form.png', full_page=False)
+        await A.get_by_role('button', name='Save and use this course').click(); await A.wait_for_timeout(400)
+        body = await A.locator('body').inner_text()
+        check('Back on the new round, it shows the new name, slope, rating and par', 'Woodlands Golf Club' in body and '128' in body and '70.5' in body and '73' in body, body[:300])
+        check('...with both tees to pick from', await A.get_by_role('button', name='Blue', exact=True).count() == 1)
+        await A.get_by_role('button', name='Blue', exact=True).click(); await A.wait_for_timeout(200)
+        check('Picking Blue uses its slope and rating', '135' in await A.locator('body').inner_text() and '73.1' in await A.locator('body').inner_text())
+        await fc.flushed(A)
+        saved = json.loads((cloud.user('u_e') or {}).get('courses') or '[]')
+        check("It's saved to the account", any(c['name'] == 'Woodlands Golf Club' and c['holes'][0] == {'par': 5, 'si': 3} for c in saved), str([c['name'] for c in saved]))
+        await A.get_by_role('button', name='Edit', exact=True).click(); await A.wait_for_timeout(300)
+        await A.get_by_label('Tee 1 rating').fill('70.8')
+        await A.get_by_role('button', name='Save and use this course').click(); await A.wait_for_timeout(400)
+        await fc.flushed(A)
+        saved = json.loads((cloud.user('u_e') or {}).get('courses') or '[]')
+        check('Editing it again updates it, without a duplicate', len([c for c in saved if c['name'] == 'Woodlands Golf Club']) == 1 and [c for c in saved if c['name'] == 'Woodlands Golf Club'][0]['tees'][0]['rating'] == 70.8, str(saved)[:300])
+        await A.evaluate('scrollTo(0, document.body.scrollHeight)')
+        await A.get_by_role('button', name='Tee off').click(); await A.wait_for_timeout(500)
+        check('The round plays the edited holes (hole 1 is a par 5, index 3)', 'Par 5 · Index 3' in await A.locator('.stripes').first.inner_text(), await A.locator('.stripes').first.inner_text())
+        print('page errors:', A.errs); print(f'{sum(res)}/{len(res)} passed'); await b.close()
+asyncio.run(main())
