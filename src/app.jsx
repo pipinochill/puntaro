@@ -20,6 +20,7 @@ function WaveFlag() {
     </div>
   );
 }
+function BarsIcon(p) { return <Ico {...p}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></Ico>; }
 function ClockIcon(p) { return <Ico {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></Ico>; }
 function BookIcon(p) { return <Ico {...p}><path d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z" /><path d="M20 4h-5a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h6z" /></Ico>; }
 function UsersIcon(p) { return <Ico {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Ico>; }
@@ -38,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.79";
+const APP_VERSION = "0.80";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1875,7 +1876,7 @@ function greeting(p) {
     n => ["Who's taking your money today, ", n, "?"],
     n => [`Ready to ${breakTarget(p)}, `, n, "?"],
     n => ["Glorious day to lose some balls ay, ", n, "?"],
-    n => ["Fingers crossed, no 4-putts today, ", n, "?"],
+    n => ["Fingers crossed, no 4-putts today, ", n, "!"],
     n => ["Bank early, bank often, ", n, "."],
     n => ["Somebody's busting today. Not you, ", n, "."],
     n => ["Who's shouting the first round, ", n, "?"],
@@ -2439,7 +2440,7 @@ function AboutSheet({ onClose, onFeedback }) {
   const send = async () => {
     if (!fb.trim() || state === "sending") return;
     setState("sending");
-    try { await onFeedback(fb.trim().slice(0, 2000)); setFb(""); setState("sent"); } catch (e) { setState("failed"); }
+    try { await onFeedback(fb.trim().slice(0, 2000)); setFb(""); setState("sent"); track("feedback"); } catch (e) { setState("failed"); }
   };
   return (
     <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 40, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onClick={onClose}>
@@ -3097,16 +3098,146 @@ function ResultCardSheet({ round, people, at, onClose }) {
   }, [facts]);
   const file = blob ? new File([blob], `puntaro-${facts.course.replace(/\W+/g, "-").toLowerCase()}.png`, { type: "image/png" }) : null;
   const canShare = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
-  const share = async () => { try { await navigator.share({ files: [file], text: facts.text }); } catch (e) { if (e && e.name !== "AbortError") setMsg("Couldn't open sharing. Save the image instead."); } };
+  const share = async () => { track("share_card", { how: "share" }); try { await navigator.share({ files: [file], text: facts.text }); } catch (e) { if (e && e.name !== "AbortError") setMsg("Couldn't open sharing. Save the image instead."); } };
   return (
     <Sheet title="Share the result" onClose={onClose}>
       <div style={{ display: "grid", gap: 10 }}>
         {img ? <img src={img} alt={`Result card: ${facts.head}, ${facts.sub}`} style={{ width: "100%", border: "3px solid var(--night)", display: "block" }} /> : <p className="cap" role="status">Making the card…</p>}
         {canShare && <button className="cta" onClick={share}>Share to the group</button>}
-        {img && <a className={canShare ? "chip" : "cta"} href={img} download={file ? file.name : "puntaro.png"} style={{ textAlign: "center", padding: "9px 0", textDecoration: "none" }}>Save image</a>}
+        {img && <a className={canShare ? "chip" : "cta"} onClick={() => track("share_card", { how: "save" })} href={img} download={file ? file.name : "puntaro.png"} style={{ textAlign: "center", padding: "9px 0", textDecoration: "none" }}>Save image</a>}
         {msg && <p role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{msg}</p>}
       </div>
     </Sheet>
+  );
+}
+
+/* ───────────── USAGE LOG + DEV TAB (admin only) ───────────── */
+// The admin's Firebase account ID. The database rules hold the same ID, so nobody else can read this data.
+const ADMINS = ["ADMIN_UID"];
+const isAdmin = user => !!(user && ADMINS.includes(user.uid));
+const TRACK = { n: 0, errs: 0 };
+function track(name, data) {
+  if (TRACK.n++ > 80) return; // plenty for a session; stops a loop from flooding the log
+  backend().then(b => (b.logEvent ? b.logEvent(name, data || {}) : null)).catch(() => {});
+}
+const DAY = 864e5;
+const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+const shortDay = t => new Date(t).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+function withHoles(holes, f) { const p = [...PAR], q = [...SI]; try { applyHoles(holes || null); return f(); } finally { PAR.splice(0, 18, ...p); SI.splice(0, 18, ...q); } }
+function devStats(d, now) {
+  const users = [...d.users].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const byRef = Object.fromEntries(d.users.filter(u => u.refCode).map(u => [u.refCode, u]));
+  // one entry per real round: live rounds are saved by everyone who joined, so keep one copy per code
+  const seen = new Set(); const rounds = [];
+  [...d.rounds].sort((a, b) => (b.at || 0) - (a.at || 0)).forEach(x => { const k = x.live && x.live.code ? "L" + x.live.code : x.owner + x.id; if (seen.has(k)) return; seen.add(k); rounds.push(x); });
+  const bal = { n: 0, players: 0, busts: 0, pts: 0, comebacks: 0, comebackRounds: 0, band: { "Under 10": [0, 0, 0], "10 to 19": [0, 0, 0], "20 and up": [0, 0, 0] } };
+  rounds.forEach(x => {
+    const r = parseJSON(x.round, null); if (!r || !r.playerIds || r.playerIds.length < 2 || !(r.games || []).includes("punt")) return;
+    try {
+      withHoles(r.holes, () => {
+        const pc = puntCalc(r); const ids = r.playerIds; const tot = ids.map(id => pc[id].total); const best = Math.max(...tot);
+        const winners = ids.filter((id, i) => tot[i] === best);
+        bal.n++; bal.players += ids.length; ids.forEach(id => { bal.busts += pc[id].busts; bal.pts += pc[id].total; });
+        ids.forEach(id => { const ch = (r.hcp && r.hcp[id]) || 0; const b = ch < 10 ? "Under 10" : ch < 20 ? "10 to 19" : "20 and up"; bal.band[b][0] += winners.includes(id) ? 1 / winners.length : 0; bal.band[b][1] += 1 / ids.length; bal.band[b][2]++; });
+        if (r.opts && r.opts.comeback) { const p12 = puntCalc(r, 12); const t12 = ids.map(id => p12[id].total); const lo = Math.min(...t12); bal.comebackRounds++; if (Math.max(...t12) > lo && winners.some(id => t12[ids.indexOf(id)] === lo)) bal.comebacks++; }
+      });
+    } catch (e) { /* skip a round that won't replay */ }
+  });
+  const ev = d.events;
+  const days = [...Array(14).keys()].map(i => now - (13 - i) * DAY);
+  const opens = days.map(t => { const k = dayKey(t); const es = ev.filter(e => e.name === "open" && e.at && dayKey(e.at) === k); return { t, n: es.length, people: new Set(es.map(e => e.uid)).size }; });
+  const counts = {}; ev.forEach(e => (counts[e.name] = (counts[e.name] || 0) + 1));
+  return {
+    users, byRef, rounds, bal, opens, counts,
+    newWeek: users.filter(u => u.createdAt && now - u.createdAt < 7 * DAY).length,
+    active7: new Set(ev.filter(e => e.at && now - e.at < 7 * DAY).map(e => e.uid)).size,
+    roundsWeek: rounds.filter(x => x.at && now - x.at < 7 * DAY).length,
+    liveNow: d.live.filter(x => !x.done && x.createdAt && now - x.createdAt < 8 * 3600e3).length,
+    installed: new Set(ev.filter(e => e.name === "open" && e.data && e.data.app === "installed").map(e => e.uid)).size,
+    errors: ev.filter(e => e.name === "error").sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 10),
+    feedback: [...d.feedback].sort((a, b) => (b.at || 0) - (a.at || 0)),
+  };
+}
+const EVENT_NAMES = { open: "App opened", signup: "Signed up", round_start: "Round started", round_finish: "Round finished", join_live: "Joined a live round", share_card: "Shared a result card", feedback: "Sent feedback", friend: "Became friends", error: "App error" };
+function DevTab() {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  const load = () => {
+    setBusy(true); setErr("");
+    backend().then(b => b.adminLoad()).then(x => { setD(x); setBusy(false); }).catch(e => { setBusy(false); setErr(/permission/i.test(String(e && (e.code || e.message))) ? "The database said no. Publish the latest rules (with your account ID in them) in the Firebase console." : "Couldn't load. Check your connection and try again."); });
+  };
+  useEffect(load, []);
+  const now = Date.now();
+  const st = useMemo(() => (d ? devStats(d, now) : null), [d]); // eslint-disable-line react-hooks/exhaustive-deps
+  const done = (id, v) => { setD(x => ({ ...x, feedback: x.feedback.map(f => (f.id === id ? { ...f, done: v } : f)) })); backend().then(b => b.adminFeedbackDone(id, v)).catch(() => setErr("Couldn't update that feedback.")); };
+  const Tile = ({ n, l }) => <div className="card" style={{ padding: "8px 10px" }}><div className="px" style={{ fontSize: 32, lineHeight: 1 }}>{n}</div><div className="cap" style={{ marginTop: 2 }}>{l}</div></div>;
+  const Box = ({ title, children, sub }) => <div className="card" style={{ padding: "10px 12px" }}><h3 style={{ fontSize: 15 }}>{title}</h3>{sub && <p className="cap" style={{ marginTop: 2 }}>{sub}</p>}<div style={{ marginTop: 8 }}>{children}</div></div>;
+  const Row = ({ a, b, c }) => <div style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "6px 0", borderTop: "1px solid var(--line)" }}><div style={{ flex: 1, minWidth: 0 }}>{a}</div>{c && <div className="cap">{c}</div>}<div style={{ fontWeight: 700 }}>{b}</div></div>;
+  const open = st ? st.feedback.filter(f => !f.done) : [];
+  const maxOpen = st ? Math.max(1, ...st.opens.map(o => o.n)) : 1;
+  return (
+    <div style={{ paddingBottom: 19 }}>
+      <div className="stripes" style={{ padding: "17px 14px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div><h1>Dev</h1><p style={{ opacity: .8, marginTop: 2 }}>Only you can see this.</p></div>
+        <button className="px" onClick={load} disabled={busy} style={{ background: "var(--card)", color: "var(--ink)", border: "3px solid var(--night)", padding: "5px 10px", fontSize: 18, lineHeight: 1 }}>{busy ? "LOADING" : "REFRESH"}</button>
+      </div>
+      <div style={{ padding: "12px 12px 0", display: "grid", gap: 11 }}>
+        {err && <p role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
+        {!st && !err && <p className="cap" role="status">Loading everything…</p>}
+        {st && (<>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            <Tile n={st.users.length} l="players" /><Tile n={st.newWeek} l="new this week" /><Tile n={st.active7} l="active this week" />
+            <Tile n={st.rounds.length} l="rounds played" /><Tile n={st.roundsWeek} l="rounds this week" /><Tile n={st.liveNow} l="live right now" />
+          </div>
+          <Box title={`Feedback (${open.length} to look at)`}>
+            {(showDone ? st.feedback : open).length === 0 && <p className="cap">Nothing waiting.</p>}
+            {(showDone ? st.feedback : open).map(f => (
+              <div key={f.id} style={{ padding: "8px 0", borderTop: "1px solid var(--line)", opacity: f.done ? 0.55 : 1 }}>
+                <div style={{ whiteSpace: "pre-wrap" }}>{f.text}</div>
+                <div className="cap" style={{ marginTop: 3, display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ flex: 1 }}>{f.name || "?"} · {f.at ? shortDay(f.at) : ""} · v{f.version || "?"}</span>
+                  <button className="chip" onClick={() => done(f.id, !f.done)} style={{ padding: "2px 9px", fontSize: 12 }}>{f.done ? "Reopen" : "Done"}</button>
+                </div>
+              </div>
+            ))}
+            {st.feedback.some(f => f.done) && <button onClick={() => setShowDone(v => !v)} style={{ marginTop: 6, textDecoration: "underline", fontWeight: 600, color: "var(--muted)" }}>{showDone ? "Hide done" : "Show done too"}</button>}
+          </Box>
+          <Box title="App opens, last 14 days" sub={`${st.installed} player${st.installed === 1 ? "" : "s"} opened it from the home screen (installed).`}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 90 }}>
+              {st.opens.map(o => <div key={o.t} title={`${shortDay(o.t)}: ${o.n} opens, ${o.people} people`} style={{ flex: 1, height: `${Math.max(2, (o.n / maxOpen) * 100)}%`, background: o.n ? "var(--fair)" : "var(--line)" }} />)}
+            </div>
+            <div className="cap" style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}><span>{shortDay(st.opens[0].t)}</span><span>Today</span></div>
+          </Box>
+          <Box title="What people did (last 30 days)">
+            {Object.keys(EVENT_NAMES).filter(k => st.counts[k]).map(k => <Row key={k} a={EVENT_NAMES[k]} b={st.counts[k]} />)}
+            {Object.keys(st.counts).length === 0 && <p className="cap">Nothing logged yet. Events start from version 0.80.</p>}
+          </Box>
+          <Box title="The game in real life" sub={`${st.bal.n} finished Puntaro round${st.bal.n === 1 ? "" : "s"} with 2 or more players.`}>
+            {st.bal.n === 0 ? <p className="cap">No rounds yet.</p> : (<>
+              <Row a="Points per player" b={(st.bal.pts / st.bal.players).toFixed(1)} />
+              <Row a="Busts per player per round" b={(st.bal.busts / st.bal.players).toFixed(1)} />
+              <Row a="Last after 12 went on to win" b={st.bal.comebackRounds ? `${st.bal.comebacks} of ${st.bal.comebackRounds}` : "–"} c="comeback rounds" />
+              <p className="cap" style={{ margin: "8px 0 2px" }}>Wins by course handicap, next to what a perfectly fair game would give them:</p>
+              {Object.entries(st.bal.band).filter(([, v]) => v[2] > 0).map(([k, v]) => <Row key={k} a={`${k} (${v[2]} played)`} b={`won ${+v[0].toFixed(1)}`} c={`fair ${+v[1].toFixed(1)}`} />)}
+            </>)}
+          </Box>
+          <Box title="Players" sub="Newest first.">
+            {st.users.slice(0, 40).map(u => (
+              <Row key={u.uid} a={<><span className="hd" style={{ fontWeight: 700 }}>{`${u.first} ${u.last ? u.last[0] + "." : ""}`.trim() || "No name yet"}</span><div className="cap" style={{ wordBreak: "break-all" }}>{u.email}{u.referredBy && st.byRef[u.referredBy] ? ` · invited by ${st.byRef[u.referredBy].first}` : ""}</div></>} b={u.hi != null ? `HCP ${Number(u.hi).toFixed(1)}${u.hcpKind === "est" ? " EST" : ""}` : ""} c={u.createdAt ? shortDay(u.createdAt) : ""} />
+            ))}
+          </Box>
+          <Box title="Recent rounds">
+            {st.rounds.slice(0, 15).map(x => <Row key={(x.owner || "") + x.id} a={<><span style={{ fontWeight: 700 }}>{x.course}</span><div className="cap">{x.note}{x.hidden ? " · deleted by player" : ""}</div></>} b={x.at ? shortDay(x.at) : ""} />)}
+            {st.rounds.length === 0 && <p className="cap">No rounds yet.</p>}
+          </Box>
+          <Box title="Errors" sub="Things that went wrong on players' phones (newest first).">
+            {st.errors.length === 0 ? <p className="cap">None. Nice.</p> : st.errors.map((e, i) => <Row key={i} a={<span style={{ wordBreak: "break-word" }}>{e.data.msg}</span>} b={`v${e.data.v || "?"}`} c={e.at ? shortDay(e.at) : ""} />)}
+          </Box>
+        </>)}
+      </div>
+    </div>
   );
 }
 
@@ -3615,6 +3746,7 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
         <div className="card" style={{ padding: 12 }}>
           <div className="cap" style={{ fontWeight: 600 }}>Your account</div>
           <div style={{ fontWeight: 700, marginTop: 3, wordBreak: "break-all" }}>{(user && user.email) || "Signed in"}</div>
+          {user && user.uid && <div className="cap" style={{ marginTop: 2, wordBreak: "break-all" }}>Account ID: <span style={{ userSelect: "all", fontFamily: "ui-monospace, monospace" }}>{user.uid}</span></div>}
           <p className="cap" style={{ marginTop: 3 }}>Your rounds, stats, friends and courses are saved to this account, so they're the same on any phone you sign in on.</p>
           <button className="chip" style={{ marginTop: 9, padding: "7px 0", textAlign: "center", width: "100%" }} onClick={onSignOut}>Sign out</button>
           <p className="cap" style={{ marginTop: 4 }}>Signing out also clears the offline copy from this phone.</p>
@@ -3844,7 +3976,17 @@ function LiveSheet({ code, doc, uid, onClose, onScoring, onRelease, onLeave, ref
   );
 }
 
+let OPENED = false;
+function logOpen() {
+  if (OPENED) return; OPENED = true;
+  const ua = navigator.userAgent || ""; const installed = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  track("open", { v: APP_VERSION, app: installed ? "installed" : "browser", os: /iPhone|iPad|iPod/.test(ua) ? "ios" : /Android/.test(ua) ? "android" : "other" });
+  const err = msg => { if (TRACK.errs++ < 5) track("error", { msg: String(msg || "unknown").slice(0, 160), v: APP_VERSION }); };
+  window.addEventListener("error", e => err(e.message || (e.error && e.error.message)));
+  window.addEventListener("unhandledrejection", e => err(e.reason && (e.reason.message || e.reason)));
+}
 function Game({ user, cloud, profile, now0, finished }) {
+  useEffect(logOpen, []);
   const start = parseJSON(now0 && now0.json, {});
   const [people, setPeople] = useState(() => {
     const p = parseJSON(profile.people, {});
@@ -4037,6 +4179,7 @@ function Game({ user, cloud, profile, now0, finished }) {
   // witnessed: a live round at least one other person joined. Only those count towards a Puntaro handicap.
   const record = (id, r, ppl, myId, lv, witnessed = false) => {
     const joined = !!lv && myId !== "me";
+    track("round_finish", { players: r.playerIds.length, live: !!lv, holes: r.playerIds.length ? r.scores[r.playerIds[0]].filter(v => v != null).length : 0 });
     const res = resultFor(r, myId, joined);
     const diff = myId ? differential(r, myId) : null;
     const names = Object.fromEntries(r.playerIds.map(pid => { const p = ppl[pid] || {}; return [pid, { id: pid, name: p.name || "?", first: p.first || "", last: (p.last || "").slice(0, 1), color: p.color || "#6F7F73", hi: p.hi ?? null }]; }));
@@ -4205,6 +4348,7 @@ function Game({ user, cloud, profile, now0, finished }) {
     if (round && !(live && live.code === code)) park();
     applyHoles(d.base.holes || null);
     setRound(docToRound(d, { hole: Math.max(firstOpenHole(d), pid && d.at ? d.at[pid] || 0 : 0) }));
+    track("join_live", { watching: !pid });
     setLiveDoc(d); setLive({ code, myId: pid, mine: {} }); setJoinCode(null); setView("round");
   };
   const leaveLive = () => { setLive(null); setLiveSheet(false); };
@@ -4291,7 +4435,7 @@ function Game({ user, cloud, profile, now0, finished }) {
     }))).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tabs = [["home", "Home", HomeIcon], ["history", "History", ClockIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon]];
+  const tabs = [["home", "Home", HomeIcon], ["history", "History", ClockIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon], ...(isAdmin(user) ? [["dev", "Dev", BarsIcon]] : [])];
   const openRound = id => {
     const rec = finished.find(f => f.id === id); if (!rec || !rec.round) return;
     const r = parseJSON(rec.round, null); if (!r) return;
@@ -4388,7 +4532,7 @@ function Game({ user, cloud, profile, now0, finished }) {
           </div>
         </div>
       )}
-      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{ setFriendIds, myRef, makeRef, onFind: findFriendCode, onSend: sendFriendRequest, onAddFriend: addFriend }} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); if (cfg.live) startLive(r, cfg); }} />}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{ setFriendIds, myRef, makeRef, onFind: findFriendCode, onSend: sendFriendRequest, onAddFriend: addFriend }} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); track("round_start", { players: r.playerIds.length, live: !!cfg.live, course: r.course.source || "", mode: r.mode }); if (cfg.live) startLive(r, cfg); }} />}
       <KeepAwake active={view === "round" && !!round} hole={round ? round.hole + 1 : 1} />
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} rowFx={rowFx} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
@@ -4398,8 +4542,9 @@ function Game({ user, cloud, profile, now0, finished }) {
         <>
           <div style={{ flex: 1 }}>
             {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "dev" && isAdmin(user) && <DevTab />}
             {tab === "history" && <History recent={recent} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} onOpenRound={openRound} trash={trash} now={now} onRestore={restore} />}
-            {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => cloud.acceptRequest(id)} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
+            {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => { track("friend", { via: "request" }); return cloud.acceptRequest(id); }} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
             {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
           </div>
           <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>
@@ -4546,6 +4691,7 @@ function ProfileSetup({ cloud, user, onDone }) {
     const now = local && bring ? { json: JSON.stringify(local.now), at: Date.now() } : null;
     try {
       await cloud.setMine("", profile, false);
+      track("signup", { invited: !!inviter, hcp: me.hk || "" });
       if (now) await cloud.setMine("state/now", now, false);
       if (local && bring) await Promise.all(local.records.map(r => cloud.setMine(`rounds/${r.id}`, r, false)));
       if (inviter) {

@@ -189,6 +189,27 @@ async function firebaseBackend() {
        friends/{uid}/list/{friendUid} who you're friends with; each friendship is written to both lists
        requests/{to}/in/{from}        a friend request waiting to be accepted */
     setProfile: data => F.setDoc(F.doc(db, "profiles", me()), { ...data, updatedAt: F.serverTimestamp() }),
+    /* usage log: a few plain events (app opened, round started...). Players can only add their own; only the admin reads them. */
+    logEvent: (name, data) => F.addDoc(F.collection(db, "events"), { uid: me(), name, data: data || {}, at: F.serverTimestamp() }),
+    /* Dev tab: everything the admin needs in one go. The rules refuse this for anyone else. */
+    adminLoad: async (days = 30) => {
+      const since = F.Timestamp.fromMillis(Date.now() - days * 864e5);
+      const [u, r, f, e] = await Promise.all([
+        F.getDocs(F.collection(db, "users")),
+        F.getDocs(F.collectionGroup(db, "rounds")),
+        F.getDocs(F.collection(db, "feedback")),
+        F.getDocs(F.query(F.collection(db, "events"), F.where("at", ">=", since))),
+      ]);
+      const ms = v => (v && v.toMillis ? v.toMillis() : v || null);
+      return {
+        users: u.docs.map(d => { const x = d.data(); return { uid: d.id, first: x.first || "", last: x.last || "", email: x.email || "", hi: x.hi, hcpKind: x.hcpKind || "", createdAt: ms(x.createdAt), referredBy: x.referredBy || null, refCode: x.refCode || null }; }),
+        rounds: r.docs.filter(d => d.ref.parent.parent && d.ref.parent.parent.parent.id === "users").map(d => ({ owner: d.ref.parent.parent.id, ...d.data() })),
+        live: r.docs.filter(d => !d.ref.parent.parent).map(d => { const x = d.data(); return { code: d.id, done: !!x.done, createdAt: ms(x.createdAt), updatedAt: ms(x.updatedAt) }; }),
+        feedback: f.docs.map(d => { const x = d.data(); return { id: d.id, ...x, at: ms(x.at) }; }),
+        events: e.docs.map(d => { const x = d.data(); return { uid: x.uid, name: x.name, data: x.data || {}, at: ms(x.at) }; }),
+      };
+    },
+    adminFeedbackDone: (id, done) => F.updateDoc(F.doc(db, "feedback", id), { done }),
     // Alpha feedback: anyone signed in can leave a note; only the Firebase console can read them.
     sendFeedback: (text, meta) => F.addDoc(F.collection(db, "feedback"), { uid: me(), text, ...meta, at: F.serverTimestamp() }),
     deleteProfile: () => F.deleteDoc(F.doc(db, "profiles", me())),

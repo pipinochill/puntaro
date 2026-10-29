@@ -55,6 +55,9 @@ window.__puntaroLiveBackend = {
   watch: (c, cb) => poll(() => call('__fc_get', c), cb),
   setProfile: d => call('__fc_setprofile', d),
   sendFeedback: (text, meta) => call('__fc_feedback', text, meta),
+  logEvent: (name, data) => call('__fc_event', name, data),
+  adminLoad: () => call('__fc_adminload'),
+  adminFeedbackDone: (id, done) => call('__fc_fbdone', id, done),
   deleteProfile: () => call('__fc_delprofile'),
   watchProfile: (u, cb, err) => poll(() => call('__fc_getprofile', u).catch(e => { if (err) err(e); return '__denied'; }).then(v => v === '__denied' ? null : v), cb),
   watchFriends: cb => poll(() => call('__fc_friends'), cb),
@@ -120,7 +123,7 @@ class Cloud:
         async def raw(me, path, op, data):
             path, op, data = json.loads(path), json.loads(op), json.loads(data)
             parts = path.split('/')
-            if parts[0] == 'users' and not R.user_doc(parts[1], me): return self._no('raw ' + op + ' ' + path)
+            if parts[0] == 'users' and not R.user_doc(parts[1], me) and not (op == 'get' and R.is_admin(me)): return self._no('raw ' + op + ' ' + path)
             if parts[0] == 'users' and op == 'set' and len(parts) == 2 and not R.user_update(self.docs.get(path), data, me, parts[1]): return self._no('raw referredBy')
             if parts[0] == 'refs':
                 ref = self.docs.get(f'refs/{parts[1]}')
@@ -132,6 +135,8 @@ class Cloud:
                         if path in self.docs: return self._no('raw join overwrite')
                         if not R.join_create(ref, self.docs.get(f'users/{me}'), parts[3], {**(data or {}), '_code': parts[1]}, me, (data or {}).get('at')): return self._no('raw join create')
             t = self.now()
+            if parts[0] == 'events' and not (op == 'get' and R.is_admin(me)) and not (op == 'set' and path not in self.docs and R.event_create({**(data or {}), 'at': t}, me, t)): return self._no('raw events ' + op)
+            if parts[0] == 'feedback' and op == 'get' and R.is_admin(me): return self._ok(copy.deepcopy(self.docs.get(path)))
             if parts[0] == 'feedback' and op != 'set': return self._no('raw feedback ' + op)
             if parts[0] == 'feedback' and op == 'set' and not R.feedback_create({**(data or {}), 'at': t}, me, t): return self._no('raw feedback create')
             if parts[0] == 'profiles':
@@ -231,6 +236,24 @@ class Cloud:
             t = self.now(); d = {'uid': me, 'text': json.loads(text), **json.loads(meta), 'at': t}
             if not R.feedback_create(d, me, t): return self._no('feedback')
             self.docs[f'feedback/{len([k for k in self.docs if k.startswith("feedback/")]) + 1}'] = d; return self._ok()
+        async def event(me, name, data):
+            t = self.now(); d = {'uid': me, 'name': json.loads(name), 'data': json.loads(data), 'at': t}
+            if not R.event_create(d, me, t): return self._no('event')
+            self.docs[f'events/{len([k for k in self.docs if k.startswith("events/")]) + 1}'] = d; return self._ok()
+        async def adminload(me):
+            if not R.is_admin(me): return self._no('admin load')
+            D = self.docs
+            users = [{'uid': k.split('/')[1], **{f: v.get(f) for f in ('first', 'last', 'email', 'hi', 'hcpKind', 'createdAt', 'referredBy', 'refCode')}} for k, v in D.items() if k.startswith('users/') and k.count('/') == 1]
+            rounds = [{'owner': k.split('/')[1], **v} for k, v in D.items() if k.startswith('users/') and k.count('/') == 3 and k.split('/')[2] == 'rounds']
+            live = [{'code': k.split('/')[1], 'done': bool(v.get('done')), 'createdAt': v.get('createdAt')} for k, v in D.items() if k.startswith('rounds/') and k.count('/') == 1]
+            fb = [{'id': k.split('/')[1], **v} for k, v in D.items() if k.startswith('feedback/')]
+            ev = [v for k, v in D.items() if k.startswith('events/')]
+            return self._ok(copy.deepcopy({'users': users, 'rounds': rounds, 'live': live, 'feedback': fb, 'events': ev}))
+        async def fbdone(me, fid, done):
+            fid, done = json.loads(fid), json.loads(done); path = f'feedback/{fid}'
+            before = self.docs.get(path)
+            if before is None or not R.feedback_done(before, {**before, 'done': done}, me): return self._no('feedback done')
+            self.docs[path] = {**before, 'done': done}; return self._ok()
         async def delprofile(me):
             if me is None: return self._no('signed out')
             self.docs.pop(f'profiles/{me}', None); return self._ok()
@@ -265,7 +288,7 @@ class Cloud:
         async def unfriend(me, f):
             f = json.loads(f)
             return batch(me, [('delete', fl(me, f), None), ('delete', fl(f, me), None)])
-        for n, f in [('__fc_feedback', feedback), ('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
+        for n, f in [('__fc_event', event), ('__fc_adminload', adminload), ('__fc_fbdone', fbdone), ('__fc_feedback', feedback), ('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
                      ('__fc_hasreq', hasreq), ('__fc_accept', accept), ('__fc_decline', decline), ('__fc_befriend', befriend), ('__fc_unfriend', unfriend)]:
             await c.expose_function(n, f)
         for n, f in [('__fc_getref', getref), ('__fc_mkref', mkref), ('__fc_addjoin', addjoin), ('__fc_joins', joins), ('__fc_raw', raw), ('__fc_uget', uget), ('__fc_uset', uset), ('__fc_udel', udel), ('__fc_ulist', ulist), ('__fc_dellogin', dellogin),

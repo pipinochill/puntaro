@@ -152,3 +152,12 @@ def feedback_create(data, auth, now):
     t = data.get('text')
     return (auth is not None and data.get('uid') == auth and set(data) <= FEEDBACK_KEYS and isinstance(t, str)
             and 0 < len(t) <= 2000 and data.get('at') == now)
+
+ADMINS = {'ADMIN_UID'}
+def is_admin(auth): return auth is not None and auth in ADMINS
+def event_create(data, auth, now):
+    return (auth is not None and data.get('uid') == auth and set(data) <= {'uid', 'name', 'data', 'at'} and isinstance(data.get('name'), str)
+            and len(data['name']) <= 30 and isinstance(data.get('data'), dict) and len(data['data']) <= 8 and data.get('at') == now)
+def feedback_done(before, after, auth):
+    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    return is_admin(auth) and changed <= {'done'} and isinstance(after.get('done'), bool)

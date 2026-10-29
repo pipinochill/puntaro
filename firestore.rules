@@ -12,9 +12,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // The admin (the Dev tab in the app) can read everything below, but never change players' data.
+    // Put your Firebase account ID (Authentication > Users > User UID) here.
+    function isAdmin() { return request.auth != null && request.auth.uid in ['ADMIN_UID']; }
+
+    // Admin: read every account's finished rounds and every live round in one query.
+    match /{path=**}/rounds/{id} {
+      allow read: if isAdmin();
+    }
+
     // Your account. Nobody else can read or change it. Who invited you (referredBy) is set once, at sign-up.
     match /users/{uid} {
       allow read, create, delete: if request.auth != null && request.auth.uid == uid;
+      allow read: if isAdmin();
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.get('referredBy', null) == resource.data.get('referredBy', null);
       match /{document=**} {
@@ -80,13 +90,26 @@ service cloud.firestore {
       allow update: if false;
     }
 
-    // Alpha feedback. Write-only from the app: read them in the Firebase console.
+    // Alpha feedback. Players can only send it; the admin reads it in the Dev tab and can mark it done.
     match /feedback/{id} {
       allow create: if authed() && request.resource.data.uid == request.auth.uid
         && request.resource.data.keys().hasOnly(['uid', 'text', 'name', 'version', 'device', 'at'])
         && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
         && request.resource.data.at == request.time;
-      allow read, update, delete: if false;
+      allow read: if isAdmin();
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done']) && request.resource.data.done is bool;
+      allow delete: if false;
+    }
+
+    // Usage log. Players add their own events; only the admin reads them; nobody changes them.
+    match /events/{id} {
+      allow create: if authed() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'data', 'at'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 30
+        && request.resource.data.data is map && request.resource.data.data.size() <= 8
+        && request.resource.data.at == request.time;
+      allow read: if isAdmin();
+      allow update, delete: if false;
     }
 
     // Friendships live in both people's lists. You can add one only by accepting their request,
