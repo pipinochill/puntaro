@@ -38,7 +38,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.77";
+const APP_VERSION = "0.78";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -659,13 +659,27 @@ function drawCards(r, h, rng) {
 /* Handicap cushion: on a bust you keep 2% of the pot per course handicap stroke, up to half, rounded down. */
 const cushionRate = (r, id) => (r.opts.cushion && r.useHcp ? Math.min(0.5, 0.02 * (r.hcp[id] || 0)) : 0);
 const cushionKeep = (r, id, pot) => Math.floor(pot * cushionRate(r, id));
+/* Comebacks (rounds started from 0.78 on): from the 13th, whoever's last at the start of a hole scores double on it,
+   and the 18th counts double for everyone (so last place on the 18th scores x4). Totals = banked + pot. */
+const COMEBACK_FROM = 12;
+function comebackLast(r, h, totals) {
+  if (!(r.opts && r.opts.comeback) || h < COMEBACK_FROM) return totals.map(() => false);
+  const lo = Math.min(...totals), hi = Math.max(...totals);
+  return totals.map(t => hi > lo && t === lo);
+}
+function comebackBoost(r, h, totals) {
+  const last = comebackLast(r, h, totals); const end = r.opts && r.opts.comeback && h === 17 ? 2 : 1;
+  return last.map(l => (l ? 2 : 1) * end);
+}
+const comebackLabel = (r, h, bx) => (h === 17 ? (bx > 2 ? "last place x2, 18th x2" : "18th x2") : "last place x2");
 function puntCalc(r, upTo = 18) {
   const ids = r.playerIds;
   const S = {};
   ids.forEach(id => (S[id] = { pot: 0, banked: 0, streak: 0, shields: 0, vaults: 0, leak: 0, busts: 0, alive: true,
-    log: [], bustAt: [], multAt: [], evAt: [], potAt: [], potStart: [], streakAt: [] }));
+    log: [], bustAt: [], multAt: [], evAt: [], potAt: [], potStart: [], streakAt: [], boostAt: [] }));
   for (let h = 0; h < upTo; h++) {
     const gifts = {}; ids.forEach(id => (gifts[id] = 0));
+    const boost = comebackBoost(r, h, ids.map(id => S[id].banked + S[id].pot));
     const played = [];
     ids.forEach(id => {
       const st = S[id];
@@ -706,7 +720,9 @@ function puntCalc(r, upTo = 18) {
         const mult = st.streak >= 5 ? 3 : st.streak >= 3 ? 2 : 1;
         st.multAt[h] = mult;
         const sandy = r.opts.bonuses && evs.sandy && diff <= 0 ? 2 : 1;
-        const core = base * mult * (card === "dd" ? 2 : 1);
+        const bx = boost[ids.indexOf(id)];
+        if (bx > 1) st.boostAt[h] = bx;
+        const core = base * mult * (card === "dd" ? 2 : 1) * bx;
         const pts = core * sandy;
         let flat = 0;
         if (r.opts.bonuses) {
@@ -716,7 +732,7 @@ function puntCalc(r, upTo = 18) {
         }
         if (r.opts.ntp && PAR[h] === 3 && r.ntp[h] === id) flat += 3;
         st.pot += pts + flat; bonus = pts - core + flat;
-        st.log[h] = note + `+${pts + flat}` + (mult > 1 ? ` (x${mult} streak)` : "") + (card === "dd" ? " (double dip)" : "") + (sandy > 1 ? " (sandy x2)" : "") + (flat > 0 ? ` (bonus +${flat})` : "");
+        st.log[h] = note + `+${pts + flat}` + (mult > 1 ? ` (x${mult} streak)` : "") + (bx > 1 ? ` (${comebackLabel(r, h, bx)})` : "") + (card === "dd" ? " (double dip)" : "") + (sandy > 1 ? " (sandy x2)" : "") + (flat > 0 ? ` (bonus +${flat})` : "");
       }
       if (card === "life") { st.pot += 3; st.log[h] += ", lifeline +3"; }
       if (r.opts.penalties) {
@@ -754,7 +770,7 @@ function puntCalc(r, upTo = 18) {
     const st = S[id];
     const mult = st.streak >= 5 ? 3 : st.streak >= 3 ? 2 : 1;
     out[id] = { pot: st.pot, banked: st.banked, total: st.banked + st.pot, streak: st.streak, mult, shields: st.shields, vaults: st.vaults, leak: st.leak,
-      busts: st.busts, log: st.log, bustAt: st.bustAt, multAt: st.multAt, evAt: st.evAt, potAt: st.potAt, potStart: st.potStart, streakAt: st.streakAt };
+      busts: st.busts, log: st.log, bustAt: st.bustAt, multAt: st.multAt, evAt: st.evAt, potAt: st.potAt, potStart: st.potStart, streakAt: st.streakAt, boostAt: st.boostAt };
   });
   return out;
 }
@@ -895,7 +911,7 @@ function buildRound(cfg, people, seed) {
   });
   const r = {
     course, holes, mode: cfg.mode || "ffa", teams: cfg.teams || null, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
-    opts: cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true, cushion: true },
+    opts: { ...(cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true, cushion: true }), comeback: true },
     draws: Array(18).fill(null), seen: Array(18).fill(false), drawSeed: seed ? 20241024 : Math.floor(Math.random() * 1e9),
     ntp: Array(18).fill(null),
     ntpOk: Array(18).fill(false),
@@ -1225,6 +1241,7 @@ const TIPS = {
   streak: ["Streak", "Holes in a row at net par or better. Three in a row doubles your points (x2), five triples them (x3). Banking resets the streak unless you hold a Vault."],
   risk: ["Bust risk", "Your chance of a net double bogey or worse on the next hole, worked out from your handicap and that hole's difficulty. A rough guide, not a rule."],
   advice: ["Hold, think or bank", "Hold means your pot is small or the risk is low. Think about it means the pot is worth protecting. Bank it means the risk is high for the size of your pot."],
+  comeback: ["Comeback", "From the 13th, whoever's last at the start of a hole scores double on it. On the 18th everyone's points count double, so last place scores x4."],
   stroke: ["Strokes", "Your handicap gives you shots on the hardest holes. They come off your score, so a net score levels the field between a 5 and a 25 handicap."],
   ntp: ["Nearest the pin", "On a par 3, the player whose tee shot finishes closest to the pin earns +3 in their pot. Pick the winner, or Nobody if no one found the green. If the winner busts the hole, the +3 is lost."],
   mult: ["Streak multiplier", "Net par or better three holes running doubles your points. Five running triples them. A bogey ends it."],
@@ -1589,7 +1606,7 @@ function GamePanel({ gid, round, people, h, api }) {
       .map(x => [x.id, x.t.thru === 0 ? "–" : fmtPar(round.useHcp ? x.t.netPar : x.t.grossPar)]);
     return (
       <div>
-        <p className="cap">Net Stableford points drop into your pot. Bank to lock them in, but banking resets your streak. A net double bogey or worse busts the pot. Three net pars or better in a row doubles your points, five in a row triples them.</p>
+        <p className="cap">Net Stableford points drop into your pot. Bank to lock them in, but banking resets your streak. A net double bogey or worse busts the pot. Three net pars or better in a row doubles your points, five in a row triples them. From the 13th, last place scores double, and the 18th counts double for everyone.</p>
         {can.live && can.scoring === "each" && <p className="cap" style={{ marginTop: 6 }}><b>Bank calls are secret.</b> Yours locks when you move to the next hole. Everyone's is revealed once the whole group has moved on.</p>}
         <div>
           {ids.map((id, i) => {
@@ -2065,6 +2082,10 @@ function Rules({ onBack }) {
         <RuleSection title="Streak multiplier">
           <p>Net par or better on 3 holes in a row doubles your points on that hole (x2). Five in a row triples them (x3). A bogey, a bust or a bank resets the streak.</p>
           <p className="cap">Holding your pot keeps the streak alive. That's where the greed comes in.</p>
+        </RuleSection>
+        <RuleSection title="Comebacks">
+          <p>From the 13th, whoever's last at the start of a hole scores double on it. The 18th counts double for everyone, so last place scores x4 there.</p>
+          <p className="cap">Nobody's ever out of it. It stacks with streaks, and a bust is still a bust.</p>
         </RuleSection>
         <RuleSection title="Blessings & Curses">
           <p>On the hardest hole (stroke index 1) and the easiest (stroke index 18), everyone draws a card from a mixed deck of blessings and curses.</p>
@@ -2717,10 +2738,23 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
     if (firstHole.current) { firstHole.current = false; return; }
     try { window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); } catch (e) { window.scrollTo(0, 0); }
   }, [h]);
+  /* comebacks: who's last coming into this hole (they score double on it) */
+  const cbLast = (() => {
+    if (!round.opts.comeback || h < COMEBACK_FROM) return {};
+    const pre = puntCalc(round, h); const l = comebackLast(round, h, ids.map(id => pre[id].total));
+    return Object.fromEntries(ids.map((id, i) => [id, l[i]]));
+  })();
   /* heads-up strips at the top of the hole, for the scorer to read out */
   const notices = [];
   if (pc && round.opts.cards && cardHole(h) && !round.draws[h] && can.live && !can.canDeal(h)) notices.push({ key: "wait", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards coming`, text: `Cards are dealt once everyone has moved on to this hole and the last bank calls are revealed.${can.waitingOn && can.waitingOn(h).length ? ` Waiting for ${can.waitingOn(h).join(", ")} to move on.` : ""}` });
   if (cardsHere) notices.push({ key: "cards", icon: "star", isize: 3, title: `${SI[h] === 1 ? "Hardest" : "Easiest"} hole: cards are out`, text: "Everyone drew a blessing or a curse. Banks from the last hole are locked.", action: ["Show cards", () => setAgain(true)] });
+  if (round.opts.comeback && pc && (h === COMEBACK_FROM || h === 17)) {
+    const names = ids.filter(id => cbLast[id]).map(id => people[id].name);
+    const who = names.length ? `${names.join(" & ")} ${names.length > 1 ? "are" : "is"} last, so ${names.length > 1 ? "they score" : "scores"} double here.` : "";
+    notices.push(h === 17
+      ? { key: "cb18", icon: "flame", isize: 3, title: "18th hole: everyone's points count double", text: `${who ? who.replace("double", "x4") + " " : ""}Last chance to catch up.` }
+      : { key: "cb13", icon: "flame", isize: 3, title: "Comeback time", text: `From here, whoever's last at the start of a hole scores double on it. ${who}`.trim() });
+  }
   if (nextIsCard) notices.push({ key: "bank", icon: "c_vault", isize: 2, urgent: true, title: `Next hole is the ${SI[h + 1] === 1 ? "hardest" : "easiest"}: last chance to bank`, text: "Everyone draws a card at the tee, then banks lock. Ask each player now.", action: ["Review banks", () => setLastCall(true)] });
   /* Big moments play when you leave a hole, for the final scores: all the good news on one screen, then the bad. */
   const holeEvents = hh => {
@@ -2819,6 +2853,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                 {v != null && (() => { const n = scoreName(v, PAR[h]); return <span className="pill px" style={{ background: n.bg, padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}>{n.label}</span>; })()}
                 {pc && v != null && pc[id].potStart[h] != null && <span className="cap" style={{ fontWeight: 700, color: bust ? "#fff" : "var(--ink)", marginRight: 4 }}>Pot {pc[id].potStart[h]} → {pc[id].potAt[h] != null ? pc[id].potAt[h] : pc[id].pot}</span>}
                 {(() => { const gap = round.scores[id].slice(0, h).findIndex(x => x == null); return gap >= 0 && t.thru > 0 ? <div className="cap" role="note" style={{ color: bust ? "#fff" : "var(--red)", fontWeight: 700 }}>No score on hole {gap + 1}. <button onClick={() => api.setHole(gap)} style={{ textDecoration: "underline", fontWeight: 700, color: "inherit" }}>Fill it in</button></div> : null; })()}
+                {cbLast[id] && <span className="pill px" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}><Tip k="comeback">{h === 17 ? "LAST PLACE X4" : "LAST PLACE X2"}</Tip></span>}
                 {st > 0 && <span className="pill px" style={{ background: "var(--flag)", padding: "1px 6px", fontSize: 13, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "GETS A STROKE" : `GETS ${st} STROKES`}</Tip></span>}
                 {pc && v != null && !bust && /Safety net saved/.test(pc[id].log[h] || "") && <span className="pill px" style={{ background: "var(--mint)", padding: "1px 6px", fontSize: 13, marginTop: 3 }}>SAFETY NET SAVED THE POT</span>}
                 {bust && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}><Sprite name="skull" size={3} className="flick" /><span className="px blink" style={{ fontSize: 17 }}>BUST</span></div>}
