@@ -100,7 +100,7 @@ async def main():
         check('Signing in on another phone shows the same rounds', await A2.get_by_text('Cedar Ridge').count() >= 1 and await A2.get_by_text('Sunrise Links').count() >= 1)
         await A2.get_by_role('button', name='Me', exact=True).click(); await A2.wait_for_timeout(300)
         t = await A2.inner_text('body')
-        check('...and the same stats (3 rounds)', '3\nRounds' in t, t[t.find('Rounds') - 6:t.find('Rounds') + 8])
+        check('...and the same stats (3 rounds)', '3\nrounds' in t, t[t.find('rounds') - 6:t.find('rounds') + 8])
 
         # ---------- removing a round from the list keeps the stats
         await A2.get_by_role('button', name='History', exact=True).click(); await A2.wait_for_timeout(300)
@@ -111,7 +111,7 @@ async def main():
         check('Removing a finished round only hides it in the account', hid.get('hidden') is True)
         await A2.get_by_role('button', name='Me', exact=True).click(); await A2.wait_for_timeout(300)
         t = await A2.inner_text('body')
-        check('...and the stats still count it', '3\nRounds' in t, t[t.find('Rounds') - 6:t.find('Rounds') + 8])
+        check('...and the stats still count it', '3\nrounds' in t, t[t.find('rounds') - 6:t.find('rounds') + 8])
 
         # ---------- someone else's account is off limits
         B = await cloud.phone(b, 'u_sam', email='sam@example.com')

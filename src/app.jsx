@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.84";
+const APP_VERSION = "0.85";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3570,11 +3570,209 @@ function FriendAsk({ who, onSend, onClose }) {
 }
 
 // Someone's profile: handicap and stats. Friends with accounts show their own stats; other players, the rounds you've played together.
-function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose }) {
+/* ───────────── SEASONS AND STATS ─────────────
+   Seasons run three months, named for the weather where you are: in Australia Summer is Dec-Feb, Autumn Mar-May,
+   Winter Jun-Aug, Spring Sep-Nov (flipped in the northern hemisphere). The friends ladder ranks by average Puntaro
+   points a round, and you need MIN_ROUNDS rounds in the season to make it. */
+const MIN_ROUNDS = 3;
+const SOUTH = (() => {
+  try { return /^(Australia|Antarctica)\/|^Pacific\/(Auckland|Chatham|Fiji|Tongatapu|Apia|Noumea|Efate)|^America\/(Argentina|Sao_Paulo|Santiago|Montevideo|Asuncion|La_Paz|Lima)|^Africa\/(Johannesburg|Maputo|Harare|Windhoek|Gaborone|Lusaka|Maseru|Mbabane|Blantyre)|^Indian\/(Mauritius|Reunion)/.test(Intl.DateTimeFormat().resolvedOptions().timeZone || ""); }
+  catch (e) { return false; }
+})();
+const SEASON_NAMES = SOUTH ? ["Summer", "Autumn", "Winter", "Spring"] : ["Winter", "Spring", "Summer", "Autumn"];
+function seasonOf(t) {
+  const d = new Date(t); const m = d.getMonth();
+  const q = m === 11 ? 0 : Math.floor((m + 1) / 3); // 0 Dec-Feb, 1 Mar-May, 2 Jun-Aug, 3 Sep-Nov
+  const y = m === 11 ? d.getFullYear() + 1 : d.getFullYear(); // the year of the season's January
+  const start = new Date(q === 0 ? y - 1 : y, q === 0 ? 11 : q * 3 - 1, 1).getTime();
+  const end = new Date(new Date(start).getFullYear(), new Date(start).getMonth() + 3, 1).getTime();
+  const name = `${SEASON_NAMES[q]} ${q === 0 ? `${String((y - 1) % 100).padStart(2, "0")}/${String(y % 100).padStart(2, "0")}` : y}`;
+  return { key: `${y}-${q}`, name, start, end };
+}
+const prevSeason = s => seasonOf(s.start - 1);
+const ordinal = n => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th"}`;
+// One finished round of yours, replayed once: points, place, busts, best streak, NTPs and your scores.
+const RICH = new Map();
+function richRound(rec) {
+  const k = `${rec.id}:${rec.at}`; if (RICH.has(k)) return RICH.get(k);
+  const mine = (rec.players || {}).me || null;
+  let out = null;
+  const r = parseJSON(rec.round, null);
+  const pid = rec.live && rec.live.myId ? rec.live.myId : "me";
+  if (r && r.playerIds && r.playerIds.includes(pid) && (r.games || ["punt"]).includes("punt")) {
+    try {
+      out = withHoles(r.holes, () => {
+        const pc = puntCalc(r); const tot = r.playerIds.map(id => pc[id].total); const pts = pc[pid].total;
+        return { id: rec.id, at: rec.at, course: rec.course, pts, place: 1 + tot.filter(t => t > pts).length, of: r.playerIds.length,
+          win: mine ? !!mine.win : pts === Math.max(...tot), busts: pc[pid].busts, streak: Math.max(0, ...pc[pid].streakAt.filter(x => x != null)),
+          ntp: mine ? mine.ntp || 0 : 0, scores: range18.map(i => r.scores[pid][i] ?? null), pars: range18.map(i => PAR[i]), live: !!rec.live };
+      });
+    } catch (e) { out = null; }
+  }
+  if (!out && mine) out = { id: rec.id, at: rec.at, course: rec.course, pts: mine.pts || 0, place: null, of: null, win: !!mine.win, busts: null, streak: null, ntp: mine.ntp || 0, scores: null, pars: null };
+  RICH.set(k, out); return out;
+}
+// Stats from a list of rich rounds, within a season (or all time when range is null).
+function statsOf(list, range) {
+  const rs = list.filter(x => x && (!range || (x.at >= range.start && x.at < range.end)));
+  if (!rs.length) return null;
+  const withB = rs.filter(x => x.busts != null);
+  const best = rs.reduce((b, x) => (!b || x.pts > b.pts ? x : b), null);
+  return { rounds: rs.length, wins: rs.filter(x => x.win).length, ntp: rs.reduce((a, x) => a + (x.ntp || 0), 0), pts: rs.reduce((a, x) => a + x.pts, 0) / rs.length,
+    busts: withB.length ? withB.reduce((a, x) => a + x.busts, 0) / withB.length : null,
+    best: best ? { pts: best.pts, course: best.course, at: best.at } : null, streak: rs.reduce((m, x) => Math.max(m, x.streak || 0), 0) };
+}
+// A player without the app: only the rounds you scored together.
+function statsFromHistory(history, id, range) {
+  const rs = (history || []).filter(x => x.players && x.players[id] && (!range || (x.at >= range.start && x.at < range.end)));
+  if (!rs.length) return null;
+  return { rounds: rs.length, wins: rs.filter(x => x.players[id].win).length, ntp: rs.reduce((a, x) => a + (x.players[id].ntp || 0), 0), pts: rs.reduce((a, x) => a + (x.players[id].pts || 0), 0) / rs.length };
+}
+// Anyone's stats for a season (or all time): you from your rounds, app friends from their card, others from rounds together.
+function statsFor2(ctx, id, range) {
+  if (id === "me") return statsOf(ctx.mine, range);
+  const p = ctx.people[id]; if (!p) return null;
+  if (p.uid) {
+    const st = (ctx.friendCards[p.uid] || {}).stats || {};
+    if (!range) return st.all || null;
+    if (range.key === ctx.cur.key) return st.cur === range.key ? st.season || null : null;
+    return (st.seasons || {})[range.key] || null;
+  }
+  return statsFromHistory(ctx.history, id, range);
+}
+// The friends ladder: qualified players by average points, then everyone still short of MIN_ROUNDS.
+function ladderFor(ctx, range) {
+  const rows = ["me", ...ctx.friendIds].filter(id => id === "me" || ctx.people[id]).map(id => ({ id, s: statsFor2(ctx, id, range) }));
+  const q = rows.filter(r => r.s && r.s.rounds >= MIN_ROUNDS).sort((a, b) => b.s.pts - a.s.pts || b.s.rounds - a.s.rounds);
+  const rest = rows.filter(r => !(r.s && r.s.rounds >= MIN_ROUNDS)).sort((a, b) => ((b.s && b.s.rounds) || 0) - ((a.s && a.s.rounds) || 0));
+  q.forEach((r, i) => { r.rank = i && r.s.pts === q[i - 1].s.pts ? q[i - 1].rank : i + 1; });
+  return { q, rest };
+}
+// Seasons you played in before this one, newest first, with your finish on that season's ladder.
+function pastSeasons(ctx, n = 8) {
+  const out = []; let s = prevSeason(ctx.cur);
+  const oldest = ctx.mine.reduce((m, x) => Math.min(m, x.at), Infinity);
+  for (let i = 0; i < 24 && out.length < n && s.end > oldest; i++, s = prevSeason(s)) {
+    const mine = statsOf(ctx.mine, s); if (!mine) continue;
+    const L = ladderFor(ctx, s); const me = L.q.find(r => r.id === "me");
+    out.push({ season: s, rounds: mine.rounds, rank: me ? me.rank : null, of: L.q.length, champ: L.q[0] ? L.q[0].id : null });
+  }
+  return out;
+}
+
+const PXN = { fontFamily: "'Jersey 15', 'Pixelify Sans', monospace", fontWeight: 400 };
+function StatTile({ n, l, big = 32 }) {
+  return <div className="card" style={{ padding: "7px 9px", boxShadow: "3px 3px 0 var(--night)", minWidth: 0 }}><div className="px" style={{ fontSize: big, lineHeight: 1 }}>{n}</div><div className="cap" style={{ marginTop: 1 }}>{l}</div></div>;
+}
+const fmtPts = v => (v == null ? "–" : (Math.round(v * 10) / 10).toFixed(1));
+// Me: this season, all time, and how you finished in past seasons.
+function MeStats({ ctx, goLadder }) {
+  const s = statsOf(ctx.mine, ctx.cur); const a = statsOf(ctx.mine, null);
+  const L = ladderFor(ctx, ctx.cur); const meRow = L.q.find(r => r.id === "me");
+  const daysLeft = Math.max(1, Math.ceil((ctx.cur.end - Date.now()) / 864e5));
+  const past = pastSeasons(ctx);
+  const place = meRow ? `${ordinal(meRow.rank)}` : "–";
+  const placeSub = meRow ? `of ${L.q.length} on the ladder` : `${Math.max(0, MIN_ROUNDS - ((s && s.rounds) || 0))} more round${MIN_ROUNDS - ((s && s.rounds) || 0) === 1 ? "" : "s"} to rank`;
+  return (
+    <>
+      <div className="card" style={{ padding: "10px 11px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}><h3 style={{ fontSize: 16 }}>{ctx.cur.name}</h3><span className="cap" style={{ fontWeight: 600 }}>{daysLeft} day{daysLeft === 1 ? "" : "s"} left</span></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+          <StatTile n={s ? s.rounds : 0} l="rounds" /><StatTile n={s ? s.wins : 0} l="wins" /><StatTile n={s ? fmtPts(s.pts) : "–"} l="avg points" />
+          <StatTile n={s ? s.ntp : 0} l="NTPs" /><StatTile n={s && s.busts != null ? fmtPts(s.busts) : "–"} l="busts a round" /><StatTile n={place} l={placeSub} />
+        </div>
+        <button onClick={goLadder} style={{ marginTop: 8, fontWeight: 700, color: "var(--fair)" }}>See the friends ladder ›</button>
+      </div>
+      <div className="card" style={{ padding: "10px 11px" }}>
+        <h3 style={{ fontSize: 16 }}>All time</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+          <StatTile n={a ? a.rounds : 0} l="rounds" big={28} /><StatTile n={a ? a.wins : 0} l="wins" big={28} /><StatTile n={a ? fmtPts(a.pts) : "–"} l="avg points" big={28} />
+        </div>
+        {a && a.best && <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "8px 0 0", marginTop: 8, borderTop: "1px solid var(--line)" }}><span>Best round</span><span style={{ fontWeight: 700, textAlign: "right" }}>{a.best.pts} pts · {a.best.course}, {shortDay(a.best.at)}</span></div>}
+        {a && a.streak > 0 && <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 0 0" }}><span>Longest streak</span><span style={{ fontWeight: 700 }}>{a.streak} hole{a.streak === 1 ? "" : "s"}{a.streak >= 5 ? " (x3)" : a.streak >= 3 ? " (x2)" : ""}</span></div>}
+        {!a && <p className="cap" style={{ marginTop: 8 }}>Finish a round and your stats start here.</p>}
+      </div>
+      {past.length > 0 && (
+        <div className="card" style={{ padding: "10px 11px" }}>
+          <h3 style={{ fontSize: 16 }}>Past seasons</h3>
+          {past.map((x, i) => (
+            <div key={x.season.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid var(--line)", marginTop: i ? 0 : 6 }}>
+              <span style={{ width: 28, display: "flex", justifyContent: "center" }}>{x.rank === 1 ? <Sprite name="crown" size={4} /> : null}</span>
+              <span style={{ flex: 1, fontWeight: 700 }}>{x.season.name}</span>
+              <span className="px" style={{ fontSize: 20 }}>{x.rank ? `${ordinal(x.rank).toUpperCase()} OF ${x.of}` : `${x.rounds} ROUND${x.rounds === 1 ? "" : "S"}`}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+// The latest season you won your friends ladder, for the badge on Me.
+const championOf = ctx => { const w = pastSeasons(ctx).find(x => x.rank === 1); return w ? w.season : null; };
+// Once a season ends: who won it, the final top 3, and a fresh start.
+function SeasonSplash({ season, next, ladder, people, onDone }) {
+  const nm = id => (id === "me" ? "You" : (people[id] || {}).name || "?");
+  const champ = ladder.q[0]; const tie = ladder.q.length > 1 && ladder.q[1].s.pts === champ.s.pts;
+  return (
+    <div role="dialog" aria-label={`${season.name} is over`} className="stripes" style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 70, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 24, textAlign: "center", animation: "mfade .3s steps(3) both" }}>
+      <Sprite name="crown" size={16} />
+      <div className="px" style={{ fontSize: 30, color: "var(--flag)", textShadow: "3px 3px 0 #14150F" }}>{season.name.toUpperCase()} CHAMPION{tie ? "S" : ""}</div>
+      <div className="px" style={{ fontSize: 64, lineHeight: 0.95, textShadow: "5px 5px 0 #14150F", overflowWrap: "anywhere" }}>{(tie ? ladder.q.filter(r => r.s.pts === champ.s.pts).map(r => nm(r.id)).join(" & ") : nm(champ.id)).toUpperCase()}</div>
+      <div style={{ fontWeight: 700 }}>{fmtPts(champ.s.pts)} avg pts over {champ.s.rounds} rounds</div>
+      <div className="card" style={{ width: "100%", maxWidth: 340, padding: "9px 12px", textAlign: "left", color: "var(--ink)" }}>
+        <div className="cap" style={{ fontWeight: 800 }}>FINAL LADDER</div>
+        {ladder.q.slice(0, 3).map((r, i) => <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderTop: i ? "1px solid var(--line)" : "none" }}><span style={{ fontWeight: i ? 500 : 700 }}>{r.rank} · {nm(r.id)}</span><span className="px" style={{ fontSize: 20 }}>{fmtPts(r.s.pts)}</span></div>)}
+      </div>
+      <div><h2 style={{ fontSize: 22 }}>{next.name} starts now</h2><p style={{ marginTop: 4, opacity: 0.9 }}>Everyone's back to zero. {MIN_ROUNDS} rounds to make the ladder.</p></div>
+      <button className="px" onClick={onDone} style={{ width: "100%", maxWidth: 340, background: "var(--flag)", color: "var(--dk)", border: "3px solid var(--night)", boxShadow: "4px 4px 0 #14150F", padding: 11, fontSize: 24 }}>LET'S GO</button>
+    </div>
+  );
+}
+// A friend's recent rounds (from their card), or the rounds you played together if they don't have the app.
+function RoundsList({ rounds, empty }) {
+  const [open, setOpen] = useState(null);
+  if (!rounds.length) return <p className="cap" style={{ marginTop: 6 }}>{empty}</p>;
+  return (
+    <div style={{ marginTop: 4 }}>
+      {rounds.map((x, i) => {
+        const k = `${x.at}:${i}`; const on = open === k;
+        return (
+          <div key={k} style={{ borderTop: "1px solid var(--line)" }}>
+            <button onClick={() => setOpen(on ? null : k)} aria-expanded={on} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 0", textAlign: "left" }}>
+              <span style={{ width: 22, display: "flex", justifyContent: "center" }}>{x.win ? <Sprite name="crown" size={3} /> : null}</span>
+              <span style={{ flex: 1, minWidth: 0 }}><span className="hd" style={{ fontWeight: 700 }}>{x.course}</span><span className="cap" style={{ display: "block" }}>{shortDay(x.at)}{x.place ? ` · ${ordinal(x.place)} of ${x.of}` : ""}</span></span>
+              <span style={{ textAlign: "right" }}><span className="px" style={{ fontSize: 24, lineHeight: 1 }}>{x.pts}</span><span className="cap" style={{ display: "block" }}>pts</span></span>
+            </button>
+            {on && (
+              <div style={{ padding: "0 0 10px 30px" }}>
+                <div className="cap">{[x.busts != null ? `${x.busts} bust${x.busts === 1 ? "" : "s"}` : null, x.ntp ? `${x.ntp} NTP${x.ntp === 1 ? "" : "s"}` : null, x.scores && x.scores.every(v => v != null) ? `${x.scores.reduce((a, v) => a + v, 0)} strokes` : null].filter(Boolean).join(" · ") || "No more detail for this round."}</div>
+                {x.scores && x.pars && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(9, minmax(0,1fr))", gap: 3, marginTop: 6 }}>
+                    {x.scores.map((v, h) => { const d = v == null ? null : v - x.pars[h]; return (
+                      <div key={h} title={`Hole ${h + 1}`} style={{ textAlign: "center", padding: "2px 0", border: "2px solid var(--night)", background: d == null ? "transparent" : d < 0 ? "#BFE0F2" : d === 0 ? "var(--card)" : d === 1 ? "#F2D9C4" : "#F2B8A8" }}>
+                        <div className="cap" style={{ fontSize: 9, lineHeight: 1 }}>{h + 1}</div><div className="px" style={{ fontSize: 17, lineHeight: 1 }}>{v ?? "·"}</div>
+                      </div>); })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose, ctx }) {
   const p = people[id]; const [ask, setAsk] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   if (!p) return null;
   const linked = !!p.uid;
-  const st = k => (linked ? (card && card.stats && card.stats[k]) || null : statsFor(history, id, k));
+  const periods = [[ctx.cur, `This season (${ctx.cur.name})`], [null, "All time"]];
+  const together = (history || []).filter(x => x.players && x.players[id]).sort((a, b) => b.at - a.at).slice(0, 15).map(x => {
+    const ps = Object.values(x.players).map(v => v.pts || 0); const pts = x.players[id].pts || 0;
+    return { at: x.at, course: x.course, pts, place: 1 + ps.filter(v => v > pts).length, of: ps.length, win: !!x.players[id].win, ntp: x.players[id].ntp || 0, busts: null };
+  });
+  const rounds = linked ? ((card && card.stats && card.stats.recent) || []) : together;
   return (
     <Sheet title={linked ? (card && card.name) || p.name : `${p.name}${p.last ? ` ${p.last}` : ""}`} onClose={onClose}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -3584,19 +3782,23 @@ function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose
           <div className="cap">{linked ? "Puntaro friend. Stats from all their rounds." : "Player without the app. Stats from rounds you've played together."}</div>
         </div>
       </div>
-      {[["month", "This month"], ["season", "This season"], ["all", "All time"]].map(([k, l]) => {
-        const s = st(k);
+      {periods.map(([range, l]) => {
+        const s = statsFor2(ctx, id, range);
         return (
-          <div key={k} style={{ marginTop: 10 }}>
+          <div key={l} style={{ marginTop: 10 }}>
             <div className="cap" style={{ fontWeight: 700 }}>{l}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 6, marginTop: 4 }}>
-              {[["Rounds", s ? s.rounds : 0], ["Wins", s ? s.wins : 0], ["NTPs", s ? s.ntp : 0], ["Avg pts", s && s.pts != null ? s.pts.toFixed(1) : "–"]].map(([n, v]) => (
+              {[["Rounds", s ? s.rounds : 0], ["Wins", s ? s.wins : 0], ["NTPs", s ? s.ntp : 0], ["Avg pts", s && s.pts != null ? fmtPts(s.pts) : "–"]].map(([n, v]) => (
                 <div key={n} className="card" style={{ padding: "6px 8px", boxShadow: "2px 2px 0 var(--night)" }}><div className="px" style={{ fontSize: 22 }}>{v}</div><div className="cap">{n}</div></div>
               ))}
             </div>
           </div>
         );
       })}
+      <div style={{ marginTop: 12 }}>
+        <h3 style={{ fontSize: 15 }}>{linked ? "Recent rounds" : "Rounds with you"}</h3>
+        <RoundsList rounds={rounds} empty={linked ? "No rounds to show yet." : "You haven't finished a round together yet."} />
+      </div>
       {err && <p className="cap" role="alert" style={{ color: "var(--red)", marginTop: 8 }}>{err}</p>}
       <div style={{ marginTop: 14 }}>
         {!ask ? <button className="chip" onClick={() => setAsk(true)} style={{ width: "100%", padding: "9px 0", textAlign: "center", color: "var(--red)" }}>{linked ? "Unfriend" : "Remove from friends"}</button> : (
@@ -3614,23 +3816,20 @@ function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose
   );
 }
 
-function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friendCards = {}, requests = [], onAccept, onDecline, onFind, onSend, onUnfriend, myRef, makeRef }) {
-  const [metric, setMetric] = useState("pts");
-  const [period, setPeriod] = useState("month");
+function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friendCards = {}, requests = [], onAccept, onDecline, onFind, onSend, onUnfriend, myRef, makeRef, ctx }) {
+  const [period, setPeriod] = useState("season");
   const [sheet, setSheet] = useState(false);
   const [open, setOpen] = useState(null);
   const [busy, setBusy] = useState("");
-  const val = (id, k) => {
-    const p = people[id];
-    const s = p && p.uid ? ((friendCards[p.uid] || {}).stats || {})[period] : statsFor(history, id, period);
-    return s ? s[k] : null;
-  };
-  const rows = ["me", ...friendIds].filter(id => people[id]).map(id => ({ id, v: val(id, metric) })).sort((a, b) => (a.v == null) - (b.v == null) || b.v - a.v);
+  const range = period === "season" ? ctx.cur : null;
+  const L = ladderFor(ctx, range);
+  const prev = prevSeason(ctx.cur); const PL = ladderFor(ctx, prev);
+  const nm = id => (id === "me" ? "You" : people[id].name);
   const act = async (id, f) => { setBusy(id); try { await f(id); } catch (e) { /* the list updates itself */ } setBusy(""); };
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "20px 16px 18px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <h1>Friends</h1>
+        <div><h1>Friends</h1><p style={{ opacity: 0.85, marginTop: 2 }}>{ctx.cur.name} · ends {shortDay(ctx.cur.end - 864e5)}</p></div>
         <button className="px" aria-label="Add" onClick={() => setSheet(true)} style={{ background: "var(--flag)", color: "var(--dk)", border: "3px solid var(--night)", padding: "6px 12px", fontSize: 20, lineHeight: 1, display: "flex", gap: 6, alignItems: "center" }}><UserPlus size={18} />ADD FRIEND</button>
       </div>
       <div style={{ padding: 12, display: "grid", gap: 10 }}>
@@ -3651,41 +3850,37 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friend
           </div>
         )}
         <div style={{ display: "flex", gap: 6 }}>
-          {[["month", "This month"], ["season", "This season"]].map(([k, l]) => (
-            <button key={k} className={`chip ${period === k ? "on" : ""}`} onClick={() => setPeriod(k)} style={{ flex: 1, padding: "5px 0", textAlign: "center" }}>{l}</button>
+          {[["season", "This season"], ["all", "All time"]].map(([k, l]) => (
+            <button key={k} className={`chip ${period === k ? "on" : ""}`} aria-pressed={period === k} onClick={() => setPeriod(k)} style={{ flex: 1, padding: "7px 0", textAlign: "center", fontWeight: 700 }}>{l}</button>
           ))}
         </div>
-        <p className="cap">Tap a player for their profile. Friends with Puntaro accounts show stats from all their rounds; others, the rounds you've played together.</p>
-        <div className="card" style={{ padding: "3px 11px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr) repeat(4, 44px)", gap: 4, alignItems: "center", padding: "8px 0", borderBottom: "2px solid var(--night)" }}>
-            <span /><span className="cap">Player</span>
-            {METRICS.map(x => (
-              <button key={x.id} onClick={() => setMetric(x.id)} aria-pressed={metric === x.id} className="cap" style={{ textAlign: "right", fontWeight: 700, color: metric === x.id ? "var(--fair)" : "var(--muted)", textDecoration: metric === x.id ? "underline" : "none" }}>{x.label}{metric === x.id ? " ▾" : ""}</button>
-            ))}
-          </div>
-          {rows.map((r, i) => (
-            <button key={r.id} onClick={() => r.id !== "me" && setOpen(r.id)} aria-label={r.id === "me" ? "You" : `View ${people[r.id].name}`} style={{ width: "100%", textAlign: "left", display: "grid", gridTemplateColumns: "24px minmax(0,1fr) repeat(4, 44px)", gap: 4, alignItems: "center", padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
-              <div style={{ display: "grid", placeItems: "center", fontWeight: 800, color: "var(--muted)" }}>
-                {i === 0 && r.v != null ? <Sprite name="crown" size={2} /> : i + 1}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                <Avatar p={people[r.id]} size={28} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[r.id].name}{people[r.id].uid && <span className="pill" style={{ marginLeft: 5, padding: "0 4px", fontSize: 10, background: "var(--mint)" }}>APP</span>}</div>
-                  <div className="cap" style={{ fontSize: 11 }}>HCP {fmtHcp(people[r.id])}</div>
-                </div>
-              </div>
-              {METRICS.map(x => {
-                const v = val(r.id, x.id);
-                return <div key={x.id} style={{ textAlign: "right", fontWeight: metric === x.id ? 800 : 600, color: metric === x.id ? "var(--ink)" : "var(--muted)" }}>{v == null ? "–" : x.fmt(v)}</div>;
-              })}
+        <div className="card" style={{ padding: "3px 11px 6px" }}>
+          {L.q.length === 0 && <p className="cap" style={{ padding: "9px 0 4px" }}>Nobody's on the ladder yet. Play {MIN_ROUNDS} rounds {range ? "this season " : ""}to make it.</p>}
+          {[...L.q, ...(L.rest.length ? [{ divider: true }] : []), ...L.rest].map((r, i) => r.divider ? (
+            <div key="div" className="cap" style={{ fontWeight: 800, padding: "8px 0 2px", borderTop: L.q.length ? "2px dashed var(--line)" : "none" }}>PLAY {MIN_ROUNDS} ROUNDS TO MAKE THE LADDER</div>
+          ) : (
+            <button key={r.id} onClick={() => r.id !== "me" && setOpen(r.id)} aria-label={r.id === "me" ? "You" : `View ${people[r.id].name}`} style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderTop: i && !(L.rest.length && i === L.q.length + 1) ? "1px solid var(--line)" : "none", opacity: r.rank ? 1 : 0.55 }}>
+              <span style={{ width: 26, display: "flex", justifyContent: "center" }}>{r.rank === 1 ? <Sprite name="crown" size={3} /> : r.rank ? <span className="px" style={{ fontSize: 24, color: "var(--muted)" }}>{r.rank}</span> : null}</span>
+              <Avatar p={people[r.id]} size={28} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span className="hd" style={{ display: "block", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nm(r.id)}</span>
+                <span className="cap" style={{ display: "block" }}>{r.rank ? `${r.s.rounds} round${r.s.rounds === 1 ? "" : "s"} · ${r.s.wins} win${r.s.wins === 1 ? "" : "s"}` : `needs ${MIN_ROUNDS - ((r.s && r.s.rounds) || 0)} more round${MIN_ROUNDS - ((r.s && r.s.rounds) || 0) === 1 ? "" : "s"}`}</span>
+              </span>
+              <span style={{ textAlign: "right" }}><span className="px" style={{ display: "block", fontSize: 26, lineHeight: 1 }}>{r.s ? fmtPts(r.s.pts) : "–"}</span><span className="cap">avg pts</span></span>
             </button>
           ))}
         </div>
+        {period === "season" && PL.q[0] && (
+          <div className="card" style={{ padding: "9px 11px", display: "flex", alignItems: "center", gap: 9 }}>
+            <Sprite name="crown" size={4} />
+            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{prev.name} champion: {PL.q.filter(r => r.s.pts === PL.q[0].s.pts).map(r => nm(r.id)).join(" & ")}</div><div className="cap">{fmtPts(PL.q[0].s.pts)} avg pts over {PL.q[0].s.rounds} rounds</div></div>
+          </div>
+        )}
+        <p className="cap" style={{ textAlign: "center" }}>Ranked by average Puntaro points a round. Tap a name for their profile and rounds. Friends without the app show the rounds you played together.</p>
         {friendIds.length === 0 && <p className="cap" style={{ textAlign: "center" }}>No friends yet. Tap Add to share your code or scan a mate's.</p>}
       </div>
       {sheet && <AddFriendSheet people={people} friendIds={friendIds} setFriendIds={setFriendIds} myRef={myRef} makeRef={makeRef} onFind={onFind} onSend={onSend} onAddFriend={onAddFriend} onClose={() => setSheet(false)} />}
-      {open && <ProfileSheet id={open} people={people} history={history} card={people[open] && people[open].uid ? friendCards[people[open].uid] : null} onUnfriend={onUnfriend} onRemove={id => setFriendIds(f => f.filter(x => x !== id))} onClose={() => setOpen(null)} />}
+      {open && <ProfileSheet ctx={ctx} id={open} people={people} history={history} card={people[open] && people[open].uid ? friendCards[people[open].uid] : null} onUnfriend={onUnfriend} onRemove={id => setFriendIds(f => f.filter(x => x !== id))} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -3757,25 +3952,25 @@ function NameCard({ me, onSave }) {
             <button className="cta" disabled={!edit.first.trim()} onClick={save} style={{ padding: 9, fontSize: 15 }}>Save</button>
           </div>
         </>
-      ) : <p className="cap" style={{ marginTop: 4 }}>Friends see {full ? `${(me.first || "").trim()}${me.last ? ` ${me.last.trim()[0].toUpperCase()}.` : ""}` : "your first name and last initial"}.</p>}
+      ) : <p className="cap" style={{ marginTop: 4 }}>{full ? `Friends see ${(me.first || "").trim()}${me.last && me.last.trim() ? ` ${me.last.trim()[0].toUpperCase()}.` : "."}` : "Friends see your first name and last initial."}</p>}
     </div>
   );
 }
-function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, onSignOut, onStartFresh, onDeleteAccount, myRef, makeRef, cloud }) {
+function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, onSignOut, onStartFresh, onDeleteAccount, myRef, makeRef, cloud, ctx, goLadder }) {
   const me = people.me;
   const [ask, setAsk] = useState(null); // "fresh" | "delete"
   // Changing it by hand keeps an official handicap official; otherwise it becomes your own estimate.
   const setHi = v => setPeople(p => ({ ...p, me: { ...p.me, hi: Math.round(Math.min(MAX_INDEX, Math.max(-10, v)) * 10) / 10, hk: p.me.hk === "ga" ? "ga" : "est" } }));
   const counted = history.length; // finished rounds, for the explanation below
-  const s = statsFor(history, "me", "season") || { rounds: 0, wins: 0, ntp: 0, pts: null };
-  const tiles = [["Rounds", s.rounds], ["Puntaro wins", s.wins], ["NTPs", s.ntp], ["Avg points", s.pts == null ? "–" : s.pts.toFixed(1)]];
+  const champ = championOf(ctx);
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "23px 16px 20px", display: "flex", alignItems: "center", gap: 11 }}>
         <Avatar p={me} size={54} />
-        <div style={{ minWidth: 0 }}><h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.8, overflowWrap: "anywhere" }}>{`${(me.first || "").trim()} ${(me.last || "").trim()}`.trim() || "You"}</h1><p style={{ opacity: 0.8 }}>Season stats</p></div>
+        <div style={{ minWidth: 0 }}><h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.8, overflowWrap: "anywhere" }}>{`${(me.first || "").trim()} ${(me.last || "").trim()}`.trim() || "You"}</h1>{champ ? <span className="px" style={{ display: "inline-block", marginTop: 5, background: "var(--flag)", color: "var(--dk)", border: "2px solid var(--night)", padding: "1px 7px", fontSize: 16 }}>CHAMPION · {champ.name.toUpperCase()}</span> : <p style={{ opacity: 0.8 }}>Your stats</p>}</div>
       </div>
       <div style={{ padding: 12, display: "grid", gap: 11 }}>
+        <MeStats ctx={ctx} goLadder={goLadder} />
         <InviteCard myRef={myRef} makeRef={makeRef} cloud={cloud} />
         <div className="card" style={{ padding: "8px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9 }}>
           <div><div style={{ fontWeight: 700, fontSize: 13 }}>Dark mode</div><div className="cap">Easier on the eyes on the course at dusk.</div></div>
@@ -3821,14 +4016,6 @@ function Me({ people, setPeople, dark, setDark, saved, history, onAbout, user, o
               </div>
             </div>
           )}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {tiles.map(([l, v]) => (
-            <div key={l} className="card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -1 }}>{v}</div>
-              <div className="cap">{l}</div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
@@ -4059,6 +4246,8 @@ function Game({ user, cloud, profile, now0, finished }) {
   // Finished rounds live in your account (users/{uid}/rounds). Removing one from the list only hides it: stats keep it.
   const recent = finished.filter(r => !r.hidden).sort((a, b) => b.at - a.at).map(r => ({ id: r.id, course: r.course, when: fmtDay(r.at), gross: r.gross, net: r.net, note: r.note, hasCard: !!r.round }));
   const history = finished.map(r => ({ at: r.at, course: r.course, players: r.players || {} }));
+  // Hidden (deleted) rounds still count, so a bad round can't be wiped from your stats.
+  const myRounds = useMemo(() => finished.map(richRound).filter(Boolean), [finished]);
   const [openRec, setOpenRec] = useState(null);
   // Witnessed 18-hole rounds, oldest first, for the Puntaro handicap.
   const hcpDiffs = finished.filter(f => f.witnessed && typeof f.diff === "number").sort((a, b) => a.at - b.at).map(f => f.diff);
@@ -4118,12 +4307,16 @@ function Game({ user, cloud, profile, now0, finished }) {
   useEffect(() => {
     if (!cloud.setProfile) return undefined;
     const me = people.me;
+    const cur = seasonOf(Date.now()); const seasons = {};
+    for (let x = prevSeason(cur), i = 0; i < 8; i++, x = prevSeason(x)) { const st = statsOf(myRounds, x); if (st) seasons[x.key] = st; }
+    const recent = [...myRounds].sort((a, b) => b.at - a.at).slice(0, 15).map(x => ({ at: x.at, course: x.course, pts: x.pts, place: x.place, of: x.of, win: x.win, busts: x.busts, ntp: x.ntp, scores: x.scores, pars: x.pars }));
     const card = { name: displayName(me), first: (me.first || "").slice(0, 20), li: (me.last || "").trim().slice(0, 1).toUpperCase(), color: me.color || ME_COLOR, hi: me.hi, hk: me.hk || "", ref: myRef || "",
-      stats: Object.fromEntries(["month", "season", "all"].map(k => [k, statsFor(history, "me", k)])) };
+      // month is kept for friends still on older versions of the app
+      stats: { month: statsFor(history, "me", "month"), season: statsOf(myRounds, cur), all: statsOf(myRounds, null), cur: cur.key, seasons, recent } };
     const j = JSON.stringify(card); if (j === cardSent.current) return undefined;
     const t = setTimeout(() => { cloud.setProfile(card).then(() => { cardSent.current = j; }).catch(() => {}); }, 1200);
     return () => clearTimeout(t);
-  }, [people.me, history.length, myRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [people.me, myRounds, myRef]); // eslint-disable-line react-hooks/exhaustive-deps
   const findFriendCode = async raw => {
     const code = cleanRef(raw);
     if (!code) throw new Error("That doesn't look like a friend code. It's a name and four letters or numbers, like pierre-7k2m.");
@@ -4490,6 +4683,22 @@ function Game({ user, cloud, profile, now0, finished }) {
     }))).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Seasons: the stats context for Me, Friends and profiles, and the champion splash when a season has ended.
+  const statCtx = { people, friendIds, friendCards, history, mine: myRounds, cur: seasonOf(Date.now()) };
+  const ctxRef = useRef(statCtx); ctxRef.current = statCtx;
+  const [seasonSplash, setSeasonSplash] = useState(null);
+  useEffect(() => {
+    const cur = seasonOf(Date.now()); let seen = null;
+    try { seen = localStorage.getItem("puntaro.season"); } catch (e) { /* fine */ }
+    if (seen === cur.key) return undefined;
+    const t = setTimeout(() => { // a moment for friends' cards to arrive
+      try { localStorage.setItem("puntaro.season", cur.key); } catch (e) { /* fine */ }
+      if (!seen) return; // first time on this phone: nothing to look back on yet
+      const prev = prevSeason(cur); const L = ladderFor(ctxRef.current, prev);
+      if (L.q.length) setSeasonSplash({ season: prev, next: cur, ladder: L });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []);
   const tabs = [["home", "Home", HomeIcon], ["history", "History", ClockIcon], ["friends", "Friends", UsersIcon], ["me", "Me", UserIcon], ...(isAdmin(user) ? [["dev", "Dev", BarsIcon]] : [])];
   const openRound = id => {
     const rec = finished.find(f => f.id === id); if (!rec || !rec.round) return;
@@ -4554,6 +4763,7 @@ function Game({ user, cloud, profile, now0, finished }) {
       <style>{CSS}</style>
       <Celebrate fx={fx} />
       <Moment m={moment} more={moments.length > 1} onDone={nextMoment} />
+      {seasonSplash && <SeasonSplash {...seasonSplash} people={people} onDone={() => setSeasonSplash(null)} />}
       {friendAsk && !friendList.some(f => f.id === friendAsk.owner) && <FriendAsk who={friendAsk} onSend={() => sendFriendRequest(friendAsk)} onClose={() => setFriendAsk(null)} />}
       <TipSheet k={tipK} onClose={() => setTipK(null)} />
       {about && <AboutSheet onClose={() => setAbout(false)} onFeedback={text => backend().then(b => b.sendFeedback(text, { name: displayName(people.me), version: APP_VERSION, device: (navigator.userAgent || "").slice(0, 200) }))} />}
@@ -4599,8 +4809,8 @@ function Game({ user, cloud, profile, now0, finished }) {
             {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "dev" && isAdmin(user) && <DevTab user={user} />}
             {tab === "history" && <History recent={recent} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} onOpenRound={openRound} trash={trash} now={now} onRestore={restore} />}
-            {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => { track("friend", { via: "request" }); return cloud.acceptRequest(id); }} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
-            {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
+            {tab === "friends" && <Friends ctx={statCtx} history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => { track("friend", { via: "request" }); return cloud.acceptRequest(id); }} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
+            {tab === "me" && <Me ctx={statCtx} goLadder={() => setTab("friends")} history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
           </div>
           <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>
             {tabs.map(([k, l, I]) => (
