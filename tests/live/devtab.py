@@ -70,5 +70,22 @@ async def main():
         await A.get_by_role('button', name='Done', exact=True).first.click(); await A.wait_for_timeout(500)
         check('Marking feedback Done saves it', cloud.docs[f'feedback/{fid}'].get('done') is True and await A.get_by_text('Feedback (0 to look at)').count() == 1)
         await A.evaluate('scrollTo(0, 900)'); await A.wait_for_timeout(200); await A.screenshot(path=f'{OUT}/dev_mid.png')
+        # deleting a player
+        cloud.seed('u_f', fc.profile('Fred'))
+        for k, v in {'friends/u_p/list/u_f': {'via': 'request'}, 'friends/u_f/list/u_p': {'via': 'request'}, 'requests/u_f/in/u_p': {'name': 'Pierre'}, 'profiles/u_p': {'name': 'Pierre S.'}}.items(): cloud.docs[k] = v
+        before_f = {k for k in cloud.docs if k.startswith('users/u_f')}
+        r5 = await P.evaluate("window.__puntaroLiveBackend.adminDeleteUser('u_f').then(() => 'did', e => 'denied')")
+        check("A player can't delete anyone", r5 == 'denied' and 'users/u_f' in cloud.docs)
+        await A.get_by_role('button', name='REFRESH').click(); await A.wait_for_timeout(1200)
+        check("The admin can't delete their own account from here", await A.get_by_role('button', name='Delete Boss').count() == 0)
+        await A.get_by_role('button', name='Delete Pierre', exact=True).click(); await A.wait_for_timeout(300)
+        sheet = A.get_by_role('dialog')
+        check('Delete asks first, and explains what goes and what stays', 'can\'t be undone' in await sheet.inner_text() and 'login' in await sheet.inner_text())
+        await A.screenshot(path=f'{OUT}/dev_delete.png')
+        await sheet.get_by_role('button', name="Delete Pierre's data").click(); await A.wait_for_timeout(800)
+        left = [k for k in cloud.docs if 'u_p' in k.split('/') or (k.split('/')[0] in ('events', 'feedback') and cloud.docs[k].get('uid') == 'u_p')]
+        check('Everything of theirs is gone: account, rounds, profile, friendships, requests, feedback, usage', left == [], str(left))
+        check("...other players' data is untouched", before_f <= set(cloud.docs) and f'users/{ADMIN}' in cloud.docs)
+        check('...and the Dev tab says what happened', await A.get_by_text("Deleted Pierre's data").count() == 1 and await A.get_by_text('nic@example.com').count() == 0)
         print('page errors:', P.errs + A.errs); print(f'{sum(res)}/{len(res)} passed'); await b.close()
 asyncio.run(main())

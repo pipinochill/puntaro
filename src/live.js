@@ -210,6 +210,25 @@ async function firebaseBackend() {
       };
     },
     adminFeedbackDone: (id, done) => F.updateDoc(F.doc(db, "feedback", id), { done }),
+    /* Dev tab: delete everything a player has stored (not their login: only Firebase itself can remove that).
+       Rounds they played live stay in the other players' histories. */
+    adminDeleteUser: async uid => {
+      if (uid === me()) throw new Error("Not your own account");
+      const refs = [];
+      const add = q => q.docs.forEach(d => refs.push(d.ref));
+      add(await F.getDocs(F.collection(db, "users", uid, "rounds")));
+      add(await F.getDocs(F.collection(db, "users", uid, "state")));
+      const mine = await F.getDocs(F.collection(db, "friends", uid, "list"));
+      mine.docs.forEach(d => { refs.push(d.ref); refs.push(F.doc(db, "friends", d.id, "list", uid)); });
+      add(await F.getDocs(F.collection(db, "requests", uid, "in")));
+      (await F.getDocs(F.collectionGroup(db, "in"))).docs.filter(d => d.id === uid).forEach(d => refs.push(d.ref)); // requests they sent
+      add(await F.getDocs(F.query(F.collection(db, "feedback"), F.where("uid", "==", uid))));
+      add(await F.getDocs(F.query(F.collection(db, "events"), F.where("uid", "==", uid))));
+      refs.push(F.doc(db, "profiles", uid));
+      refs.push(F.doc(db, "users", uid)); // last, so a half-finished delete can be run again
+      for (let i = 0; i < refs.length; i += 400) { const b = F.writeBatch(db); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit(); }
+      return refs.length;
+    },
     // Alpha feedback: anyone signed in can leave a note; only the Firebase console can read them.
     sendFeedback: (text, meta) => F.addDoc(F.collection(db, "feedback"), { uid: me(), text, ...meta, at: F.serverTimestamp() }),
     deleteProfile: () => F.deleteDoc(F.doc(db, "profiles", me())),

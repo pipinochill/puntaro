@@ -58,6 +58,7 @@ window.__puntaroLiveBackend = {
   logEvent: (name, data) => call('__fc_event', name, data),
   adminLoad: () => call('__fc_adminload'),
   adminFeedbackDone: (id, done) => call('__fc_fbdone', id, done),
+  adminDeleteUser: uid => call('__fc_admindel', uid),
   deleteProfile: () => call('__fc_delprofile'),
   watchProfile: (u, cb, err) => poll(() => call('__fc_getprofile', u).catch(e => { if (err) err(e); return '__denied'; }).then(v => v === '__denied' ? null : v), cb),
   watchFriends: cb => poll(() => call('__fc_friends'), cb),
@@ -249,6 +250,18 @@ class Cloud:
             fb = [{'id': k.split('/')[1], **v} for k, v in D.items() if k.startswith('feedback/')]
             ev = [v for k, v in D.items() if k.startswith('events/')]
             return self._ok(copy.deepcopy({'users': users, 'rounds': rounds, 'live': live, 'feedback': fb, 'events': ev}))
+        async def admindel(me, uid):
+            uid = json.loads(uid)
+            if not R.is_admin(me) or uid == me: return self._no('admin delete')
+            def gone(k, v):
+                p = k.split('/')
+                return (k == f'users/{uid}' or k.startswith(f'users/{uid}/') or k == f'profiles/{uid}'
+                        or (p[0] == 'friends' and len(p) == 4 and (p[1] == uid or p[3] == uid))
+                        or (p[0] == 'requests' and len(p) == 4 and (p[1] == uid or p[3] == uid))
+                        or (p[0] in ('feedback', 'events') and v.get('uid') == uid))
+            ks = [k for k, v in self.docs.items() if gone(k, v)]
+            for k in ks: self.docs.pop(k)
+            return self._ok(len(ks))
         async def fbdone(me, fid, done):
             fid, done = json.loads(fid), json.loads(done); path = f'feedback/{fid}'
             before = self.docs.get(path)
@@ -288,7 +301,7 @@ class Cloud:
         async def unfriend(me, f):
             f = json.loads(f)
             return batch(me, [('delete', fl(me, f), None), ('delete', fl(f, me), None)])
-        for n, f in [('__fc_event', event), ('__fc_adminload', adminload), ('__fc_fbdone', fbdone), ('__fc_feedback', feedback), ('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
+        for n, f in [('__fc_admindel', admindel), ('__fc_event', event), ('__fc_adminload', adminload), ('__fc_fbdone', fbdone), ('__fc_feedback', feedback), ('__fc_delprofile', delprofile), ('__fc_setprofile', setprofile), ('__fc_getprofile', getprofile), ('__fc_friends', friends), ('__fc_requests', requests), ('__fc_sendreq', sendreq),
                      ('__fc_hasreq', hasreq), ('__fc_accept', accept), ('__fc_decline', decline), ('__fc_befriend', befriend), ('__fc_unfriend', unfriend)]:
             await c.expose_function(n, f)
         for n, f in [('__fc_getref', getref), ('__fc_mkref', mkref), ('__fc_addjoin', addjoin), ('__fc_joins', joins), ('__fc_raw', raw), ('__fc_uget', uget), ('__fc_uset', uset), ('__fc_udel', udel), ('__fc_ulist', ulist), ('__fc_dellogin', dellogin),

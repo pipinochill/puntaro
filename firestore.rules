@@ -12,7 +12,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // The admin (the Dev tab in the app) can read everything below, but never change players' data.
+    // The admin (the Dev tab in the app) can read everything below and delete a player's data, but never change it.
     // Pierre's Firebase account ID (Authentication > Users > User UID). Add more IDs to the list to add admins.
     function isAdmin() { return request.auth != null && request.auth.uid in ['wXejcmHxZQWMfzyp27LzLrguag02']; }
 
@@ -20,15 +20,20 @@ service cloud.firestore {
     match /{path=**}/rounds/{id} {
       allow read: if isAdmin();
     }
+    // Admin: find friend requests a player sent (when deleting that player).
+    match /{path=**}/in/{from} {
+      allow read: if isAdmin();
+    }
 
     // Your account. Nobody else can read or change it. Who invited you (referredBy) is set once, at sign-up.
     match /users/{uid} {
       allow read, create, delete: if request.auth != null && request.auth.uid == uid;
-      allow read: if isAdmin();
+      allow read, delete: if isAdmin();
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.get('referredBy', null) == resource.data.get('referredBy', null);
       match /{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read, delete: if isAdmin();
       }
     }
 
@@ -77,6 +82,7 @@ service cloud.firestore {
         && request.resource.data.name is string && request.resource.data.name.size() <= 30
         && request.resource.data.updatedAt == request.time;
       allow delete: if authed() && request.auth.uid == uid;
+      allow delete: if isAdmin();
     }
 
     // A friend request from `from` to `to`. Either of them can see it or take it back; nobody can change it.
@@ -87,6 +93,7 @@ service cloud.firestore {
         && request.resource.data.name is string && request.resource.data.name.size() <= 30
         && request.resource.data.at == request.time;
       allow delete: if authed() && (request.auth.uid == to || request.auth.uid == from);
+      allow read, delete: if isAdmin();
       allow update: if false;
     }
 
@@ -98,7 +105,7 @@ service cloud.firestore {
         && request.resource.data.at == request.time;
       allow read: if isAdmin();
       allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done']) && request.resource.data.done is bool;
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     // Usage log. Players add their own events; only the admin reads them; nobody changes them.
@@ -108,8 +115,8 @@ service cloud.firestore {
         && request.resource.data.name is string && request.resource.data.name.size() <= 30
         && request.resource.data.data is map && request.resource.data.data.size() <= 8
         && request.resource.data.at == request.time;
-      allow read: if isAdmin();
-      allow update, delete: if false;
+      allow read, delete: if isAdmin();
+      allow update: if false;
     }
 
     // Friendships live in both people's lists. You can add one only by accepting their request,
@@ -122,6 +129,7 @@ service cloud.firestore {
         && ((request.auth.uid == uid && (asked(uid, fid) || areFriends(fid, uid) || invitedBy(uid, fid, request.resource.data.via)))
           || (request.auth.uid == fid && (asked(fid, uid) || invitedBy(fid, uid, request.resource.data.via))));
       allow delete: if authed() && (request.auth.uid == uid || request.auth.uid == fid);
+      allow read, delete: if isAdmin();
       allow update: if false;
     }
 

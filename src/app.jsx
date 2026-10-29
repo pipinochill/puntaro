@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.81";
+const APP_VERSION = "0.82";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3159,8 +3159,22 @@ function devStats(d, now) {
   };
 }
 const EVENT_NAMES = { open: "App opened", signup: "Signed up", round_start: "Round started", round_finish: "Round finished", join_live: "Joined a live round", share_card: "Shared a result card", feedback: "Sent feedback", friend: "Became friends", error: "App error" };
-function DevTab() {
+function DevTab({ user }) {
   const [d, setD] = useState(null);
+  const [del, setDel] = useState(null); // the player about to be deleted
+  const [delBusy, setDelBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const delName = u => `${u.first} ${u.last}`.trim() || u.email || "this player";
+  const doDelete = async () => {
+    const u = del; setDelBusy(true);
+    try {
+      const n = await (await backend()).adminDeleteUser(u.uid);
+      setD(x => ({ ...x, users: x.users.filter(v => v.uid !== u.uid), feedback: x.feedback.filter(f => f.uid !== u.uid), events: x.events.filter(e => e.uid !== u.uid) }));
+      setMsg(`Deleted ${delName(u)}'s data (${n} records). Their login still exists: remove it in Firebase under Authentication if you want them gone for good.`);
+      setDel(null);
+    } catch (e) { setMsg(`Couldn't delete everything: ${(e && (e.code || e.message)) || "unknown error"}. Nothing else changed; try again.`); setDel(null); }
+    setDelBusy(false);
+  };
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [showDone, setShowDone] = useState(false);
@@ -3185,6 +3199,7 @@ function DevTab() {
       </div>
       <div style={{ padding: "12px 12px 0", display: "grid", gap: 11 }}>
         {err && <p role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
+        {msg && <div role="status" className="card" style={{ padding: "9px 11px", display: "flex", gap: 8, alignItems: "flex-start" }}><div style={{ flex: 1 }}>{msg}</div><button aria-label="Dismiss" onClick={() => setMsg("")}><X size={18} /></button></div>}
         {!st && !err && <p className="cap" role="status">Loading everything…</p>}
         {st && (<>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
@@ -3225,9 +3240,25 @@ function DevTab() {
           </Box>
           <Box title="Players" sub="Newest first.">
             {st.users.slice(0, 40).map(u => (
-              <Row key={u.uid} a={<><span className="hd" style={{ fontWeight: 700 }}>{`${u.first} ${u.last ? u.last[0] + "." : ""}`.trim() || "No name yet"}</span><div className="cap" style={{ wordBreak: "break-all" }}>{u.email}{u.referredBy && st.byRef[u.referredBy] ? ` · invited by ${st.byRef[u.referredBy].first}` : ""}</div></>} b={u.hi != null ? `HCP ${Number(u.hi).toFixed(1)}${u.hcpKind === "est" ? " EST" : ""}` : ""} c={u.createdAt ? shortDay(u.createdAt) : ""} />
+              <Row key={u.uid} a={<><span className="hd" style={{ fontWeight: 700 }}>{`${u.first} ${u.last ? u.last[0] + "." : ""}`.trim() || "No name yet"}</span><div className="cap" style={{ wordBreak: "break-all" }}>{u.email}{u.referredBy && st.byRef[u.referredBy] ? ` · invited by ${st.byRef[u.referredBy].first}` : ""}</div>
+                <div className="cap" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>{u.createdAt ? `Joined ${shortDay(u.createdAt)}` : ""}{user && u.uid !== user.uid && <button onClick={() => setDel(u)} aria-label={`Delete ${delName(u)}`} style={{ color: "var(--red)", fontWeight: 700, textDecoration: "underline", fontSize: 12 }}>Delete</button>}</div></>}
+                b={u.hi != null ? `HCP ${Number(u.hi).toFixed(1)}${u.hcpKind === "est" ? " EST" : ""}` : ""} />
             ))}
           </Box>
+          {del && (
+            <Sheet title={`Delete ${delName(del)}?`} onClose={() => !delBusy && setDel(null)}>
+              <p>This removes everything Puntaro stores for {delName(del)}: their account, saved rounds, profile, friendships, friend requests, feedback and usage log.</p>
+              <ul className="cap" style={{ margin: "8px 0 0 18px", display: "grid", gap: 3 }}>
+                <li>Rounds they played with others stay in those players' histories.</li>
+                <li>Their login isn't removed. If they sign in again they start fresh. To stop that, also delete them in Firebase under Authentication.</li>
+                <li>This can't be undone.</li>
+              </ul>
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                <button className="cta" disabled={delBusy} onClick={doDelete} style={{ background: "var(--red)", borderColor: "var(--night)" }}>{delBusy ? "Deleting…" : del.first ? `Delete ${del.first}'s data` : "Delete their data"}</button>
+                <button className="chip" disabled={delBusy} onClick={() => setDel(null)} style={{ padding: "9px 0", textAlign: "center" }}>Cancel</button>
+              </div>
+            </Sheet>
+          )}
           <Box title="Recent rounds">
             {st.rounds.slice(0, 15).map(x => <Row key={(x.owner || "") + x.id} a={<><span style={{ fontWeight: 700 }}>{x.course}</span><div className="cap">{x.note}{x.hidden ? " · deleted by player" : ""}</div></>} b={x.at ? shortDay(x.at) : ""} />)}
             {st.rounds.length === 0 && <p className="cap">No rounds yet.</p>}
@@ -4542,7 +4573,7 @@ function Game({ user, cloud, profile, now0, finished }) {
         <>
           <div style={{ flex: 1 }}>
             {tab === "home" && <Home onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
-            {tab === "dev" && isAdmin(user) && <DevTab />}
+            {tab === "dev" && isAdmin(user) && <DevTab user={user} />}
             {tab === "history" && <History recent={recent} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} onOpenRound={openRound} trash={trash} now={now} onRestore={restore} />}
             {tab === "friends" && <Friends history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => { track("friend", { via: "request" }); return cloud.acceptRequest(id); }} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
             {tab === "me" && <Me history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
