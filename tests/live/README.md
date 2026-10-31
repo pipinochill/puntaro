@@ -23,5 +23,6 @@ Serve the app over http, not file:// (headless Chromium sometimes starts a file:
     python $T/friends.py      $APP /tmp $T   # friends: invite, code + accept, decline, profiles, unfriend, attacks (34)
     python $T/gaps.py         $APP /tmp $T   # a blank earlier hole doesn't freeze anyone's game (4)
     python $T/safety.py       $APP /tmp $T   # Safety net keeps the pot, score name tags, pot before -> after (7)
+    python $T/banking.py      $APP /tmp $T   # one scorer: standing orders, bank on the row, bank as you score, own-phone banking, attacks (44)
     python $T/handicap.py     $APP /tmp $T src/hcp.js  # estimates, EST/APP tags, Puntaro handicap from witnessed rounds (22)
     node tests/live/hcp_unit.mjs                       # handicap maths: differentials, WHS table, slow up (18)

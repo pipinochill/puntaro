@@ -54,7 +54,7 @@ export function roundToDoc(r, people, { code, uid, scoring, myName }) {
     v: 1, code, host: uid, scoring, createdAt: Date.now(),
     base, people: ppl,
     claims: { me: uid }, members: { [uid]: true }, at: {},
-    s: perPlayer(r, "scores"), bk: {}, ev: perPlayer(r, "events"),
+    s: perPlayer(r, "scores"), bk: {}, bc: {}, ord: r.orders || {}, ev: perPlayer(r, "events"),
     ntp: perHole(r.ntp), wolf: perHole(r.wolf), bbb: perHole(r.bbb), draws: perHole(r.draws),
     by: {}, ed: {},
   };
@@ -65,7 +65,7 @@ export function docToRound(d, local = {}) {
   const per = (m, fill) => Object.fromEntries(b.playerIds.map(id => [id, arr18(m && m[id], fill)]));
   return {
     ...b,
-    scores: per(d.s, null), bank: local.bank || per(d.bk, false), events: per(d.ev, null),
+    scores: per(d.s, null), bank: local.bank || per(d.bk, false), events: per(d.ev, null), orders: d.ord || {},
     ntp: arr18(d.ntp, null), ntpOk: Array(18).fill(false), wolf: arr18(d.wolf, null), bbb: arr18(d.bbb, null), draws: arr18(d.draws, null),
     hole: local.hole ?? 0, seen: local.seen || Array(18).fill(false),
   };
@@ -86,6 +86,9 @@ export function bankMap(d, shown, mine) {
   const up = revealUpTo(d);
   return Object.fromEntries(d.base.playerIds.map(id => [id, Array.from({ length: 18 }, (_, h) => {
     const k = bankKey(id, h); const bk = d.bk && d.bk[id] && d.bk[id][h] != null ? d.bk[id][h] : null;
+    // One scorer: a player on their own phone makes their own calls (bc), and theirs is the one that counts.
+    const bc = d.scoring === "one" && d.bc && d.bc[id] && d.bc[id][h] != null ? d.bc[id][h] : null;
+    if (bc != null) return bc;
     if (h < up && k in shown) return shown[k] ?? bk ?? false;
     return bk ?? (mine[k] ?? false);
   })]));
@@ -97,7 +100,11 @@ export function rights(meta, uid, mine = {}) {
   const host = meta.host === uid;
   const claims = meta.claims || {}; const at = meta.at || {};
   if (meta.done) return { score: () => false, bank: () => false, hidden: () => false, host, scoring: meta.scoring, done: true };
-  if (meta.scoring === "one") return { score: () => host, bank: () => host, hidden: () => false, host, scoring: "one" };
+  if (meta.scoring === "one") {
+    // One scorer keeps score. Players who joined on their own phone bank for themselves; the scorer banks for everyone else.
+    const ownPhone = id => !!claims[id] && claims[id] !== meta.host;
+    return { score: () => host, bank: id => (host ? !ownPhone(id) : claims[id] === uid), hidden: () => false, host, scoring: "one", ownPhone };
+  }
   const up = revealUpTo(meta);
   const own = id => claims[id] === uid;
   const free = id => !claims[id];

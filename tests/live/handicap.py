@@ -88,7 +88,8 @@ async def main():
         code = [k.split('/')[1] for k in cloud.docs if k.startswith('rounds/') and k.count('/') == 1][0]
         await A.get_by_role('button', name='Close').first.click()
         await fc.open_app(S, URL, q=f'?join={code}'); await S.wait_for_timeout(500)
-        await S.get_by_role('button', name='Nic').first.click(); await S.wait_for_timeout(700)
+        await S.get_by_role('button', name='Nic').first.click(); await S.wait_for_timeout(200)
+        await S.get_by_role('button', name='Join as Nic').click(); await S.wait_for_timeout(700)  # one scorer: bank from his own phone
         await play_live_round(A, S, code)
         await A.get_by_role('button', name='Finish', exact=True).click(); await A.wait_for_timeout(400)
         await A.get_by_role('button', name='Finish round').click(); await A.wait_for_timeout(2500)

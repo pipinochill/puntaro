@@ -31,9 +31,19 @@ def can_create(code, data, uid, now=None):
             and len(data.get('at') or {}) == 0)
 
 JOIN = {'members', 'claims', 'who', 'updatedAt'}
-WATCH = {'members', 'claims', 'at', 'who', 'updatedAt'}
-PLAY = {'s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt'}
-HOST = PLAY | {'bk', 'scoring', 'hostAt'}
+WATCH = {'members', 'claims', 'at', 'who', 'updatedAt', 'bc', 'ord', 'bh'}
+PLAY = {'s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'ord', 'bh'}
+HOST = (PLAY - {'bh'}) | {'bk', 'scoring', 'hostAt'}
+
+def own_entry(before, after, uid, k):
+    w = after.get('who'); bh = after.get('bh')
+    if not affected(after.get(k) or {}, before.get(k) or {}) <= {w}: return False
+    if (before.get('claims') or {}).get(w) != uid: return False
+    if not (isinstance(bh, int) and not isinstance(bh, bool) and 0 <= bh < 17): return False
+    if not affected((after.get(k) or {}).get(w) or {}, (before.get(k) or {}).get(w) or {}) <= {str(bh)}: return False
+    if ((before.get('s') or {}).get(w) or {}).get(str(bh + 1)) is not None: return False
+    if (before.get('draws') or {}).get(str(bh + 1)) is not None: return False
+    return True
 
 def can_update(before, after, uid, now=None):
     ch = affected(after, before)
@@ -71,6 +81,10 @@ def can_update(before, after, uid, now=None):
         if before['scoring'] == 'each' and not revealed(before, dl - 1): return False, 'draws before reveal'
     if 'bk' in ch:
         if not (before['scoring'] == 'one' and after['scoring'] == 'one'): return False, 'bk'
+    if 'bc' in ch:
+        if not (before['scoring'] == 'one' and after['scoring'] == 'one' and own_entry(before, after, uid, 'bc')): return False, 'bc'
+    if 'ord' in ch:
+        if not (is_host or own_entry(before, after, uid, 'ord')): return False, 'ord'
     if 'scoring' in ch and after['scoring'] not in ('each', 'one'): return False, 'scoring'
     return True, ''
 

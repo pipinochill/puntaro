@@ -182,9 +182,21 @@ service cloud.firestore {
           && (isHost() || (isMember() && request.time > before().hostAt + duration.value(6, 'h')));
       }
       function joinKeys() { return ['members', 'claims', 'who', 'updatedAt']; }
-      function watchKeys() { return ['members', 'claims', 'at', 'who', 'updatedAt']; }
-      function playKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt']; }
-      function hostKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'hostAt', 'bk', 'scoring']; }
+      function watchKeys() { return ['members', 'claims', 'at', 'who', 'updatedAt', 'bc', 'ord', 'bh']; }
+      function playKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'ord', 'bh']; }
+      function hostKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'hostAt', 'bk', 'scoring', 'ord']; }
+      // Only your own player's entry in a per-player map (bc: bank calls, ord: standing orders).
+      // bh names the one hole changed, and it must still be open: that player's next hole has no score
+      // and no cards yet. So nobody can bank (or set an order) after seeing how the next hole went.
+      function ownEntry(k) {
+        let w = after().who;
+        return after().get(k, {}).diff(before().get(k, {})).affectedKeys().hasOnly([w])
+          && before().claims.get(w, null) == me()
+          && after().bh is int && after().bh >= 0 && after().bh < 17
+          && after()[k][w].diff(before().get(k, {}).get(w, {})).affectedKeys().hasOnly([string(after().bh)])
+          && before().get('s', {}).get(w, {}).get(string(after().bh + 1), null) == null
+          && before().get('draws', {}).get(string(after().bh + 1), null) == null;
+      }
 
       // Only ever add yourself to members.
       function joinsSelf() {
@@ -247,6 +259,8 @@ service cloud.firestore {
         && (!touches('ed') || keepsEdits())
         && (!touches('draws') || addsDraws())
         && (!touches('bk') || (before().scoring == 'one' && after().scoring == 'one'))
+        && (!touches('bc') || (before().scoring == 'one' && after().scoring == 'one' && ownEntry('bc')))
+        && (!touches('ord') || isHost() || ownEntry('ord'))
         && (!touches('scoring') || after().scoring in ['each', 'one'])));
       allow delete: if false; // finished rounds belong to everyone who played
 

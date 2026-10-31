@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, createContext, useContext } from "react";
+import { useState, useRef, useEffect, useMemo, createContext, useContext, Fragment } from "react";
 import { backend, newCode, cleanCode, joinLink, inviteLink, newRefCode, cleanRef, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain, EMAIL_KEY } from "./live.js";
 import { makeDecoder, cameraProblem } from "./scan.js";
 import { qrPath } from "./qr.js";
@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.87";
+const APP_VERSION = "0.88";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -673,11 +673,35 @@ function comebackBoost(r, h, totals) {
   return last.map(l => (l ? 2 : 1) * end);
 }
 const comebackLabel = (r, h, bx) => (h === 17 ? (bx > 2 ? "last place x2, 18th x2" : "18th x2") : "last place x2");
+/* Standing orders: how Puntaro banks for a player without anyone asking. orders[id] maps a hole to an order
+   that holds from that hole on, so a change mid-round never rewrites holes already played. */
+const ORDERS = [
+  { k: "call", label: "I'll call it", say: "I'll call it" },
+  { k: "10", label: "Bank at 10+", say: "Bank when I hit 10" },
+  { k: "20", label: "Bank at 20+", say: "Bank when I hit 20" },
+  { k: "streak", label: "When my streak breaks", say: "Bank when my streak breaks" },
+];
+// A bank call for hole h is still open until that player's next hole has a score or cards.
+const bankLocked = (r, id, h) => h >= 17 || r.scores[id][h + 1] != null || (!!r.opts.cards && r.draws[h + 1] != null);
+// The hole a player's bank call (or a change of order) is for: their latest scored hole while it's still open, else the next one.
+function openHole(r, id) {
+  let last = -1; for (let h = 0; h < 18; h++) if (r.scores[id][h] != null) last = h;
+  if (last < 0) return 0;
+  return bankLocked(r, id, last) ? Math.min(17, last + 1) : last;
+}
+const orderOf = k => ORDERS.find(o => o.k === k) || ORDERS[0];
+function orderAt(r, id, h) {
+  const o = (r.orders || {})[id]; if (!o) return "call";
+  let k = "call", best = -1;
+  Object.keys(o).forEach(x => { const n = +x; if (n <= h && n > best && o[x]) { best = n; k = o[x]; } });
+  return k;
+}
+
 function puntCalc(r, upTo = 18) {
   const ids = r.playerIds;
   const S = {};
   ids.forEach(id => (S[id] = { pot: 0, banked: 0, streak: 0, shields: 0, vaults: 0, leak: 0, busts: 0, alive: true,
-    log: [], bustAt: [], multAt: [], evAt: [], potAt: [], potStart: [], streakAt: [], boostAt: [] }));
+    log: [], bustAt: [], multAt: [], evAt: [], potAt: [], potStart: [], streakAt: [], boostAt: [], autoAt: [] }));
   for (let h = 0; h < upTo; h++) {
     const gifts = {}; ids.forEach(id => (gifts[id] = 0));
     const boost = comebackBoost(r, h, ids.map(id => S[id].banked + S[id].pot));
@@ -697,6 +721,7 @@ function puntCalc(r, upTo = 18) {
       }
       played.push(id);
       st.potStart[h] = st.pot; // what was in the pot coming into this hole
+      const streak0 = st.streak;
       const card = r.opts.cards && r.draws[h] ? r.draws[h][id] || null : null;
       const evs = (r.events[id] && r.events[id][h]) || {};
       const diff = netOf(r, id, h) - PAR[h];
@@ -753,9 +778,13 @@ function puntCalc(r, upTo = 18) {
       if (card === "tax") { st.pot = Math.max(0, st.pot - 2); st.log[h] += ", taxed 2"; }
       if (card === "leaky") st.leak = 3;
       st.potAt[h] = st.pot; st.streakAt[h] = st.streak;
-      if (h === 17 || card === "heavy" || r.bank[id][h]) {
+      // A standing order banks for them (never on the 18th or a Heavy pockets hole, which bank anyway).
+      const ord = orderAt(r, id, h);
+      if (h < 17 && card !== "heavy" && !r.bank[id][h] && st.pot > 0 && ((ord === "10" && st.pot >= 10) || (ord === "20" && st.pot >= 20)
+        || (ord === "streak" && streak0 >= 1 && st.streak === 0 && !st.bustAt[h]))) st.autoAt[h] = ord;
+      if (h === 17 || card === "heavy" || r.bank[id][h] || st.autoAt[h]) {
         if (st.pot > 0) {
-          st.log[h] += `, banked ${st.pot}`;
+          st.log[h] += st.autoAt[h] ? `, standing order banked ${st.pot}` : `, banked ${st.pot}`;
           if (h !== 17) {
             if (st.vaults > 0) { st.vaults--; st.log[h] += ", vault kept your streak"; }
             else { st.streak = 0; st.log[h] += ", streak reset"; }
@@ -771,7 +800,7 @@ function puntCalc(r, upTo = 18) {
     const st = S[id];
     const mult = st.streak >= 5 ? 3 : st.streak >= 3 ? 2 : 1;
     out[id] = { pot: st.pot, banked: st.banked, total: st.banked + st.pot, streak: st.streak, mult, shields: st.shields, vaults: st.vaults, leak: st.leak,
-      busts: st.busts, log: st.log, bustAt: st.bustAt, multAt: st.multAt, evAt: st.evAt, potAt: st.potAt, potStart: st.potStart, streakAt: st.streakAt, boostAt: st.boostAt };
+      busts: st.busts, log: st.log, bustAt: st.bustAt, multAt: st.multAt, evAt: st.evAt, potAt: st.potAt, potStart: st.potStart, streakAt: st.streakAt, boostAt: st.boostAt, autoAt: st.autoAt };
   });
   return out;
 }
@@ -911,7 +940,7 @@ function buildRound(cfg, people, seed) {
     events[id] = Array(18).fill(null);
   });
   const r = {
-    course, holes, mode: cfg.mode || "ffa", teams: cfg.teams || null, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events,
+    course, holes, mode: cfg.mode || "ffa", teams: cfg.teams || null, playerIds: cfg.playerIds, games: cfg.games, useHcp: cfg.useHcp, hcp, scores, bank, events, orders: cfg.orders || {},
     opts: { ...(cfg.opts || { cards: true, catchup: true, bonuses: true, penalties: true, ntp: true, cushion: true }), comeback: true },
     draws: Array(18).fill(null), seen: Array(18).fill(false), drawSeed: seed ? 20241024 : Math.floor(Math.random() * 1e9),
     startedAt: Date.now(), holeAt: Array(18).fill(null), // when the round began, and when each hole's first score went in (for the fair-play checks)
@@ -1600,6 +1629,7 @@ function GamePanel({ gid, round, people, h, api }) {
   const [open, setOpen] = useState(null);
   const [zoom, setZoom] = useState(null);
   const [hintK, setHintK] = useState(null);
+  const [ordOpen, setOrdOpen] = useState(false);
   const showTip = useContext(TipCtx);
   const ids = round.playerIds;
   const done = holeDone(round, h);
@@ -1615,11 +1645,20 @@ function GamePanel({ gid, round, people, h, api }) {
       <div>
         <p className="cap">Net Stableford points drop into your pot. Bank to lock them in, but banking resets your streak. A net double bogey or worse busts the pot. Three net pars or better in a row doubles your points, five in a row triples them. From the 13th, last place scores double, and the 18th counts double for everyone.</p>
         {can.live && can.scoring === "each" && <p className="cap" style={{ marginTop: 6 }}><b>Bank calls are secret.</b> Yours locks when you move to the next hole. Everyone's is revealed once the whole group has moved on.</p>}
+        {can.scoring !== "each" && can.score() && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <span className="cap" style={{ flex: 1 }}><b>Standing orders:</b> {ordersSummary(ids, people, id => orderAt(round, id, h))}</span>
+            <button className="chip" onClick={() => setOrdOpen(true)} style={{ padding: "3px 9px", fontSize: 12.5 }}>Standing orders</button>
+          </div>
+        )}
+        {ordOpen && <OrdersSheet ids={ids} people={people} orderFor={id => orderAt(round, id, openHole(round, id))} ownPhone={id => !!(can.ownPhone && can.ownPhone(id))} canSet={id => !(can.ownPhone && can.ownPhone(id))} onSet={(id, k) => api.setOrder(id, k)} onClose={() => setOrdOpen(false)} />}
         <div>
           {ids.map((id, i) => {
             const s = pc[id]; const c = round.opts.cards && round.draws[h] ? round.draws[h][id] : null; const heavy = c === "heavy";
             const locked = round.opts.cards && round.draws[h + 1] != null && !heavy;
-            const banking = heavy || round.bank[id][h];
+            const auto = !heavy && !!s.autoAt[h];
+            const banking = heavy || auto || round.bank[id][h];
+            const own = !!(can.ownPhone && can.ownPhone(id));
             const bust = s.bustAt[h]; const hot = !bust && s.mult > 1;
             const evs = (round.events[id] && round.events[id][h]) || {};
             const active = avail.filter(k => evs[k]);
@@ -1659,14 +1698,14 @@ function GamePanel({ gid, round, people, h, api }) {
                   {s.shields > 0 && <span className="pill px" style={{ background: "var(--mint)", color: "var(--dk)", padding: "1px 6px", fontSize: 13 }}>SAFETY NET HELD</span>}
                   {s.vaults > 0 && <span className="pill px" style={{ background: "var(--mint)", color: "var(--dk)", padding: "1px 6px", fontSize: 13 }}>VAULT HELD</span>}
                   {s.leak > 0 && <span className="pill blink" style={{ background: "var(--red)", color: "#fff", fontSize: 11 }}>Leaking {s.leak}</span>}
-                  {(() => { const ad = !banking && !heavy && !locked && bankAdvice(round, id, h, s); return ad ? <span className="cap" title="A rough guide, not a rule" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Tip k="risk">Bust risk next hole {Math.round(ad.risk * 100)}%</Tip><Tip k="advice"><span className="pill" style={{ background: ad.level === "bank" ? "var(--red)" : ad.level === "think" ? "var(--flag)" : "var(--mint)", color: ad.level === "bank" ? "#fff" : "var(--dk)", fontSize: 11 }}>{ad.level === "bank" ? "Bank it" : ad.level === "think" ? "Think about it" : "Hold"}</span></Tip>{ad.cardNext && ad.level !== "hold" ? <span className="cap">cards next</span> : null}</span> : null; })()}
+                  {(() => { const ad = !banking && !heavy && !locked && !own && bankAdvice(round, id, h, s); return ad ? <span className="cap" title="A rough guide, not a rule" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Tip k="risk">Bust risk next hole {Math.round(ad.risk * 100)}%</Tip><Tip k="advice"><span className="pill" style={{ background: ad.level === "bank" ? "var(--red)" : ad.level === "think" ? "var(--flag)" : "var(--mint)", color: ad.level === "bank" ? "#fff" : "var(--dk)", fontSize: 11 }}>{ad.level === "bank" ? "Bank it" : ad.level === "think" ? "Think about it" : "Hold"}</span></Tip>{ad.cardNext && ad.level !== "hold" ? <span className="cap">cards next</span> : null}</span> : null; })()}
                   {(() => {
                     const hid = !heavy && can.hidden && can.hidden(id, h);
                     const mineLocked = !heavy && !locked && !hid && can.live && !can.bank(id, h);
                     return (
-                      <button className={`chip ${banking && !hid ? "on" : ""}`} disabled={heavy || locked || hid || !can.bank(id, h)} aria-pressed={banking && !hid}
+                      <button className={`chip ${banking && !hid ? "on" : ""}`} disabled={heavy || auto || locked || hid || !can.bank(id, h)} aria-pressed={banking && !hid}
                         onClick={() => api.setBank(id, h, !round.bank[id][h])} style={{ marginLeft: "auto", padding: "2px 7px", fontSize: 12, opacity: heavy || locked ? 0.7 : 1 }}>
-                        {heavy ? "Forced bank" : hid ? "Call hidden" : locked || mineLocked ? (banking ? "Banked. Locked" : "Bank locked") : banking ? "Banking after hole" : "Bank after hole"}
+                        {heavy ? "Forced bank" : auto ? "Order banks it" : hid ? "Call hidden" : own && !can.bank(id, h) ? (banking ? "Banking (their phone)" : "On their phone") : locked || mineLocked ? (banking ? "Banked. Locked" : "Bank locked") : banking ? "Banking after hole" : "Bank after hole"}
                       </button>
                     );
                   })()}
@@ -2083,6 +2122,12 @@ function Rules({ onBack }) {
           <p>Whatever is still in your pot after the 18th hole banks automatically.</p>
           <p>Handicap cushion (always on when handicaps are on): when you bust you keep 2% of your pot for every handicap stroke you get, up to half, rounded down. A 16 stroke player busting with 20 points keeps 6 and loses 14. It's there to level the field.</p>
         </RuleSection>
+        <RuleSection title="Standing orders and own phones">
+          <p>A standing order banks for a player so nobody has to ask every hole. Pick one at setup, or change it mid-round: I'll call it, Bank at 10+, Bank at 20+, or When my streak breaks (banks on the hole a bogey ends a streak, if there's a pot).</p>
+          <p>Orders bank at the end of the hole, like a normal bank, and reset the streak. A change starts from the hole still open, never earlier ones.</p>
+          <p>When one person keeps score, players can join on their own phone and bank for themselves. Their call counts, and the scorer can't change it.</p>
+          <p>A bank call stays open until that player's next hole has a score, or its cards are out. After that it's locked.</p>
+        </RuleSection>
         <RuleSection title="Bank hints">
           <p>Under each player's pot you'll see the chance of a net double bogey or worse on the next hole, with a hint: Hold, Think about it, or Bank it.</p>
           <p>It's a guide worked out from handicap and hole difficulty, and from simulating thousands of rounds. Holding a pot usually pays off until it reaches about 20 points. Past that, one bad hole costs more than the next hole is likely to earn. Cards on the next hole make it worth banking sooner.</p>
@@ -2488,6 +2533,49 @@ function AboutSheet({ onClose, onFeedback }) {
   );
 }
 
+/* Standing orders sheet: one row of choices per player. Used at setup and mid-round. */
+const ORDER_NOTE = { "10": "Banks as soon as the pot reaches 10.", "20": "Banks as soon as the pot reaches 20.", streak: "Banks the moment a bogey ends the streak, before the pot is at risk again." };
+function OrdersSheet({ ids, people, orderFor, onSet, ownPhone = () => false, canSet = () => true, onClose, done = "Done" }) {
+  return (
+    <div style={sheetWrap} onClick={onClose}>
+      <div className="sheet card" role="dialog" aria-label="Standing orders" onClick={e => e.stopPropagation()} style={sheetBox}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 className="h2">Standing orders</h2>
+          <button onClick={onClose} aria-label="Close"><X size={22} /></button>
+        </div>
+        <p className="cap" style={{ marginTop: 3 }}>How should Puntaro bank for each player? It banks automatically, so you only ask when someone wants to change their mind.</p>
+        <div style={{ marginTop: 4 }}>
+          {ids.map(id => {
+            const k = orderFor(id); const own = ownPhone(id); const ok = canSet(id);
+            return (
+              <div key={id} data-order={id} style={{ padding: "9px 0", borderTop: "1px solid var(--line)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Avatar p={people[id]} size={26} />
+                  <span className="hd" style={{ fontWeight: 700, fontSize: 15 }}>{people[id].name}{id === "me" ? " (you)" : ""}</span>
+                  {own && <span className="pill px" style={{ background: "var(--mint)", color: "var(--dk)", padding: "0 5px", fontSize: 13 }}>OWN PHONE</span>}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+                  {ORDERS.map(o => <button key={o.k} className={`chip ${k === o.k ? "on" : ""}`} aria-pressed={k === o.k} disabled={!ok} onClick={() => onSet(id, o.k)} style={{ padding: "4px 9px", fontSize: 12.5 }}>{o.label}</button>)}
+                </div>
+                {own && !ok ? <p className="cap" style={{ marginTop: 4 }}>{people[id].name} is on their own phone and banks for themselves.</p>
+                  : ORDER_NOTE[k] ? <p className="cap" style={{ marginTop: 4 }}>{ORDER_NOTE[k]}</p> : null}
+              </div>
+            );
+          })}
+        </div>
+        <p className="cap" style={{ marginTop: 6 }}>Anyone can still shout "Bank!" at any time. Orders follow the usual rules: they can't bank once the next hole has started or the cards are out.</p>
+        <button className="cta" style={{ marginTop: 10 }} onClick={onClose}>{done}</button>
+      </div>
+    </div>
+  );
+}
+// "Greg banks at 10+, Mitch when his streak breaks"
+const ordersSummary = (ids, people, orderFor) => {
+  const set = ids.filter(id => orderFor(id) !== "call");
+  if (!set.length) return "Everyone calls their own";
+  return set.map(id => `${people[id].name} ${orderFor(id) === "streak" ? "when the streak breaks" : `at ${orderFor(id)}+`}`).join(", ");
+};
+
 const MAXP = 8;
 const EXTRA_INFO = {
   bonuses: ["Bonuses", "Sandy x2, up and down +2, chip-in +4, barkie +2."],
@@ -2498,6 +2586,8 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
   const [course, setCourse] = useState(COURSES[0]);
   const [liveOn, setLiveOn] = useState(false);
   const [scoring, setScoring] = useState("each");
+  const [orders, setOrders] = useState({});
+  const [ordersOpen, setOrdersOpen] = useState(false);
   const [liveName, setLiveName] = useState(people.me.first || "");
   const [teeI, setTeeI] = useState(0);
   const [finding, setFinding] = useState(false);
@@ -2721,15 +2811,96 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
                 <button className={`chip ${scoring === "each" ? "on" : ""}`} onClick={() => setScoring("each")}>Everyone scores</button>
                 <button className={`chip ${scoring === "one" ? "on" : ""}`} onClick={() => setScoring("one")}>One scorer</button>
               </div>
-              <p className="cap" style={{ marginTop: 6 }}>{scoring === "each" ? "Each player enters their own score and makes their own bank calls. Anyone can fill in for a player whose phone is off." : "You enter every score and bank call. Everyone else watches live."}</p>
+              <p className="cap" style={{ marginTop: 6 }}>{scoring === "each" ? "Each player enters their own score and makes their own bank calls. Anyone can fill in for a player whose phone is off." : "You enter every score. Players who join on their own phone bank for themselves. You bank for everyone else."}</p>
             </div>
           )}
         </div>
 
+        {games.includes("punt") && !(liveOn && scoring === "each") && (
+          <div className="card" style={{ padding: "9px 12px", marginTop: 9, display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 800, fontSize: 14 }}>Banking</div><div className="cap" data-orders-summary>{ordersSummary(sel, people, id => orders[id] || "call")}</div></div>
+            <button className="chip" aria-label="Change banking" onClick={() => setOrdersOpen(true)} style={{ padding: "4px 10px", fontSize: 13 }}>Change</button>
+          </div>
+        )}
+        {ordersOpen && <OrdersSheet ids={sel} people={people} orderFor={id => orders[id] || "call"} onSet={(id, k) => setOrders(o => ({ ...o, [id]: k }))} onClose={() => setOrdersOpen(false)} />}
+
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
-        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts, live: liveOn ? { scoring, name: liveName.trim() } : null })}>{liveOn ? "Tee off live" : "Tee off"}</button>
+        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts, orders: liveOn && scoring === "each" ? {} : Object.fromEntries(sel.filter(id => orders[id] && orders[id] !== "call").map(id => [id, { 0: orders[id] }])), live: liveOn ? { scoring, name: liveName.trim() } : null })}>{liveOn ? "Tee off live" : "Tee off"}</button>
       </div>
+    </div>
+  );
+}
+
+/* ───────────── BANK ONLY (own phone, one scorer) ─────────────
+   Someone else keeps score. This phone just shows the player's pot and lets them bank it. */
+function BankOnly({ round, people, id, api, hostName, onBack, onLive, onRules, onSheet }) {
+  const [ordOpen, setOrdOpen] = useState(false);
+  const pc = puntCalc(round); const st = pc[id]; const ids = round.playerIds;
+  let dh = -1; for (let k = 0; k < 18; k++) if (round.scores[id][k] != null) dh = k;
+  const now = dh < 0 ? 0 : Math.min(17, dh + 1);
+  const open = dh >= 0 && !bankLocked(round, id, dh);
+  const card = dh >= 0 && round.opts.cards && round.draws[dh] ? round.draws[dh][id] : null;
+  const heavy = open && card === "heavy";
+  const auto = open && !!st.autoAt[dh];
+  const banking = open && !!round.bank[id][dh];
+  const potNow = open ? (st.potAt[dh] != null ? st.potAt[dh] : 0) : st.pot;
+  const bust = dh >= 0 && st.bustAt[dh];
+  const sa = dh >= 0 && st.streakAt[dh] != null ? st.streakAt[dh] : st.streak; const mult = sa >= 5 ? 3 : sa >= 3 ? 2 : 1;
+  const going = banking || auto || heavy; // this pot is being banked after hole dh
+  const banked = going ? st.banked - potNow : st.banked;
+  const place = [...ids].sort((a, b) => pc[b].total - pc[a].total).indexOf(id) + 1;
+  const order = orderAt(round, id, openHole(round, id));
+  const v = dh >= 0 ? round.scores[id][dh] : null;
+  const gain = dh >= 0 && st.potStart[dh] != null && st.potAt[dh] != null ? st.potAt[dh] - st.potStart[dh] : 0;
+  const lastLine = dh < 0 ? null : `Hole ${dh + 1}: ${isPickup(round, id, dh) ? "picked up" : scoreName(v, PAR[dh]).label.toLowerCase()}${bust ? `, bust${bust.lost ? `. Lost ${bust.lost}` : ""}` : gain > 0 ? `, +${gain} into your pot` : gain < 0 ? `, ${gain} from your pot` : ", no points"}`;
+  const cardsNext = open && round.opts.cards && dh < 17 && cardHole(dh + 1);
+  const lockLine = dh < 0 ? `Your pot fills up as ${hostName} enters your scores.`
+    : dh === 17 ? "Your pot banked itself on the 18th."
+    : !open ? `Hole ${dh + 1} is locked. Your next chance comes after hole ${dh + 2}.`
+    : heavy ? "Heavy pockets: this hole banks for you."
+    : `You can bank until ${hostName} enters your hole ${dh + 2} score${cardsNext ? ` or the cards come out on hole ${dh + 2}` : ""}.`;
+  const big = { fontFamily: "inherit" };
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }} data-bankonly={id}>
+      <div className="stripes" style={{ padding: "9px 12px 12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button onClick={onBack} aria-label="Back" style={{ display: "flex", alignItems: "center", gap: 4, minHeight: 44 }}><ChevronLeft size={22} /><Tiles size={15} /></button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="px" onClick={onLive} aria-label="Live round details" style={{ fontSize: 18, lineHeight: 1, background: "var(--red)", color: "#fff", padding: "6px 9px", display: "flex", alignItems: "center", gap: 5 }}><span className="blink" style={{ width: 7, height: 7, background: "#fff", display: "block" }} />LIVE</button>
+            <button className="px" aria-label="Rules" onClick={onRules} style={{ fontSize: 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "6px 11px" }}>RULES</button>
+          </div>
+        </div>
+        <div className="px holeno" aria-label={`Hole ${now + 1}`} style={{ fontSize: 34, lineHeight: 1, marginTop: 4 }}>HOLE {now + 1}</div>
+        <div style={{ fontWeight: 600, fontSize: 13, opacity: 0.9 }}>Par {PAR[now]} · {hostName} is keeping score</div>
+      </div>
+      <div style={{ padding: "12px 12px 30px", display: "grid", gap: 11, alignContent: "start" }}>
+        <div className="card" style={{ padding: 14, textAlign: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><Avatar p={people[id]} size={32} /><span className="hd" style={{ fontWeight: 700, fontSize: 19 }}>{people[id].name}</span></div>
+          <div className="px" data-mypot style={{ ...big, fontSize: 96, lineHeight: 0.9, marginTop: 10 }}>{potNow}</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{going && open ? `banking after hole ${dh + 1} ✓` : "in your pot"}</div>
+          {mult > 1 && !going && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3, marginTop: 8 }}>{Array.from({ length: mult }).map((_, k) => <Sprite key={k} name="flame" size={3} className="flick" />)}<span className="px" style={{ fontSize: 19, marginLeft: 4 }}>X{mult} STREAK</span></div>}
+          <div style={{ display: "flex", justifyContent: "space-around", marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+            <div><div className="px" data-mybanked style={{ fontSize: 25, lineHeight: 1 }}>{banked}</div><div className="cap">banked</div></div>
+            <div><div className="px" style={{ fontSize: 25, lineHeight: 1 }}>{st.total}</div><div className="cap">total</div></div>
+            <div><div className="px" style={{ fontSize: 25, lineHeight: 1 }}>{ordinal(place).toUpperCase()}</div><div className="cap">of {ids.length}</div></div>
+          </div>
+        </div>
+        {lastLine && <div style={{ fontWeight: 600, textAlign: "center" }}>{lastLine}</div>}
+        {open && !heavy && !auto && banking
+          ? <button className="cta" data-bankbtn onClick={() => api.setBank(id, dh, false)} style={{ background: "var(--chalk)", color: "var(--ink)" }}>Undo: keep it in the pot</button>
+          : <button className="cta px" data-bankbtn disabled={!open || heavy || auto || potNow <= 0} onClick={() => api.setBank(id, dh, true)}
+              style={{ background: open && !heavy && !auto && potNow > 0 ? "var(--flag)" : "var(--line)", color: "var(--dk)", fontSize: 32, padding: 12, lineHeight: 1 }}>
+              {auto ? `ORDER BANKS ${potNow} ✓` : heavy ? `BANKING ${potNow} ✓` : open && potNow <= 0 ? "POT IS EMPTY" : `BANK MY ${potNow}`}
+            </button>}
+        <p className="cap" style={{ textAlign: "center", lineHeight: 1.4 }}>Banking locks in your points but resets your streak.<br />{lockLine}</p>
+        <div className="card" style={{ padding: "9px 11px", display: "flex", alignItems: "center", gap: 8, boxShadow: "none" }}>
+          <div style={{ flex: 1 }}><div className="cap" style={{ fontWeight: 700 }}>YOUR STANDING ORDER</div><div style={{ fontWeight: 700 }} data-myorder>{orderOf(order).say}</div></div>
+          <button className="chip" aria-label="Change my standing order" onClick={() => setOrdOpen(true)} style={{ padding: "4px 10px", fontSize: 13 }}>Change</button>
+        </div>
+        <button className="chip" onClick={onSheet} style={{ padding: "8px 0", textAlign: "center" }}>See the scoresheet</button>
+      </div>
+      {ordOpen && <OrdersSheet ids={[id]} people={people} orderFor={() => order} onSet={(pid, k) => api.setOrder(pid, k)} onClose={() => setOrdOpen(false)} />}
     </div>
   );
 }
@@ -2796,7 +2967,14 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   };
   const prevH = useRef(h);
   useEffect(() => { if (h > prevH.current) celebrateHole(prevH.current); prevH.current = h; }, [h]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The row just scored, for the "Bank Greg's 16?" strip under it.
+  const [lastId, setLastId] = useState(null);
+  useEffect(() => setLastId(null), [h]);
+  // A player on their own phone in a one-scorer round sees their pot and a bank button, with the scoresheet a tap away.
+  const [sheetView, setSheetView] = useState(false);
+  const bankOnly = !!pc && can.live && can.scoring === "one" && !can.host && !!can.live.myId && round.playerIds.includes(can.live.myId);
   const bump = (id, d) => {
+    setLastId(id);
     const cur = round.scores[id][h];
     const val = cur == null ? PAR[h] : Math.min(12, Math.max(1, cur + d));
     // Just a blip here: the big moments wait until you leave the hole (celebrateHole), so stepping through scores can't set them off.
@@ -2806,15 +2984,29 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   const StepBtn = ({ onClick, label, children, plus }) => (
     <button onClick={onClick} aria-label={label} style={{ width: 38, height: 38, border: "3px solid var(--night)", display: "grid", placeItems: "center", background: plus ? "var(--pine)" : "var(--chalk)", color: plus ? "#F4F0E6" : "var(--ink)", flex: "none" }}>{children}</button>
   );
+  if (bankOnly && !sheetView) return <BankOnly round={round} people={people} id={can.live.myId} api={api} hostName={can.live.hostName} onBack={onBack} onLive={onLive} onRules={onRules} onSheet={() => setSheetView(true)} />;
+  // Banking straight from a scoring row (host / solo). Returns what the row shows for player id on this hole.
+  const rowBank = id => {
+    if (pc && can.ownPhone && can.ownPhone(id)) return { kind: "own" };
+    if (!pc || h === 17 || round.scores[id][h] == null || pc[id].bustAt[h]) return null;
+    const card = round.opts.cards && round.draws[h] ? round.draws[h][id] : null;
+    if (card === "heavy") return null;
+    const pot = pc[id].potAt[h] != null ? pc[id].potAt[h] : 0;
+    if (pc[id].autoAt[h]) return { kind: "auto", pot };
+    const on = !!round.bank[id][h]; const locked = bankLocked(round, id, h) || !can.bank(id, h);
+    if (locked) return on ? { kind: "done", pot } : null;
+    if (pot <= 0 && !on) return null;
+    return { kind: on ? "on" : "off", pot, order: orderAt(round, id, h) };
+  };
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <div className="stripes" style={{ padding: "9px 12px 11px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button onClick={onBack} aria-label="Back" style={{ display: "flex", alignItems: "center", gap: 4, minHeight: 44 }}><ChevronLeft size={22} /><Tiles size={15} /></button>
-          <div style={{ display: "flex", gap: 6 }}>
-            {can.live && <button className="px" onClick={onLive} aria-label="Live round details" style={{ fontSize: 18, lineHeight: 1, background: "var(--red)", color: "#fff", padding: "6px 9px", display: "flex", alignItems: "center", gap: 5 }}><span className="blink" style={{ width: 7, height: 7, background: "#fff", display: "block" }} />LIVE</button>}
-            <button className="px" aria-label="Rules" onClick={onRules} style={{ fontSize: 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "6px 11px" }}>RULES</button>
-            <button className="px" aria-label="Finish" onClick={onFinish} style={{ fontSize: 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "6px 11px" }}>FINISH</button>
+          <div style={{ display: "flex", gap: can.live ? 4 : 6 }}>
+            {can.live && <button className="px" onClick={onLive} aria-label="Live round details" style={{ fontSize: can.live ? 16 : 18, lineHeight: 1, background: "var(--red)", color: "#fff", padding: "6px 7px", display: "flex", alignItems: "center", gap: 4 }}><span className="blink" style={{ width: 7, height: 7, background: "#fff", display: "block" }} />LIVE</button>}
+            <button className="px" aria-label="Rules" onClick={onRules} style={{ fontSize: can.live ? 16 : 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: can.live ? "6px 8px" : "6px 11px" }}>RULES</button>
+            <button className="px" aria-label="Finish" onClick={onFinish} style={{ fontSize: can.live ? 16 : 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: can.live ? "6px 8px" : "6px 11px" }}>FINISH</button>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
@@ -2851,14 +3043,17 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
         ))}
         </div>
         )}
-        {can.live && !can.score() && <p className="cap" role="status" style={{ textAlign: "center", padding: "2px 0" }}>{can.live.hostName} is keeping score. You're watching live.</p>}
+        {can.live && !can.score() && (bankOnly
+          ? <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}><span className="cap">{can.live.hostName} is keeping score.</span><button className="chip" onClick={() => setSheetView(false)} style={{ padding: "3px 9px", fontSize: 13 }}>Back to my pot</button></div>
+          : <p className="cap" role="status" style={{ textAlign: "center", padding: "2px 0" }}>{can.live.hostName} is keeping score. You're watching live.</p>)}
         <fieldset disabled={!can.score()} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "grid", gap: 6 }}>
         {ids.map(id => {
           const v = round.scores[id][h]; const st = round.useHcp ? strokesOn(round.hcp[id], h) : 0;
           const t = totalsFor(round, id); const n = netOf(round, id, h);
           const bust = pc && pc[id].bustAt[h]; const hot = pc && !bust && v != null && pc[id].mult > 1;
           return (
-            <div key={id} className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, padding: "6px 7px 6px 9px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
+            <Fragment key={id}>
+            <div className={`card ${bust ? "bust is-bust" : hot ? "hot" : ""}`} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, padding: "6px 7px 6px 9px", background: bust ? "var(--red)" : hot ? "var(--flag)" : "var(--card)" }}>
               <Avatar p={people[id]} size={30} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="hd" style={{ fontWeight: 700, fontSize: 15 }}>{people[id].name}{round.mode === "2v2" && round.teams && <span className="pill px" style={{ background: round.teams[id] ? "var(--mint)" : "var(--flag)", color: "var(--dk)", padding: "0 5px", fontSize: 13, marginLeft: 6 }}>T{round.teams[id] + 1}</span>}</div>
@@ -2869,7 +3064,14 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                   {can.edited && v != null && can.edited(id, h) && <span>{" · edited"}</span>}
                 </div>
                 {v != null && (() => { const n = isPickup(round, id, h) ? { label: `PICK UP (${v})`, bg: "#F2B8A8" } : scoreName(v, PAR[h]); return <span className="pill px" style={{ background: n.bg, padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}>{n.label}</span>; })()}
-                {pc && v != null && pc[id].potStart[h] != null && <span className="cap" style={{ fontWeight: 700, color: bust ? "#fff" : "var(--ink)", marginRight: 4 }}>Pot {pc[id].potStart[h]} → {pc[id].potAt[h] != null ? pc[id].potAt[h] : pc[id].pot}</span>}
+                {(() => {
+                  const rb = rowBank(id); if (!rb) return null;
+                  const pill = { padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4, whiteSpace: "nowrap" };
+                  if (rb.kind === "own") return <span className="pill px" style={{ ...pill, background: "var(--mint)", color: "var(--dk)" }}>OWN PHONE</span>;
+                  if (rb.kind === "auto" || rb.kind === "done") return <span className="pill px" data-rowbank={id} style={{ ...pill, background: "var(--pine)", color: "#F4F0E6" }}>{rb.kind === "auto" ? `ORDER BANKED ${rb.pot} ✓` : `BANKED ${rb.pot} ✓`}</span>;
+                  return <button className="pill px" data-rowbank={id} aria-pressed={rb.kind === "on"} onClick={() => { setLastId(null); api.setBank(id, h, rb.kind !== "on"); }} style={{ ...pill, background: rb.kind === "on" ? "var(--pine)" : "var(--flag)", color: rb.kind === "on" ? "#F4F0E6" : "var(--dk)", border: "2px solid var(--night)" }}>{rb.kind === "on" ? `BANKING ${rb.pot} ✓` : `POT ${rb.pot} · BANK`}</button>;
+                })()}
+                {pc && v != null && pc[id].potStart[h] != null && <div className="cap" style={{ fontWeight: 700, color: bust ? "#fff" : "var(--ink)", marginTop: 2 }}>Pot {pc[id].potStart[h]} → {pc[id].potAt[h] != null ? pc[id].potAt[h] : pc[id].pot}{pc[id].autoAt[h] ? " · banked by order" : !bust && h < 17 && orderAt(round, id, h) !== "call" && !(can.ownPhone && can.ownPhone(id)) ? ` · ${orderAt(round, id, h) === "streak" ? "banks when the streak breaks" : `auto-banks at ${orderAt(round, id, h)}`}` : ""}</div>}
                 {(() => { const gap = round.scores[id].slice(0, h).findIndex(x => x == null); return gap >= 0 && t.thru > 0 ? <div className="cap" role="note" style={{ color: bust ? "#fff" : "var(--red)", fontWeight: 700 }}>No score on hole {gap + 1}. <button onClick={() => api.setHole(gap)} style={{ textDecoration: "underline", fontWeight: 700, color: "inherit" }}>Fill it in</button></div> : null; })()}
                 {cbLast[id] && <span className="pill px" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff", padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}><Tip k="comeback">{h === 17 ? "LAST PLACE X4" : "LAST PLACE X2"}</Tip></span>}
                 {st > 0 && <span className="pill px" style={{ background: "var(--flag)", padding: "1px 6px", fontSize: 13, marginTop: 3 }}><Tip k="stroke">{st === 1 ? "GETS A STROKE" : `GETS ${st} STROKES`}</Tip></span>}
@@ -2885,6 +3087,20 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
               </div>
               <StepBtn plus onClick={() => bump(id, 1)} label={`${people[id].name} plus one`}><Plus size={22} /></StepBtn>
             </div>
+            {(() => {
+              // Bank as you score: a quick offer under the row just scored, only when there's a decent pot and nobody else has it covered.
+              if (lastId !== id || !can.score()) return null;
+              const rb = rowBank(id);
+              if (!rb || rb.kind !== "off" || rb.order !== "call" || rb.pot < 10) return null;
+              return (
+                <div role="group" aria-label={`Bank ${people[id].name}'s pot?`} data-bankask={id} style={{ margin: "-6px 5px 0", background: "var(--pine)", color: "#F4F0E6", border: "3px solid var(--night)", borderTop: "none", padding: "6px 9px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ flex: 1, fontWeight: 700 }}>Bank {id === "me" ? "your" : `${people[id].name}'s`} {rb.pot}?</span>
+                  <span style={{ fontSize: 12, opacity: 0.8 }}>ignore to hold</span>
+                  <button className="px" onClick={() => { setLastId(null); api.setBank(id, h, true); }} style={{ background: "var(--flag)", color: "var(--dk)", border: "2px solid var(--night)", padding: "1px 9px", fontSize: 16 }}>BANK</button>
+                </div>
+              );
+            })()}
+            </Fragment>
           );
         })}
 
@@ -2931,15 +3147,16 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
             <div style={{ marginTop: 6 }}>
               {ids.map((id, i) => {
                 const s = pc[id]; const potBefore = s.potAt[h] != null ? s.potAt[h] : s.pot; const sa = s.streakAt[h] != null ? s.streakAt[h] : s.streak;
-                const mult = sa >= 5 ? 3 : sa >= 3 ? 2 : 1; const banking = !!round.bank[id][h];
+                const mult = sa >= 5 ? 3 : sa >= 3 ? 2 : 1; const auto = !!s.autoAt[h]; const banking = auto || !!round.bank[id][h];
+                const own = !!(can.ownPhone && can.ownPhone(id)) && !can.bank(id, h);
                 return (
                   <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                     <Avatar p={people[id]} size={26} />
                     <div className="hd" style={{ flex: 1, fontWeight: 700 }}>{people[id].name}</div>
                     {mult > 1 && <span className="pill px" style={{ background: "var(--flag)", color: "var(--dk)", padding: "1px 6px", fontSize: 13 }}>X{mult} STREAK</span>}
                     <div style={{ minWidth: 54, textAlign: "right" }}><span style={{ fontWeight: 800, fontSize: 17 }}>{banking ? s.banked : potBefore}</span><span className="cap">{banking ? " banked" : " in pot"}</span></div>
-                    <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={(potBefore === 0 && !banking) || !can.bank(id, h)} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
-                      {can.hidden && can.hidden(id, h) ? "Hidden" : banking ? "Banking" : potBefore === 0 ? "Empty" : "Bank it"}
+                    <button className={`chip ${banking ? "on" : ""}`} aria-pressed={banking} disabled={(potBefore === 0 && !banking) || auto || !can.bank(id, h)} onClick={() => api.setBank(id, h, !banking)} style={{ minWidth: 62, padding: "2px 6px", fontSize: 12, opacity: potBefore === 0 && !banking ? 0.5 : 1 }}>
+                      {can.hidden && can.hidden(id, h) ? "Hidden" : auto ? "By order" : own ? (banking ? "Banking" : "Their phone") : banking ? "Banking" : potBefore === 0 ? "Empty" : "Bank it"}
                     </button>
                   </div>
                 );
@@ -2996,7 +3213,7 @@ function Scorecard({ round, people }) {
               <Row label={h + 1} par={PAR[h]}>
                 {ids.map(id => {
                   const v = round.scores[id][h]; const d = v == null ? 0 : v - PAR[h];
-                  const bust = pc[id].bustAt[h]; const bank = round.bank[id][h] && !bust;
+                  const bust = pc[id].bustAt[h]; const bank = (round.bank[id][h] || pc[id].autoAt[h]) && !bust;
                   return (
                     <div key={id} style={{ ...cell, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
                       <span style={{ display: "inline-grid", placeItems: "center", minWidth: 20, height: 20, fontWeight: 700, color: d < 0 ? "var(--fair)" : d > 0 ? "var(--red)" : "var(--ink)", border: v == null ? "none" : d < 0 ? "2px solid var(--fair)" : d > 0 ? "2px solid var(--red)" : "none", borderRadius: d < 0 ? "50%" : 0 }} title={isPickup(round, id, h) ? `Picked up (counts as ${v})` : undefined}>{v == null ? "·" : isPickup(round, id, h) ? "P" : v}</span>
@@ -4121,6 +4338,8 @@ function JoinSheet({ initial, onClose, onJoined }) {
   const [found, setFound] = useState(null); // { code, doc, uid }
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [who, setWho] = useState(null); // one scorer: the player picked, before choosing how to play
+  const [how, setHow] = useState("bank");
   const find = async (raw = text) => {
     const code = cleanCode(raw);
     if (!code) { setErr("Codes look like PUNT-7KQ4M."); return; }
@@ -4168,16 +4387,34 @@ function JoinSheet({ initial, onClose, onJoined }) {
             <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
               {d.base.playerIds.map(id => {
                 const by = d.claims && d.claims[id]; const taken = by && by !== found.uid;
+                const one = d.scoring === "one" && !by;
                 return (
-                  <button key={id} className="chip" disabled={busy || taken} onClick={() => pick(id)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", textAlign: "left" }}>
+                  <button key={id} className={`chip ${who === id ? "on" : ""}`} aria-pressed={one ? who === id : undefined} disabled={busy || taken} onClick={() => (one ? setWho(id) : pick(id))} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", textAlign: "left" }}>
                     <Avatar p={{ id, ...d.people[id] }} size={28} />
                     <span style={{ flex: 1 }}>{d.people[id].name}<span className="cap"> HCP {fmtHcp(d.people[id])}</span></span>
                     <span className="cap">{taken ? "Joined" : by ? "That's you" : ""}</span>
                   </button>
                 );
               })}
-              <button className="chip" disabled={busy} onClick={() => pick(null)} style={{ padding: "7px 0", textAlign: "center" }}>I'm not playing, just watch</button>
+              {!who && <button className="chip" disabled={busy} onClick={() => pick(null)} style={{ padding: "7px 0", textAlign: "center" }}>I'm not playing, just watch</button>}
             </div>
+            {who && (() => {
+              const host = d.people.me ? d.people.me.name : "The host";
+              const opt = (k, title, text, best) => (
+                <button key={k} className="card" aria-pressed={how === k} onClick={() => setHow(k)} style={{ display: "block", width: "100%", textAlign: "left", padding: 11, boxShadow: "none", borderWidth: how === k ? 4 : 3, background: how === k ? "var(--mint)" : "var(--card)", color: "var(--ink)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span className="hd" style={{ fontWeight: 700, fontSize: 16 }}>{title}</span>{best && <span className="pill px" style={{ background: "var(--flag)", color: "var(--dk)", padding: "0 6px", fontSize: 14 }}>BEST</span>}</div>
+                  <div style={{ marginTop: 3, lineHeight: 1.35, fontSize: 13.5 }}>{text}</div>
+                </button>
+              );
+              return (
+                <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                  <h3 className="hd" style={{ fontSize: 16 }}>How do you want to play?</h3>
+                  {opt("bank", "Bank from my phone", <>{host} keeps score. You just see your pot and tap <b>Bank</b> when you want to. No scores to enter.</>, true)}
+                  {opt("watch", "Just watch", `Follow along. ${host} makes your bank calls when you tell them.`)}
+                  <button className="cta" disabled={busy} onClick={() => pick(how === "bank" ? who : null)}>{how === "bank" ? `Join as ${d.people[who].name}` : "Just watch"}</button>
+                </div>
+              );
+            })()}
           </>
         )}
         {err && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, marginTop: 8 }}>{err}</p>}
@@ -4715,8 +4952,18 @@ function Game({ user, cloud, profile, now0, finished }) {
         // Secret call: stored where only this phone can read it until the reveal.
         setLive(l => ({ ...l, mine: { ...(l.mine || {}), [bankKey(id, h)]: v } }));
         backend().then(b => b.putBank(live.code, id, h, v)).catch(() => setLiveErr("That bank call didn't save. It may be locked, or you're offline."));
+      } else if (live && !live.ended && liveDoc && liveDoc.scoring === "one" && !amHost()) {
+        // One scorer, and this is a player banking for themselves on their own phone.
+        push([[["bc", id, h], v], [["who"], live.myId], [["bh"], h]]);
       } else push([[["bk", id, h], v]]);
       return setRound(r => ({ ...r, bank: { ...r.bank, [id]: r.bank[id].map((x, i) => (i === h ? v : x)) } }));
+    },
+    setOrder: (id, k) => {
+      const from = openHole(round, id);
+      const pairs = [[["ord", id, from], k]];
+      if (live && liveDoc && !amHost()) pairs.push([["who"], live.myId], [["bh"], from]);
+      push(pairs);
+      setRound(r => ({ ...r, orders: { ...(r.orders || {}), [id]: { ...((r.orders || {})[id] || {}), [from]: k } } }));
     },
     setNtp: (h, id) => { push([[["ntp", h], round.ntp[h] === id ? null : id]]); setRound(r => ({ ...r, ntp: r.ntp.map((x, i) => (i === h ? (x === id ? null : id) : x)) })); },
     setPickup: (id, h, on) => {
