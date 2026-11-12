@@ -39,7 +39,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.88";
+const APP_VERSION = "0.89";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1623,6 +1623,116 @@ function MiniBoard({ title, sub, rows, people }) {
   );
 }
 
+/* ───────────── LIVE BOARD ─────────────
+   Standings mid-round: the ticker under the hole header, and the full board it opens. */
+function boardData(round) {
+  const ids = round.playerIds; const pc = puntCalc(round);
+  const hasPunt = round.games.includes("punt");
+  const isTeam = round.mode === "2v2" && !!round.teams;
+  let last = -1; ids.forEach(id => { for (let k = 0; k < 18; k++) if (round.scores[id][k] != null && k > last) last = k; });
+  const tot = Object.fromEntries(ids.map(id => [id, totalsFor(round, id)]));
+  const cv = id => (round.useHcp ? tot[id].netPar : tot[id].grossPar);
+  const placeIn = (p, id) => 1 + ids.filter(x => p[x].total > p[id].total).length; // tied players share a place
+  const prev = last > 0 ? puntCalc(round, last) : null; // standings before the latest hole
+  const punt = [...ids].sort((a, b) => pc[b].total - pc[a].total);
+  const comp = [...ids].sort((a, b) => (tot[a].thru === 0) - (tot[b].thru === 0) || cv(a) - cv(b));
+  const tr = isTeam ? teamRows(round, pc).sort((x, y) => y.total - x.total) : null;
+  const ranked = isTeam ? [...ids].sort((x, y) => (round.teams[x] === tr[0].k ? 0 : 1) - (round.teams[y] === tr[0].k ? 0 : 1) || pc[y].total - pc[x].total) : hasPunt ? punt : comp;
+  const score = Object.fromEntries(ids.map(id => [id, hasPunt || isTeam ? pc[id].total : -cv(id)]));
+  const pay = round.stake > 0 ? (isTeam ? teamPayouts(round, pc) : payouts(round, ranked, score)) : null;
+  return {
+    ids, pc, tot, cv, hasPunt, isTeam, tr, punt, comp, pay, thru: last + 1,
+    place: id => placeIn(pc, id),
+    move: id => (prev ? placeIn(prev, id) - placeIn(pc, id) : 0),
+    compPlace: id => (tot[id].thru === 0 ? null : 1 + ids.filter(x => tot[x].thru > 0 && cv(x) < cv(id)).length),
+  };
+}
+
+function Ticker({ round, people, onOpen }) {
+  const d = boardData(round);
+  const order = d.hasPunt ? d.punt : d.comp;
+  return (
+    <button onClick={onOpen} aria-label="Open the live board" data-ticker style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 12px", background: "var(--on-bg)", color: "var(--on-fg)", textAlign: "left", borderBottom: "3px solid var(--night)" }}>
+      <span style={{ flex: 1, minWidth: 0, display: "flex", gap: 12, overflow: "hidden", whiteSpace: "nowrap" }}>
+        {order.map(id => {
+          const pl = d.hasPunt ? d.place(id) : d.compPlace(id);
+          const val = d.hasPunt ? d.pc[id].total : d.tot[id].thru ? fmtPar(d.cv(id)) : "–";
+          return <span key={id} style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}><span className="px" style={{ fontSize: 17, lineHeight: 1, opacity: 0.75 }}>{pl || "–"}</span><span style={{ fontWeight: 700, fontSize: 13.5 }}>{people[id].name} {val}</span></span>;
+        })}
+      </span>
+      <span className="px" style={{ flex: "none", fontSize: 15, lineHeight: 1 }}>BOARD ›</span>
+    </button>
+  );
+}
+
+function LiveBoard({ round, people, onClose }) {
+  const can = useContext(LiveCtx);
+  const d = boardData(round);
+  const [tab, setTab] = useState(d.hasPunt ? "punt" : "comp");
+  const payTab = d.hasPunt || d.isTeam ? "punt" : "comp";
+  const showPay = d.pay && tab === payTab;
+  const col = { textAlign: "right", flex: "none" };
+  const Move = ({ m }) => <span style={{ width: 22, flex: "none", fontSize: 11, fontWeight: 800, color: m > 0 ? "var(--fair)" : m < 0 ? "var(--red)" : "var(--muted)" }}>{m > 0 ? `▲${m}` : m < 0 ? `▼${-m}` : "–"}</span>;
+  const order = tab === "punt" ? d.punt : d.comp;
+  return (
+    <div style={sheetWrap} onClick={onClose}>
+      <div className="sheet card" role="dialog" aria-label="Live board" onClick={e => e.stopPropagation()} style={{ ...sheetBox, padding: 0 }}>
+        <div className="stripes" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div className="px" style={{ fontSize: 28, lineHeight: 1 }}>{can.live ? "LIVE BOARD" : "THE BOARD"}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.9 }}>{d.thru === 0 ? "No scores yet" : d.thru === 18 ? "All 18 holes in" : `Thru ${d.thru}`} · {round.course.name}</div>
+          </div>
+          <button onClick={onClose} aria-label="Close"><X size={24} /></button>
+        </div>
+        <div style={{ padding: "9px 12px 14px" }}>
+          {d.hasPunt && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }} role="tablist">
+              {[["punt", "Puntaro"], ["comp", "The Comp"]].map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)} style={{ padding: "4px 11px", fontSize: 13 }}>{l}</button>)}
+            </div>
+          )}
+          {d.isTeam && tab === "punt" && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }} data-teams>
+              {d.tr.map((t, i) => <div key={t.k} style={{ flex: 1, border: "3px solid var(--night)", padding: "5px 8px", background: i === 0 && d.tr[0].total !== d.tr[1].total ? "var(--sel)" : "var(--card)" }}><div className="cap" style={{ fontWeight: 700 }}>{t.ids.map(id => people[id].name).join(" + ")}</div><div className="px" style={{ fontSize: 24, lineHeight: 1 }}>{t.total}</div></div>)}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 6, padding: "0 4px 4px", fontSize: 11.5, fontWeight: 700, color: "var(--muted)" }}>
+            <span style={{ width: tab === "punt" ? 50 : 24 }}>Pos</span><span style={{ flex: 1 }}>Player</span>
+            {tab === "punt" ? <><span style={{ ...col, width: 36 }}>Pot</span><span style={{ ...col, width: 42 }}>Total</span></> : <><span style={{ ...col, width: 36 }}>Thru</span><span style={{ ...col, width: 42 }}>{round.useHcp ? "Net" : "Gross"}</span></>}
+            {showPay && <span style={{ ...col, width: 38 }}>$</span>}
+          </div>
+          {order.map(id => {
+            const s = d.pc[id]; const t = d.tot[id];
+            const pl = tab === "punt" ? d.place(id) : d.compPlace(id);
+            const sub = tab === "punt"
+              ? [t.thru < d.thru ? `thru ${t.thru}` : null, s.mult > 1 ? `x${s.mult} streak` : null, s.busts ? `${s.busts} bust${s.busts > 1 ? "s" : ""}` : null, `${s.banked} banked`].filter(Boolean).join(" · ")
+              : t.thru ? `${t.gross} strokes` : "No scores yet";
+            return (
+              <div key={id} data-board-row={id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 4px", borderTop: "1px solid var(--line)", background: pl === 1 ? "var(--sel)" : "transparent" }}>
+                <span className="px" style={{ width: 22, flex: "none", fontSize: 22, lineHeight: 1 }}>{pl || "–"}</span>
+                {tab === "punt" && <Move m={d.move(id)} />}
+                <Avatar p={people[id]} size={26} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{people[id].name}</div>
+                  <div className="cap" style={{ fontSize: 11.5 }}>{sub}</div>
+                </div>
+                {tab === "punt"
+                  ? <><span data-pot style={{ ...col, width: 36, fontWeight: 700, color: s.pot >= 10 ? "var(--red)" : "var(--ink)" }}>{s.pot}</span><span className="px" data-total style={{ ...col, width: 42, fontSize: 23, lineHeight: 1 }}>{s.total}</span></>
+                  : <><span style={{ ...col, width: 36, fontWeight: 700 }}>{t.thru}</span><span className="px" style={{ ...col, width: 42, fontSize: 23, lineHeight: 1 }}>{t.thru ? fmtPar(d.cv(id)) : "–"}</span></>}
+                {showPay && <span data-pay style={{ ...col, width: 38, fontWeight: 800, color: d.pay[id] > 0 ? "var(--fair)" : "var(--muted)" }}>{money(d.pay[id])}</span>}
+              </div>
+            );
+          })}
+          <p className="cap" style={{ marginTop: 8 }}>
+            {tab === "punt" ? "Total is banked plus pot. A pot in red is 10 or more and can still bust. Arrows show moves on the last hole." : `${round.useHcp ? "Net" : "Gross"} score to par so far.`}
+            {showPay ? " $ is what each would win if the round ended now." : ""}
+            {tab === "punt" && can.live && can.scoring === "each" ? " Bank calls still secret aren't shown until they're revealed." : ""}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ───────────── GAME PANELS (live round) ───────────── */
 function GamePanel({ gid, round, people, h, api }) {
   const can = useContext(LiveCtx);
@@ -2836,6 +2946,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
    Someone else keeps score. This phone just shows the player's pot and lets them bank it. */
 function BankOnly({ round, people, id, api, hostName, onBack, onLive, onRules, onSheet }) {
   const [ordOpen, setOrdOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
   const pc = puntCalc(round); const st = pc[id]; const ids = round.playerIds;
   let dh = -1; for (let k = 0; k < 18; k++) if (round.scores[id][k] != null) dh = k;
   const now = dh < 0 ? 0 : Math.min(17, dh + 1);
@@ -2874,6 +2985,8 @@ function BankOnly({ round, people, id, api, hostName, onBack, onLive, onRules, o
         <div className="px holeno" aria-label={`Hole ${now + 1}`} style={{ fontSize: 34, lineHeight: 1, marginTop: 4 }}>HOLE {now + 1}</div>
         <div style={{ fontWeight: 600, fontSize: 13, opacity: 0.9 }}>Par {PAR[now]} · {hostName} is keeping score</div>
       </div>
+      {ids.length > 1 && <Ticker round={round} people={people} onOpen={() => setBoardOpen(true)} />}
+      {boardOpen && <LiveBoard round={round} people={people} onClose={() => setBoardOpen(false)} />}
       <div style={{ padding: "12px 12px 30px", display: "grid", gap: 11, alignContent: "start" }}>
         <div className="card" style={{ padding: 14, textAlign: "center" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><Avatar p={people[id]} size={32} /><span className="hd" style={{ fontWeight: 700, fontSize: 19 }}>{people[id].name}</span></div>
@@ -2972,6 +3085,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   useEffect(() => setLastId(null), [h]);
   // A player on their own phone in a one-scorer round sees their pot and a bank button, with the scoresheet a tap away.
   const [sheetView, setSheetView] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
   const bankOnly = !!pc && can.live && can.scoring === "one" && !can.host && !!can.live.myId && round.playerIds.includes(can.live.myId);
   const bump = (id, d) => {
     setLastId(id);
@@ -3027,6 +3141,8 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
         </div>
       </div>
 
+      {ids.length > 1 && <Ticker round={round} people={people} onOpen={() => setBoardOpen(true)} />}
+      {boardOpen && <LiveBoard round={round} people={people} onClose={() => setBoardOpen(false)} />}
       <div style={{ padding: "9px 12px 75px", display: "grid", gap: 6, alignContent: "start" }}>
         {ntpHole && <NtpCard key={h} round={round} people={people} ids={ids} h={h} api={api} disabled={!can.score()} />}
         {notices.length > 0 && (
@@ -3579,7 +3695,7 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
   const tr = isTeam ? teamRows(round, pc).sort((x, y) => y.total - x.total) : null;
   const tied = isTeam && tr[0].total === tr[1].total;
   const ranked = isTeam ? [...round.playerIds].sort((x, y) => (round.teams[x] === tr[0].k ? 0 : 1) - (round.teams[y] === tr[0].k ? 0 : 1) || pc[y].total - pc[x].total) : hasPunt ? punt : comp.map(r => r.id);
-  const score = Object.fromEntries(round.playerIds.map(id => [id, pc[id].total]));
+  const score = Object.fromEntries(round.playerIds.map(id => [id, hasPunt || isTeam ? pc[id].total : -(round.useHcp ? comp.find(c => c.id === id).netPar : comp.find(c => c.id === id).grossPar)]));
   const pay = isTeam ? teamPayouts(round, pc) : payouts(round, ranked, score);
   const anyTie = !isTeam && new Set(ranked.map(id => score[id])).size < ranked.length;
   const nets = {}; round.playerIds.forEach(id => (nets[id] = Math.round((pay[id] - round.stake) * 100) / 100));

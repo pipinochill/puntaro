@@ -21,7 +21,7 @@ async def main():
         await A.get_by_role('button', name='Draw the cards').click(); await A.wait_for_timeout(400)
         await A.get_by_role('button', name='Flip all').click(); await A.wait_for_timeout(400); await A.get_by_role('button', name="Let's play").click(); await A.wait_for_timeout(1500)
         st = json.loads(cloud.docs['users/u_a/state/now']['json']); r = st['round']
-        r['draws'][3]['me'] = 'safe'; cloud.docs['users/u_a/state/now']['json'] = json.dumps(st)
+        r['draws'][3].update({'me': 'safe', 'sam': 'dd', 'priya': 'dd', 'jake': 'dd'}); cloud.docs['users/u_a/state/now']['json'] = json.dumps(st)
         await fc.open_app(A, URL); await A.get_by_role('button', name='Resume scoring').click(); await A.wait_for_timeout(500)
         row = A.locator('fieldset > div.card').first
         await A.get_by_role('button', name='You plus one').click(); await A.wait_for_timeout(200)
