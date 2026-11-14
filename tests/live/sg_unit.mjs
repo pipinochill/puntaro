@@ -1,5 +1,5 @@
 // Strokes gained engine: benchmarks, one hole, a round, and the trends. Run: node tests/live/sg_unit.mjs
-import { expStrokes, expPutts, holeSG, roundSG, insights, roundNotes, caddieNote, perRound, gapFor, AP, FP } from "../../src/sg.js";
+import { strokesFor, ptsFor, pointsOf, expStrokes, expPutts, holeSG, roundSG, insights, roundNotes, caddieNote, perRound, gapFor, AP, FP } from "../../src/sg.js";
 let pass = 0, n = 0; const check = (name, ok, d = "") => { n++; if (ok) pass++; console.log((ok ? "PASS " : "FAIL ") + name + (ok || d === "" ? "" : `  [${d}]`)); };
 const near = (a, b, e = 0.011) => Math.abs(a - b) <= e;
 const HOLES = [4, 4, 3, 4, 5, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 3, 4, 5].map((par, i) => ({ par, si: ((i * 7) % 18) + 1 }));
@@ -32,6 +32,13 @@ check("...and a penalty isn't mistaken for a chip", near(holeSG(4, { s: 6, tee: 
 const penR = mk((par, i) => ({ s: par + 2, tee: par >= 4 ? "T" : undefined, pen: i % 4 === 0 ? 1 : 0, pu: i === 5, p: 2 }));
 check("Round counts penalty shots and pick-ups", roundSG(penR).st.pen === 5 && roundSG(penR).st.pu === 1);
 check("Trends and notes mention penalties", insights([penR]).some(x => x.id === "pens") && roundNotes([penR]).some(x => /penalty/.test(x.title)));
+const st21 = mk((par) => ({ s: par + 1 }), { ch: 21 });
+check("Strokes: playing off 21, every hole gets one and index 1 to 3 get two", HOLES.every((h, i) => strokesFor(st21, i) === (h.si <= 3 ? 2 : 1)));
+check("Stableford: a bogey with one stroke is 2 points, with two strokes 3", HOLES.every((h, i) => ptsFor(st21, i) === (h.si <= 3 ? 3 : 2)) && pointsOf(st21) === 39);
+check("...a pick-up scores 0, and a blow-up can't go below 0", ptsFor(mk(() => ({ s: 6, pu: true })), 0) === 0 && ptsFor(mk(() => ({ s: 12 })), 0) === 0);
+const p3r = mk((par, i) => (par === 3 ? { s: 3, gr: i !== 2, p: 2, fp: i === 6 ? 0 : 3 } : { s: par + 1 }));
+check("Par 3s: greens hit from the tee and the closest one", (g => g.st.p3.join() === "3,4" && g.st.closest.i === 6 && g.st.p3close === 1)(roundSG(p3r)), JSON.stringify(roundSG(p3r).st));
+check("...the round notes call out the closest", roundNotes([p3r]).some(x => /Closest on a par 3: hole 7, under 1 m/.test(x.title)), JSON.stringify(roundNotes([p3r]).map(x => x.title)));
 // A round of bogeys from an 18 handicap is about what the benchmark expects
 const bogey = mk((par) => ({ s: par + 1, tee: par >= 4 ? "F" : undefined, ap: 2, gr: false, p: 2, fp: 1 }));
 const rb = roundSG(bogey);

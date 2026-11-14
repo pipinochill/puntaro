@@ -1,5 +1,5 @@
 """Solo rounds: scoring with the shot questions, the round report, My game trends, and keeping solo rounds out of Puntaro stats."""
-import asyncio, json, re, sys, time
+import asyncio, base64, json, re, sys, time
 from playwright.async_api import async_playwright
 sys.path.insert(0, sys.argv[3]); import rules, fakecloud as fc
 URL, OUT = sys.argv[1], sys.argv[2]; res = []
@@ -48,8 +48,9 @@ async def main():
         # hole 1: par, fairway, 100-150, green, 2 putts from 3-6 m
         await hole(0, 0, 'Fairway', '100–150', 'Hit the green', '2', '3–6 m', nxt=False); await A.wait_for_timeout(150)
         run = await A.locator('[data-solo-run]').inner_text()
-        check('Running score bar: E thru 1', 'E thru 1' in run and '4 strokes' in run, run)
-        check('Score is named (PAR)', 'PAR' in (await A.locator('[data-solo-score]').inner_text()).upper())
+        check('Running score bar: E thru 1', 'E thru 1' in run and '4 strokes · 3 pts' in run, run)
+        check('The hole shows your handicap stroke and net par', 'You get 1 stroke: net par is 5' in await A.locator('[data-solo-strokes]').inner_text(), await A.locator('[data-solo-strokes]').inner_text())
+        check('Score is named with its Stableford points (PAR · 3 pts)', 'PAR · 3 pts' in await A.locator('[data-solo-score]').inner_text(), await A.locator('[data-solo-score]').inner_text())
         await A.get_by_role('button', name='Fairway').click(); await A.wait_for_timeout(80)
         check('Tapping an answer again clears it', await A.get_by_role('button', name='Fairway').get_attribute('aria-pressed') == 'false')
         await A.get_by_role('button', name='Fairway').click()
@@ -67,7 +68,7 @@ async def main():
         check('...and resumes on hole 3, a par 3 with no tee shot question', (await A.locator('.holeno').inner_text()) == '3' and await A.get_by_role('group', name='Tee shot').count() == 0 and await A.get_by_text('Tee shot from (metres)').count() == 1)
         # pick up and penalties on hole 3 (par 3, index 15, playing off 21: one stroke, so P counts as 3 + 2 + 1 = 6)
         await A.get_by_role('button', name='Pick up').click(); await A.wait_for_timeout(150)
-        check('P picks the hole up as a net double bogey and hides the shot questions', 'Picked up: counts as 6' in await A.locator('[data-solo-score]').inner_text() and await A.get_by_role('group', name='Putts').count() == 0 and '+4 thru 3' in await A.locator('[data-solo-run]').inner_text(), await A.locator('[data-solo-score]').inner_text() + await A.locator('[data-solo-run]').inner_text())
+        check('P picks the hole up as a net double bogey and hides the shot questions', 'Picked up: counts as 6 · 0 pts' in await A.locator('[data-solo-score]').inner_text() and await A.get_by_role('group', name='Putts').count() == 0 and '+4 thru 3' in await A.locator('[data-solo-run]').inner_text(), await A.locator('[data-solo-score]').inner_text() + await A.locator('[data-solo-run]').inner_text())
         await A.get_by_role('group', name='Penalty shots').get_by_role('button', name='2', exact=True).click(); await A.wait_for_timeout(100)
         await A.wait_for_timeout(1600)
         h3 = json.loads(cloud.docs[f'users/{UID}/state/now']['json'])['solo']['h'][2]
@@ -95,7 +96,7 @@ async def main():
         note = A.locator('[data-caddie]')
         check('Caddie note on the next tee: three misses the same way', await note.count() == 1 and 'right' in await note.inner_text(), await note.inner_text() if await note.count() else 'none')
         await A.screenshot(path=f'{OUT}/solo_caddie.png')
-        plan = [(5, 0, 'Fairway', '50–100', 'Hit the green', '2', '3–6 m'), (6, 0, None, '100–150', 'Hit the green', '2', '6–10 m'), (7, 1, 'Trouble', '150–200', 'Missed the green', '2', '1–3 m'),
+        plan = [(5, 0, 'Fairway', '50–100', 'Hit the green', '2', '3–6 m'), (6, 0, None, '100–150', 'Hit the green', '2', '1–3 m'), (7, 1, 'Trouble', '150–200', 'Missed the green', '2', '1–3 m'),
                 (8, 1, 'Fairway', '50–100', 'Hit the green', '3+', '10 m+'), (9, 0, 'Fairway', '100–150', 'Hit the green', '2', '3–6 m'), (10, 1, None, '150–200', 'Missed the green', '2', '1–3 m'),
                 (11, 0, 'Left', '50–100', 'Hit the green', '2', '6–10 m'), (12, 2, 'Right', '150–200', 'Missed the green', '3+', '6–10 m'), (13, -1, 'Fairway', '50–100', 'Hit the green', '1', '1–3 m'),
                 (14, 0, None, '100–150', 'Hit the green', '2', '3–6 m'), (15, 1, 'Right', '150–200', 'Missed the green', '2', '1–3 m'), (16, 0, 'Fairway', 'Under 50', 'Hit the green', '2', '3–6 m'),
@@ -120,6 +121,8 @@ async def main():
         # ---- report
         rep = A.locator('[data-solo-report]'); txt = await rep.inner_text()
         check('Round report opens with the score', await rep.count() == 1 and (await rep.locator('[data-gross]').inner_text()) == str(gross), txt[:80])
+        check('Stableford points on the report (85 off 21 is 44)', (await rep.locator('[data-pts]').inner_text()) == '44 pts', await rep.locator('[data-pts]').inner_text())
+        check('Notes: beat the handicap, and the closest par 3 tee shot', 'beat your handicap by 8' in txt and 'Closest on a par 3: hole 7, inside 3 m' in txt, txt[300:900])
         sg = {c: await rep.locator(f'[data-sg="{c}"]').inner_text() for c in ('tee', 'app', 'short', 'putt', 'total')}
         check('Strokes gained for all four parts and a total', all(re.fullmatch(r'[+−]?\d+\.\d', v) for v in sg.values()), str(sg))
         num = lambda v: float(v.replace('−', '-'))
@@ -131,6 +134,15 @@ async def main():
         check('It says solo rounds don\'t count for seasons or handicap', "don't count for seasons" in txt)
         check('No undefined or NaN anywhere', not re.search(r'undefined|NaN', txt))
         await A.screenshot(path=f'{OUT}/solo_report.png', full_page=True)
+        await rep.locator('[data-share]').click(); await A.wait_for_timeout(2500)
+        img = A.get_by_role('dialog', name='Share my round').locator('img')
+        alt = (await img.get_attribute('alt')) if await img.count() else ''
+        check('Share my round makes a picture headed by the score and points', await img.count() == 1 and f'{gross} · 44 PTS' in alt, alt)
+        src = await img.get_attribute('src') or ''
+        open(f'{OUT}/solo_card.png', 'wb').write(base64.b64decode(src.split(',', 1)[1]))
+        size = await A.evaluate("s => new Promise(r => { const i = new Image(); i.onload = () => r([i.width, i.height]); i.src = s; })", src)
+        check('...sized for phones and chats, with a way to save it', size == [1080, 1350] and await A.get_by_role('link', name='Save image').count() + await A.get_by_role('button', name='Share my round').count() >= 1, str(size))
+        await A.get_by_role('dialog', name='Share my round').get_by_role('button', name='Close').click(); await A.wait_for_timeout(200)
         before = sg['total']
         await rep.get_by_role('button', name='Scratch').click(); await A.wait_for_timeout(200)
         check('Compare with scratch: the same round loses many more shots', num(await rep.locator('[data-sg="total"]').inner_text()) < num(before) - 10)
@@ -146,6 +158,9 @@ async def main():
         n1 = await game.locator('[data-note]').count()
         check('My game after one round already has several trends', n1 >= 4, f'{n1}')
         check('...including the one-sided miss', 'Your miss is right' in gt, gt[:200])
+        p3 = await game.locator('[data-par3]').inner_text() if await game.locator('[data-par3]').count() else ''
+        check('Par 3 card: greens hit and the closest tee shot', '2/4' in p3 and 'Closest: 1–3 m, hole 7 at Pebble Hollow' in p3, p3)
+        check('Points in My game', '(44.0 pts)' in gt and 'Stableford points a round' in gt)
         check('...and tables for greens by distance and putting', await game.locator('[data-ap]').count() == 1 and await game.locator('[data-fp]').count() == 1 and await game.locator('[data-like]').count() == 1)
         await A.screenshot(path=f'{OUT}/solo_game1.png', full_page=True)
 

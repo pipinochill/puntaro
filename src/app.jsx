@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, createContext, useContext, Fragme
 import { backend, newCode, cleanCode, joinLink, inviteLink, newRefCode, cleanRef, roundToDoc, docToRound, rights, revealUpTo, bankMap, bankKey, DELETE, explain, EMAIL_KEY } from "./live.js";
 import { makeDecoder, cameraProblem } from "./scan.js";
 import { qrPath } from "./qr.js";
-import { AP, FP, TEE, CATS, holeSG, roundSG, perRound, insights, roundNotes, caddieNote, holesPlayed, grossOf, parOf } from "./sg.js";
+import { AP, FP, TEE, CATS, holeSG, roundSG, perRound, insights, roundNotes, caddieNote, holesPlayed, grossOf, parOf, strokesFor, ptsFor, pointsOf } from "./sg.js";
 import { differential, indexFrom, nextIndex, hcpTag, USUAL_SCORES, MAX_INDEX, ROUNDS_NEEDED } from "./hcp.js";
 
 /* ───────────── ICONS (inline, no library) ───────────── */
@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.92";
+const APP_VERSION = "0.93";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3046,6 +3046,7 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
   const go = k => { const to = Math.max(0, Math.min(17, k)); if (to > i) celebrate(i); onChange(s => ({ ...s, hole: to })); };
   useEffect(() => { try { window.scrollTo(0, 0); } catch (err) { /* fine */ } }, [i]);
   const done = holesPlayed(solo); const over = soloOver(solo);
+  const strokes = strokesFor(solo, i); const pts = ptsFor(solo, i);
   const note = useMemo(() => caddieNote(solo, i, earlier), [solo, i, earlier]);
   const q = { fontWeight: 700, fontSize: 12.5, color: "var(--muted)", marginBottom: 6 };
   const Chips = ({ k, opts, label }) => (
@@ -3070,6 +3071,7 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
             <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.9 }}>{solo.course.name}</div>
             <div className="px holeno" aria-label={`Hole ${i + 1}`} style={{ fontSize: 46, lineHeight: 0.9 }}>{i + 1}</div>
             <div style={{ fontWeight: 600, fontSize: 13 }}>Par {par} · Index {solo.holes[i].si}</div>
+            <div data-solo-strokes style={{ fontSize: 12, fontWeight: 600, opacity: 0.9 }}>{strokes ? `You get ${plur(strokes, "stroke")}: net par is ${par + strokes}` : "No stroke here"}</div>
           </div>
           <button onClick={() => go(i + 1)} disabled={i === 17} aria-label="Next hole arrow" style={{ opacity: i === 17 ? 0.3 : 1, padding: 6 }}><ChevronRight size={28} /></button>
         </div>
@@ -3078,7 +3080,7 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
         </div>
       </div>
       <div data-solo-run style={{ display: "flex", justifyContent: "space-between", padding: "6px 12px", background: "var(--on-bg)", color: "var(--on-fg)", fontWeight: 700, fontSize: 13.5, borderBottom: "3px solid var(--night)" }}>
-        <span>{done ? `${fmtPar(over)} thru ${done}` : "No scores yet"}</span><span>{done ? `${grossOf(solo)} strokes` : `Playing off ${solo.ch}`}</span>
+        <span>{done ? `${fmtPar(over)} thru ${done}` : "No scores yet"}</span><span>{done ? `${grossOf(solo)} strokes · ${plur(pointsOf(solo), "pt")}` : `Playing off ${solo.ch}`}</span>
       </div>
       <div style={{ padding: "10px 12px 96px", display: "grid", gap: 9, alignContent: "start" }}>
         {note && <div className="card" data-caddie role="note" style={{ padding: "7px 10px", background: "var(--sel)", boxShadow: "none", fontSize: 13, fontWeight: 600 }}>{note}</div>}
@@ -3086,7 +3088,7 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
           <button onClick={() => bump(-1)} aria-label="One less" style={{ width: 48, height: 48, border: "3px solid var(--night)", display: "grid", placeItems: "center", background: "var(--chalk)", color: "var(--ink)", flex: "none" }}><Minus size={24} /></button>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
             <ScoreMark v={has ? e.s : null} par={par} pick={!!e.pu} />
-            <div data-solo-score style={{ fontSize: 12.5, fontWeight: 700, color: has && e.s > par ? "var(--red)" : has && e.s < par ? "var(--fair)" : "var(--muted)" }}>{e.pu ? `Picked up: counts as ${e.s}` : has ? scoreName(e.s, par).label : "Tap + to start at par"}</div>
+            <div data-solo-score style={{ fontSize: 12.5, fontWeight: 700, color: has && e.s > par ? "var(--red)" : has && e.s < par ? "var(--fair)" : "var(--muted)" }}>{e.pu ? `Picked up: counts as ${e.s} · 0 pts` : has ? `${scoreName(e.s, par).label} · ${plur(pts, "pt")}` : "Tap + to start at par"}</div>
           </div>
           <button onClick={pick} aria-label="Pick up" aria-pressed={!!e.pu} className="px" style={{ width: 40, height: 48, border: "3px solid var(--night)", background: e.pu ? "var(--red)" : "var(--card)", color: e.pu ? "#fff" : "var(--ink)", fontSize: 26, lineHeight: 1, flex: "none" }}>P</button>
           <button onClick={() => bump(1)} aria-label="One more" style={{ width: 48, height: 48, border: "3px solid var(--night)", display: "grid", placeItems: "center", background: "var(--pine)", color: "#F4F0E6", flex: "none" }}><Plus size={24} /></button>
@@ -3101,7 +3103,7 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
           {!e.pu && <div className="card" style={{ padding: "8px 10px" }}>
             <div style={q}>Putts</div>
             <Chips k="p" label="Putts" opts={[[0, "0"], [1, "1"], [2, "2"], [3, "3+"]]} />
-            {e.p !== 0 && <><div style={{ ...q, marginTop: 9 }}>First putt from</div><Chips k="fp" label="First putt from" opts={FP.map((b, k) => [k, b.label])} /></>}
+            {e.p !== 0 && <><div style={{ ...q, marginTop: 9 }}>{par === 3 && e.gr === true ? "How close? First putt from" : "First putt from"}</div><Chips k="fp" label="First putt from" opts={FP.map((b, k) => [k, b.label])} /></>}
           </div>}
           <div className="card" style={{ padding: "8px 10px" }}>
             <div style={q}>Penalty shots on this hole</div>
@@ -3118,7 +3120,7 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
         <div style={sheetWrap} onClick={() => setAsk(false)}>
           <div className="sheet card" role="dialog" aria-label="Finish solo round" onClick={ev => ev.stopPropagation()} style={sheetBox}>
             <h2 className="h2">Finish this round?</h2>
-            <p className="cap" style={{ marginTop: 3 }}>{!done ? "No holes scored yet. " : done === 18 ? `${grossOf(solo)} strokes, ${fmtPar(over)}.` : `${plur(done, "hole")} scored (${fmtPar(over)}). A part round still feeds your trends.`}{done ? " It's saved to My game and your Round history." : ""}</p>
+            <p className="cap" style={{ marginTop: 3 }}>{!done ? "No holes scored yet. " : done === 18 ? `${grossOf(solo)} strokes, ${fmtPar(over)}, ${pointsOf(solo)} points.` : `${plur(done, "hole")} scored (${fmtPar(over)}). A part round still feeds your trends.`}{done ? " It's saved to My game and your Round history." : ""}</p>
             <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
               <button className="cta" disabled={!done} onClick={() => { setAsk(false); celebrate(i); onFinish(); }}>Finish and see my report</button>
               <button className="chip" style={{ padding: "8px 0", textAlign: "center" }} onClick={() => setAsk(false)}>Keep playing</button>
@@ -3129,6 +3131,20 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
       )}
     </div>
   );
+}
+// The share picture for a solo round: score and points up top, the four parts of the game, and one trend along the bottom.
+function soloFacts(solo, earlier, name) {
+  const g = roundSG(solo); const notes = roundNotes([...earlier, solo]); const ins = insights([...earlier, solo]);
+  const full = g.n === 18; const st = g.st;
+  const line = { tee: st.fw[1] ? `${st.fw[0]} of ${st.fw[1]} fairways` : "", app: st.gir[1] ? `${st.gir[0]} of ${st.gir[1]} greens in regulation` : "", short: st.ud[1] ? `Up and down ${st.ud[0]} of ${st.ud[1]}` : "", putt: st.puttHoles ? `${st.putts} putts` : "" };
+  let rows = CATS.filter(([c]) => g.cats[c].n >= 4).map(([c, nm]) => ({ name: nm, line: line[c], pts: sgTxt(g.cats[c].sg), unit: "", color: g.cats[c].sg >= 0.05 ? "#2F6B4F" : g.cats[c].sg <= -0.05 ? "#B4472E" : "#1B1C1A" }));
+  if (!rows.length) rows = [["Fairways", st.fw], ["Greens in regulation", st.gir], ["Up and downs", st.ud]].filter(([, v]) => v[1]).map(([nm, v]) => ({ name: nm, line: "", pts: `${v[0]}/${v[1]}`, unit: "" }));
+  if (!rows.length) rows = [{ name: "Strokes", line: `${plur(g.n, "hole")}`, pts: String(g.gross), unit: "" }];
+  const top = notes.find(x => x.tone === "good") || notes[0]; const trend = ins.find(x => !/^(weak|strong|like|best)$/.test(x.id)) || ins[0];
+  const head = full ? `${g.gross} · ${g.pts} PTS` : `${fmtPar(g.gross - g.par)} THRU ${g.n}`;
+  const sub = (top ? top.title.replace(/:.*$/, "") : `${name}'s solo round`).toUpperCase();
+  return { sprite: null, course: solo.course.name, date: `${name} · ${fmtDay(solo.at)}`, head, sub, rows, foot: trend ? `TREND: ${trend.title.toUpperCase()}` : "WHERE THE SHOTS WENT",
+    text: `${name} shot ${g.gross}${full ? ` (${g.pts} points)` : ` over ${plur(g.n, "hole")}`} at ${solo.course.name}. Strokes gained against handicap: ${sgTxt(g.total.sg)}. ${SITE_URL}` };
 }
 const plur = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -3142,16 +3158,18 @@ function SoloCard({ s }) {
           <div key={k} style={cell}>
             <div className="cap" style={{ fontSize: 10.5 }}>{k + 1}</div>
             <div className="px" style={{ fontSize: 19, lineHeight: "24px", height: 26, border: "2px solid var(--night)", background: v == null ? "var(--track)" : d < 0 ? "var(--fair)" : d === 0 ? "var(--card)" : d === 1 ? "var(--lime)" : "var(--red)", color: v == null ? "var(--muted)" : d < 0 || d >= 2 ? "#fff" : "var(--dk)" }}>{v == null ? "·" : e.pu ? "P" : v}</div>
+            <div className="cap" style={{ fontSize: 10.5, fontWeight: 700 }}>{v == null ? "" : ptsFor(s, k)}</div>
           </div>
         );
       })}
     </div>
   );
-  return <div style={{ display: "grid", gap: 5 }} data-solo-card>{row(0, 9)}{row(9, 18)}<div className="cap" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><span>Green: under par</span><span>Sand: bogey</span><span>Red: double or worse</span>{s.h.some(e => e && e.pu) && <span>P: picked up</span>}</div></div>;
+  return <div style={{ display: "grid", gap: 5 }} data-solo-card>{row(0, 9)}{row(9, 18)}<div className="cap" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><span>Green: under par</span><span>Sand: bogey</span><span>Red: double or worse</span><span>Small number: points</span>{s.h.some(e => e && e.pu) && <span>P: picked up</span>}</div></div>;
 }
 
-function SoloReport({ solo, earlier, onBack, onGame, fresh }) {
+function SoloReport({ solo, earlier, onBack, onGame, fresh, name = "You" }) {
   const [H, setH] = useState(null);
+  const [sharing, setSharing] = useState(false);
   const g = useMemo(() => roundSG(solo, H), [solo, H]);
   const notes = useMemo(() => roundNotes([...earlier, solo], H), [solo, earlier, H]);
   const n = g.n; const st = g.st; const full = n === 18;
@@ -3163,7 +3181,7 @@ function SoloReport({ solo, earlier, onBack, onGame, fresh }) {
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 2, fontWeight: 600, opacity: 0.9, minHeight: 36 }}><ChevronLeft size={22} />Back</button>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 10, marginTop: 4 }}>
           <div style={{ minWidth: 0 }}><div className="px" style={{ fontSize: 28, lineHeight: 1 }}>ROUND REPORT</div><div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.9 }}>{fmtDay(solo.at)} · {solo.course.name}</div></div>
-          <div style={{ textAlign: "right", flex: "none" }}><div className="px" data-gross style={{ fontSize: 40, lineHeight: 0.9 }}>{g.gross}</div><div style={{ fontSize: 12, fontWeight: 600 }}>{fmtPar(g.gross - g.par)}{full ? ` · net ${g.gross - solo.ch}` : ` · ${plur(n, "hole")}`}</div></div>
+          <div style={{ textAlign: "right", flex: "none" }}><div className="px" data-gross style={{ fontSize: 40, lineHeight: 0.9 }}>{g.gross}</div><div style={{ fontSize: 12, fontWeight: 600 }}>{fmtPar(g.gross - g.par)}{full ? ` · net ${g.gross - solo.ch}` : ` · ${plur(n, "hole")}`} · <span data-pts>{g.pts} pts</span></div></div>
         </div>
       </div>
       <div style={{ padding: "11px 12px 30px", display: "grid", gap: 10, alignContent: "start" }}>
@@ -3187,6 +3205,8 @@ function SoloReport({ solo, earlier, onBack, onGame, fresh }) {
           <Tile k="pu" v={st.pu} l={st.pu === 1 ? "hole picked up" : "holes picked up"} />
         </div>
         <div className="card" style={{ padding: "9px 10px" }}><div className="cap" style={{ fontWeight: 700, marginBottom: 6 }}>Scorecard</div><SoloCard s={solo} /></div>
+        <button className="cta" data-share onClick={() => setSharing(true)} style={{ background: "var(--flag)", color: "var(--dk)" }}>Share my round</button>
+        {sharing && <ResultCardSheet solo={soloFacts(solo, earlier, name)} onClose={() => setSharing(false)} />}
         <button className="cta" onClick={onGame}>See my game and trends</button>
         <p className="cap">These are estimates. The app works from your answers, a typical hole length for each par and tour averages, then adjusts for handicap. They're most useful as patterns over a few rounds.</p>
       </div>
@@ -3209,6 +3229,7 @@ function MyGame({ rounds, onBack, onStart, onOpen, inProgress, onResume }) {
   const split = last.length >= 4 ? (last.length >= 6 ? 3 : 2) : 0;
   const stat = (pick, list) => { let a = 0, b = 0; list.forEach(x => { const [p, q] = pick(x); a += p; b += q; }); return b ? a / b : null; };
   const STATS = [
+    ["Stableford points a round", x => [x.pts * 18, x.n], v => v.toFixed(1), 1],
     ["Fairways hit", x => x.st.fw, v => `${Math.round(v * 100)}%`, 1],
     ["Greens in regulation", x => [x.st.gir[0] * 18, x.st.gir[1]], v => v.toFixed(1), 1],
     ["Putts a round", x => [x.st.putts * 18, x.st.puttHoles], v => v.toFixed(1), -1],
@@ -3220,6 +3241,13 @@ function MyGame({ rounds, onBack, onStart, onOpen, inProgress, onResume }) {
   const all = sg.flatMap(x => x.holes);
   const apRows = AP.map((b, k) => { const v = all.filter(h => h.e.ap === k && h.e.gr != null); return { label: b.label, n: v.length, hit: v.filter(h => h.e.gr).length }; });
   const fpRows = FP.map((b, k) => { const v = all.filter(h => h.e.fp === k && h.e.p >= 1); return { label: b.label, n: v.length, avg: mean(v.map(h => h.e.p)), one: v.filter(h => h.e.p === 1).length, three: v.filter(h => h.e.p >= 3).length }; });
+  // Par 3s: a personal nearest the pin. The closest tee shot is the one in the shortest first-putt band.
+  const p3 = (() => {
+    const hs = last.flatMap(r => r.h.map((e, i) => ({ e, i, r })).filter(x => x.e && x.e.s != null && !x.e.pu && r.holes[x.i].par === 3));
+    const ans = hs.filter(x => x.e.gr != null); const on = ans.filter(x => x.e.gr && x.e.fp != null);
+    const best = on.length ? on.reduce((a, b) => (b.e.fp < a.e.fp ? b : a)) : null;
+    return { n: ans.length, hit: ans.filter(x => x.e.gr).length, close: on.filter(x => x.e.fp <= 1).length, over: hs.length ? hs.reduce((a, x) => a + x.e.s - 3, 0) / hs.length : 0, best: best && { fp: best.e.fp, i: best.i, course: best.r.course.name, at: best.r.at } };
+  })();
   const like = Object.fromEntries(CATS.map(([c]) => [c, mean(sg.map(x => x.like[c]).filter(x => x != null))]));
   const th = { textAlign: "right", fontWeight: 700, fontSize: 11.5, color: "var(--muted)", padding: "0 0 4px" }; const td = { textAlign: "right", padding: "5px 0", borderTop: "1px solid var(--line)", fontWeight: 700 };
   return (
@@ -3227,7 +3255,7 @@ function MyGame({ rounds, onBack, onStart, onOpen, inProgress, onResume }) {
       <div className="stripes" style={{ padding: "10px 12px 13px" }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 2, fontWeight: 600, opacity: 0.9, minHeight: 36 }}><ChevronLeft size={22} />Back</button>
         <div className="px" style={{ fontSize: 30, lineHeight: 1, marginTop: 4 }}>MY GAME</div>
-        <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.9 }}>{rounds.length ? `${last.length === rounds.length ? plur(rounds.length, "solo round") : `Last ${last.length} of ${rounds.length} solo rounds`}${fullRounds.length ? ` · average ${mean(fullRounds.map(grossOf)).toFixed(1)}` : ""}` : "Your own game, tracked round by round"}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.9 }}>{rounds.length ? `${last.length === rounds.length ? plur(rounds.length, "solo round") : `Last ${last.length} of ${rounds.length} solo rounds`}${fullRounds.length ? ` · average ${mean(fullRounds.map(grossOf)).toFixed(1)} (${mean(fullRounds.map(pointsOf)).toFixed(1)} pts)` : ""}` : "Your own game, tracked round by round"}</div>
       </div>
       <div style={{ padding: "11px 12px 30px", display: "grid", gap: 10, alignContent: "start" }}>
         {inProgress && <button className="cta" onClick={onResume}>Resume your solo round</button>}
@@ -3305,6 +3333,17 @@ function MyGame({ rounds, onBack, onStart, onOpen, inProgress, onResume }) {
                 ))}
               </div>
             )}
+            {p3.n > 0 && (
+              <div className="card" style={{ padding: "10px 11px" }} data-par3>
+                <div className="cap" style={{ fontWeight: 700, marginBottom: 7 }}>Par 3s: your own nearest the pin</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, textAlign: "center" }}>
+                  <div><div className="px" style={{ fontSize: 26, lineHeight: 1 }}>{p3.hit}/{p3.n}</div><div className="cap" style={{ fontSize: 11 }}>greens hit</div></div>
+                  <div><div className="px" style={{ fontSize: 26, lineHeight: 1 }}>{p3.close}</div><div className="cap" style={{ fontSize: 11 }}>inside 3 m</div></div>
+                  <div><div className="px" style={{ fontSize: 26, lineHeight: 1 }}>{fmtPar(Math.round(p3.over * 10) / 10)}</div><div className="cap" style={{ fontSize: 11 }}>a hole</div></div>
+                </div>
+                {p3.best && <p style={{ fontSize: 13, fontWeight: 600, marginTop: 8 }}>Closest: {FP[p3.best.fp].label.toLowerCase()}, hole {p3.best.i + 1} at {p3.best.course} ({fmtDay(p3.best.at)}).</p>}
+              </div>
+            )}
             {fpRows.some(r => r.n) && (
               <div className="card" style={{ padding: "10px 11px" }} data-fp>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
@@ -3318,7 +3357,7 @@ function MyGame({ rounds, onBack, onStart, onOpen, inProgress, onResume }) {
               <div className="card" style={{ padding: "3px 11px" }}>
                 {[...rounds].reverse().map((r, k) => { const n = holesPlayed(r); const t = roundSG(r, H); return (
                   <button key={r.id} onClick={() => onOpen(r.id)} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: k ? "1px solid var(--line)" : "none", textAlign: "left" }}>
-                    <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700 }}>{r.course.name}</div><div className="cap">{fmtDay(r.at)}{n < 18 ? ` · ${plur(n, "hole")}` : ""} · strokes gained {sgTxt(t.total.sg)}</div></div>
+                    <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700 }}>{r.course.name}</div><div className="cap">{fmtDay(r.at)}{n < 18 ? ` · ${plur(n, "hole")}` : ""} · {t.pts} pts · strokes gained {sgTxt(t.total.sg)}</div></div>
                     <div style={{ display: "flex", alignItems: "center", gap: 4, flex: "none" }}><span className="px" style={{ fontSize: 24, lineHeight: 1 }}>{grossOf(r)}</span><ChevronRight size={18} /></div>
                   </button>
                 ); })}
@@ -3797,7 +3836,7 @@ async function drawResultCard(f) {
   text(f.date, W / 2, 295, `600 32px ${SANS}`, "rgba(241,234,219,.75)");
   // crown
   const crown = SPRITES.crown, cs = 14, cw = crown[0].length * cs, cx = (W - cw) / 2;
-  crown.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") { g.fillStyle = PAL[ch]; g.fillRect(cx + x * cs, 330 + y * cs, cs, cs); } }));
+  if (f.sprite !== null) crown.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") { g.fillStyle = PAL[ch]; g.fillRect(cx + x * cs, 330 + y * cs, cs, cs); } }));
   g.save(); g.shadowColor = "#14150F"; g.shadowOffsetX = 6; g.shadowOffsetY = 6;
   text(f.head, W / 2, 480, fit(f.head, 980, 124, PX), "#F1EADB");
   text(f.sub, W / 2, 560, fit(f.sub, 980, 66, PX), "#D9B07A");
@@ -3809,22 +3848,23 @@ async function drawResultCard(f) {
   f.rows.forEach((r, i) => {
     const y = top + 15 + i * rh, mid = y + rh / 2;
     if (i) { g.fillStyle = "#DDD5C3"; g.fillRect(90, y, 888, 3); }
-    text(String(r.rank), 120, mid + 22, `400 ${Math.round(rh * 0.55)}px ${PX}`, r.rank === 1 ? "#B4472E" : "#8A8577");
-    text(r.name, 180, mid + (rh > 90 ? 2 : 6), fit(r.name, 560, Math.round(rh * 0.36), SERIF, "700"), "#1B1C1A", "left");
-    if (rh > 90) text(r.line, 180, mid + 40, `600 ${Math.round(rh * 0.22)}px ${SANS}`, "#6B675C", "left");
-    text(`${r.pts}`, 930, mid + 20, `400 ${Math.round(rh * 0.6)}px ${PX}`, "#1B1C1A", "right");
-    text(r.pts === 1 ? "PT" : "PTS", 978, mid + 20, `400 ${Math.round(rh * 0.26)}px ${PX}`, "#6B675C", "right");
+    const solo = r.unit != null; const nx = solo ? 100 : 180; // solo rows have no rank and their own unit
+    if (!solo) text(String(r.rank), 120, mid + 22, `400 ${Math.round(rh * 0.55)}px ${PX}`, r.rank === 1 ? "#B4472E" : "#8A8577");
+    text(r.name, nx, mid + (rh > 90 ? 2 : 6), fit(r.name, 560, Math.round(rh * 0.36), SERIF, "700"), "#1B1C1A", "left");
+    if (rh > 90) text(r.line, nx, mid + 40, fit(r.line, 600, Math.round(rh * 0.22), SANS, "600"), "#6B675C", "left");
+    text(`${r.pts}`, solo ? 978 : 930, mid + 20, `400 ${Math.round(rh * 0.6)}px ${PX}`, r.color || "#1B1C1A", "right");
+    if (!solo) text(r.pts === 1 ? "PT" : "PTS", 978, mid + 20, `400 ${Math.round(rh * 0.26)}px ${PX}`, "#6B675C", "right");
   });
   // footer
-  text("BANK IT OR BUST", W / 2, H - 92, `400 44px ${PX}`, "#2F4A3A");
+  text(f.foot || "BANK IT OR BUST", W / 2, H - 92, fit(f.foot || "BANK IT OR BUST", 980, 44, PX, "400"), "#2F4A3A");
   text(`Played with Puntaro · ${SITE_URL}`, W / 2, H - 46, `600 28px ${SANS}`, "#6B675C");
   return c;
 }
-function ResultCardSheet({ round, people, at, onClose }) {
+function ResultCardSheet({ round, people, at, onClose, solo }) {
   const [img, setImg] = useState(null);
   const [blob, setBlob] = useState(null);
   const [msg, setMsg] = useState("");
-  const facts = useMemo(() => cardFacts(round, people, at), [round, people, at]);
+  const facts = useMemo(() => solo || cardFacts(round, people, at), [round, people, at, solo]);
   useEffect(() => {
     let gone = false;
     drawResultCard(facts).then(c => { if (gone) return; setImg(c.toDataURL("image/png")); c.toBlob(b => { if (!gone) setBlob(b); }, "image/png"); });
@@ -3834,10 +3874,10 @@ function ResultCardSheet({ round, people, at, onClose }) {
   const canShare = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
   const share = async () => { track("share_card", { how: "share" }); try { await navigator.share({ files: [file], text: facts.text }); } catch (e) { if (e && e.name !== "AbortError") setMsg("Couldn't open sharing. Save the image instead."); } };
   return (
-    <Sheet title="Share the result" onClose={onClose}>
+    <Sheet title={solo ? "Share my round" : "Share the result"} onClose={onClose}>
       <div style={{ display: "grid", gap: 10 }}>
         {img ? <img src={img} alt={`Result card: ${facts.head}, ${facts.sub}`} style={{ width: "100%", border: "3px solid var(--night)", display: "block" }} /> : <p className="cap" role="status">Making the card…</p>}
-        {canShare && <button className="cta" onClick={share}>Share to the group</button>}
+        {canShare && <button className="cta" onClick={share}>{solo ? "Share my round" : "Share to the group"}</button>}
         {img && <a className={canShare ? "chip" : "cta"} onClick={() => track("share_card", { how: "save" })} href={img} download={file ? file.name : "puntaro.png"} style={{ textAlign: "center", padding: "9px 0", textDecoration: "none" }}>Save image</a>}
         {msg && <p role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{msg}</p>}
       </div>
@@ -5684,7 +5724,7 @@ function Game({ user, cloud, profile, now0, finished }) {
       <KeepAwake active={(view === "round" && !!round) || (view === "solo" && !!solo)} hole={view === "solo" && solo ? solo.hole + 1 : round ? round.hole + 1 : 1} />
       {view === "soloSetup" && <Setup solo people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{}} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); track("solo_start", {}); setSolo(newSolo(cfg, people.me)); setView("solo"); }} />}
       {view === "solo" && solo && <SoloRound solo={solo} earlier={soloRounds} onChange={setSolo} onMoments={showMoments} me={{ name: (people.me.first || "").trim() || "You" }} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={finishSolo} onDiscard={() => { setSolo(null); setView("tabs"); setTab("home"); }} />}
-      {view === "soloReport" && openSolo && <SoloReport solo={openSolo.solo} fresh={openSolo.fresh} earlier={soloRounds.filter(x => x.id !== openSolo.solo.id && x.at < openSolo.solo.at)} onBack={() => { const f = openSolo.fresh; setOpenSolo(null); setView(f ? "game" : gameFrom.current); }} onGame={() => { setOpenSolo(null); gameFrom.current = "tabs"; setView("game"); }} />}
+      {view === "soloReport" && openSolo && <SoloReport name={(people.me.first || "").trim() || "You"} solo={openSolo.solo} fresh={openSolo.fresh} earlier={soloRounds.filter(x => x.id !== openSolo.solo.id && x.at < openSolo.solo.at)} onBack={() => { const f = openSolo.fresh; setOpenSolo(null); setView(f ? "game" : gameFrom.current); }} onGame={() => { setOpenSolo(null); gameFrom.current = "tabs"; setView("game"); }} />}
       {view === "game" && <MyGame rounds={openSolo && openSolo.fresh && !soloRounds.some(x => x.id === openSolo.solo.id) ? [...soloRounds, openSolo.solo] : soloRounds} inProgress={!!solo} onResume={() => setView("solo")} onBack={() => setView("tabs")} onStart={() => setView("soloSetup")} onOpen={id => { const sr = soloRounds.find(x => x.id === id); if (sr) { gameFrom.current = "game"; setOpenSolo({ solo: sr, fresh: false }); setView("soloReport"); } }} />}
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} rowFx={rowFx} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
