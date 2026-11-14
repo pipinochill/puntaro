@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.93";
+const APP_VERSION = "0.94";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3029,6 +3029,7 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
   const i = solo.hole; const par = solo.holes[i].par; const e = solo.h[i] || {}; const has = e.s != null;
   const [ask, setAsk] = useState(false);
   const [sure, setSure] = useState(false);
+  const [soFar, setSoFar] = useState(false);
   const set = patch => onChange(s => { const h = [...s.h]; h[i] = { ...(h[i] || {}), ...patch }; return { ...s, h }; });
   const tog = (k, v) => set({ [k]: e[k] === v ? null : v });
   const bump = d => { SFX.tap(); set({ s: has && !e.pu ? Math.max(1, Math.min(15, e.s + d)) : par, pu: null }); };
@@ -3079,9 +3080,10 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMom
           {range18.map(k => <button key={k} onClick={() => go(k)} aria-label={`Go to hole ${k + 1}`} aria-current={k === i} style={{ flex: 1, height: 9, background: solo.h[k] && solo.h[k].s != null ? "var(--flag)" : "rgba(255,255,255,.22)", outline: k === i ? "2px solid var(--hi)" : "none", outlineOffset: 1 }} />)}
         </div>
       </div>
-      <div data-solo-run style={{ display: "flex", justifyContent: "space-between", padding: "6px 12px", background: "var(--on-bg)", color: "var(--on-fg)", fontWeight: 700, fontSize: 13.5, borderBottom: "3px solid var(--night)" }}>
-        <span>{done ? `${fmtPar(over)} thru ${done}` : "No scores yet"}</span><span>{done ? `${grossOf(solo)} strokes · ${plur(pointsOf(solo), "pt")}` : `Playing off ${solo.ch}`}</span>
-      </div>
+      <button data-solo-run onClick={() => setSoFar(true)} aria-label="Open my round so far" style={{ display: "flex", width: "100%", gap: 8, alignItems: "center", padding: "6px 12px", background: "var(--on-bg)", color: "var(--on-fg)", fontWeight: 700, fontSize: 13.5, borderBottom: "3px solid var(--night)", textAlign: "left" }}>
+        <span style={{ flex: 1 }}>{done ? `${fmtPar(over)} thru ${done}` : "No scores yet"}</span><span>{done ? `${grossOf(solo)} strokes · ${plur(pointsOf(solo), "pt")}` : `Playing off ${solo.ch}`}</span><span className="px" style={{ fontSize: 15, lineHeight: 1 }}>MORE ›</span>
+      </button>
+      {soFar && <SoloSoFar solo={solo} earlier={earlier} onClose={() => setSoFar(false)} />}
       <div style={{ padding: "10px 12px 96px", display: "grid", gap: 9, alignContent: "start" }}>
         {note && <div className="card" data-caddie role="note" style={{ padding: "7px 10px", background: "var(--sel)", boxShadow: "none", fontSize: 13, fontWeight: 600 }}>{note}</div>}
         <div className="card" style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -3165,6 +3167,56 @@ function SoloCard({ s }) {
     </div>
   );
   return <div style={{ display: "grid", gap: 5 }} data-solo-card>{row(0, 9)}{row(9, 18)}<div className="cap" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><span>Green: under par</span><span>Sand: bogey</span><span>Red: double or worse</span><span>Small number: points</span>{s.h.some(e => e && e.pu) && <span>P: picked up</span>}</div></div>;
+}
+
+// Mid-round: the card so far, where the shots are going, and how it compares with your usual round at this stage.
+function usualSoFar(solo, earlier) {
+  const idx = range18.filter(k => solo.h[k] && solo.h[k].s != null); if (!idx.length) return null;
+  const prev = earlier.slice(-8).filter(r => idx.every(k => r.h[k] && r.h[k].s != null && r.holes[k]));
+  if (prev.length < 2) return null;
+  const over = r => idx.reduce((a, k) => a + r.h[k].s - r.holes[k].par, 0);
+  const usual = prev.reduce((a, r) => a + over(r), 0) / prev.length;
+  return { d: over(solo) - usual, n: prev.length, usual, sameCourse: prev.every(r => r.course.name === solo.course.name) };
+}
+function SoloSoFar({ solo, earlier, onClose }) {
+  const g = roundSG(solo); const n = g.n; const st = g.st; const u = usualSoFar(solo, earlier);
+  const stage = n === 18 ? "after 18" : `thru ${n}`;
+  const Tile = ({ v, l, k }) => <div data-sofar={k} style={{ border: "2px solid var(--night)", padding: "6px 2px", textAlign: "center", background: "var(--card)" }}><div className="px" style={{ fontSize: 22, lineHeight: 1 }}>{v}</div><div className="cap" style={{ fontSize: 11 }}>{l}</div></div>;
+  return (
+    <div style={sheetWrap} onClick={onClose}>
+      <div className="sheet card" role="dialog" aria-label="My round so far" onClick={e => e.stopPropagation()} style={{ ...sheetBox, padding: 0 }}>
+        <div className="stripes" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div className="px" style={{ fontSize: 28, lineHeight: 1 }}>ROUND SO FAR</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.9 }}>{n ? `${fmtPar(g.gross - g.par)} ${stage} · ${g.gross} strokes · ${plur(g.pts, "pt")}` : "No scores yet"} · {solo.course.name}</div>
+          </div>
+          <button onClick={onClose} aria-label="Close"><X size={24} /></button>
+        </div>
+        <div style={{ padding: "10px 12px 14px", display: "grid", gap: 10 }}>
+          {!n ? <p className="cap">Score a hole and this fills in: your card, where your shots are going and how you're tracking.</p> : <>
+            {u ? <NoteCard n={{ id: "usual", tone: Math.abs(u.d) < 0.75 ? "info" : u.d < 0 ? "good" : "bad", title: Math.abs(u.d) < 0.75 ? `Right on your usual ${stage}` : `${Math.abs(u.d).toFixed(1)} shots ${u.d < 0 ? "better" : "worse"} than your usual ${stage}`, text: `Over your last ${u.n} solo rounds${u.sameCourse ? " here" : ""} you were ${fmtPar(Math.round(u.usual * 10) / 10)} on these holes.` }} />
+              : <p className="cap" data-nousual>After two solo rounds, this shows how you're tracking against your usual round at the same stage.</p>}
+            <div><div className="cap" style={{ fontWeight: 700, marginBottom: 6 }}>Scorecard</div><SoloCard s={solo} /></div>
+            <div>
+              <div className="cap" style={{ fontWeight: 700, marginBottom: 8 }}>Strokes gained so far, against your handicap</div>
+              <SgBars g={g} />
+              <div style={{ borderTop: "1px solid var(--line)", marginTop: 8, paddingTop: 6, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontWeight: 800 }}>Total</span><span className="px" data-sg="total" style={{ fontSize: 22, lineHeight: 1, color: sgCol(g.total.sg) }}>{sgTxt(g.total.sg)}</span></div>
+              {CATS.some(([c]) => g.cats[c].n < 4) && <p className="cap" style={{ marginTop: 5 }}>A dash needs a few more holes with answers.</p>}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              <Tile k="fw" v={st.fw[1] ? `${st.fw[0]}/${st.fw[1]}` : "–"} l="fairways" />
+              <Tile k="gir" v={st.gir[1] ? `${st.gir[0]}/${st.gir[1]}` : "–"} l="greens in reg" />
+              <Tile k="putts" v={st.puttHoles ? st.putts : "–"} l="putts" />
+              <Tile k="three" v={st.three} l="three-putts" />
+              <Tile k="pen" v={st.pen} l="penalties" />
+              <Tile k="ud" v={st.ud[1] ? `${st.ud[0]}/${st.ud[1]}` : "–"} l="up and downs" />
+            </div>
+            {n < 18 && <p className="cap">To play to your handicap you need {plur(Math.max(0, 36 - g.pts), "more point")} from the last {plur(18 - n, "hole")}{36 - g.pts > 0 ? ` (about ${((36 - g.pts) / (18 - n)).toFixed(1)} a hole)` : ""}.</p>}
+          </>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SoloReport({ solo, earlier, onBack, onGame, fresh, name = "You" }) {
