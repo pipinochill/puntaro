@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.90";
+const APP_VERSION = "0.91";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -2078,14 +2078,15 @@ function Home({ solo, onSolo, onGame, soloCount = 0, people, round, recent, boar
         </button>
 
         {solo ? (
-          <div className="card" style={{ padding: 12 }} data-solo-progress>
+          <HoldRow className="card" onHold={() => askDelete("solo")} style={{ padding: 12 }}><div data-solo-progress>
             <div className="cap" style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>Solo round in progress<span className="pill px" style={{ background: "var(--flag)", color: "var(--dk)", padding: "1px 6px", fontSize: 13 }}>SOLO</span></div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
               <h3 style={{ fontSize: 15, fontWeight: 800 }}>{solo.course.name}</h3>
               <span style={{ fontWeight: 700 }}>{holesPlayed(solo) ? `${fmtPar(soloOver(solo))} thru ${holesPlayed(solo)}` : "Not started"}</span>
             </div>
             <button className="cta" style={{ marginTop: 11, padding: 11, fontSize: 14 }} onClick={onSolo}>Resume solo round</button>
-          </div>
+            <p className="cap" style={{ marginTop: 5, textAlign: "center" }}>Hold to delete this round.</p>
+          </div></HoldRow>
         ) : (
           <div style={{ display: "flex", gap: 9 }}>
             <button onClick={onSolo} className="card" style={{ flex: 1, padding: "10px 12px", textAlign: "left", color: "var(--ink)" }}>
@@ -2133,17 +2134,17 @@ function Home({ solo, onSolo, onGame, soloCount = 0, people, round, recent, boar
           </div>
         )}
 
-        {trash.filter(x => x.kind === "round").length > 0 && (
+        {trash.filter(x => x.kind !== "recent").length > 0 && (
           <div>
             <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recently deleted</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 5 minutes, then gone for good.</p></div>
             <div className="card" style={{ padding: "5px 11px" }}>
-              {trash.filter(x => x.kind === "round").map((x, i) => {
+              {trash.filter(x => x.kind !== "recent").map((x, i) => {
                 const left = Math.max(0, Math.ceil((TRASH_MS - (now - x.at)) / 1000));
                 return (
                   <div key={x.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700 }}>{x.kind === "round" ? x.item.course.name : x.item.course}</div>
-                      <div className="cap">{x.kind === "round" ? "In progress" : x.item.when} · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</div>
+                      <div style={{ fontWeight: 700 }}>{x.kind !== "recent" ? x.item.course.name : x.item.course}</div>
+                      <div className="cap">{x.kind === "solo" ? "Solo round, in progress" : x.kind === "round" ? "In progress" : x.item.when} · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</div>
                     </div>
                     <button className="chip" onClick={() => onRestore(x)}>Restore</button>
                   </div>
@@ -2164,7 +2165,7 @@ function Home({ solo, onSolo, onGame, soloCount = 0, people, round, recent, boar
 
 // Finished rounds: tap for the scoresheet, hold to remove (stats keep it).
 function History({ recent, askDelete, onOpenRound, trash, now, onRestore }) {
-  const gone = trash.filter(x => x.kind !== "round");
+  const gone = trash.filter(x => x.kind === "recent");
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "20px 16px 18px" }}><h1>Round history</h1></div>
@@ -3030,7 +3031,10 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard }) {
   const [sure, setSure] = useState(false);
   const set = patch => onChange(s => { const h = [...s.h]; h[i] = { ...(h[i] || {}), ...patch }; return { ...s, h }; });
   const tog = (k, v) => set({ [k]: e[k] === v ? null : v });
-  const bump = d => { SFX.tap(); set({ s: has ? Math.max(1, Math.min(15, e.s + d)) : par }); };
+  const bump = d => { SFX.tap(); set({ s: has && !e.pu ? Math.max(1, Math.min(15, e.s + d)) : par, pu: null }); };
+  // Pick up: stop playing the hole. It counts as a net double bogey, like in a Puntaro round.
+  const puScore = par + 2 + Math.floor(solo.ch / 18) + (solo.holes[i].si <= solo.ch % 18 ? 1 : 0);
+  const pick = () => { SFX.tap(); set(e.pu ? { s: null, pu: null } : { s: puScore, pu: true, ap: null, gr: null, p: null, fp: null }); };
   const go = k => onChange(s => ({ ...s, hole: Math.max(0, Math.min(17, k)) }));
   const done = holesPlayed(solo); const over = soloOver(solo);
   const note = useMemo(() => caddieNote(solo, i, earlier), [solo, i, earlier]);
@@ -3072,25 +3076,31 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard }) {
         <div className="card" style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={() => bump(-1)} aria-label="One less" style={{ width: 48, height: 48, border: "3px solid var(--night)", display: "grid", placeItems: "center", background: "var(--chalk)", color: "var(--ink)", flex: "none" }}><Minus size={24} /></button>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <ScoreMark v={has ? e.s : null} par={par} />
-            <div data-solo-score style={{ fontSize: 12.5, fontWeight: 700, color: has && e.s > par ? "var(--red)" : has && e.s < par ? "var(--fair)" : "var(--muted)" }}>{has ? scoreName(e.s, par).label : "Tap + to start at par"}</div>
+            <ScoreMark v={has ? e.s : null} par={par} pick={!!e.pu} />
+            <div data-solo-score style={{ fontSize: 12.5, fontWeight: 700, color: has && e.s > par ? "var(--red)" : has && e.s < par ? "var(--fair)" : "var(--muted)" }}>{e.pu ? `Picked up: counts as ${e.s}` : has ? scoreName(e.s, par).label : "Tap + to start at par"}</div>
           </div>
+          <button onClick={pick} aria-label="Pick up" aria-pressed={!!e.pu} className="px" style={{ width: 40, height: 48, border: "3px solid var(--night)", background: e.pu ? "var(--red)" : "var(--card)", color: e.pu ? "#fff" : "var(--ink)", fontSize: 26, lineHeight: 1, flex: "none" }}>P</button>
           <button onClick={() => bump(1)} aria-label="One more" style={{ width: 48, height: 48, border: "3px solid var(--night)", display: "grid", placeItems: "center", background: "var(--pine)", color: "#F4F0E6", flex: "none" }}><Plus size={24} /></button>
         </div>
         <div style={{ display: "grid", gap: 9, opacity: has ? 1 : 0.5 }}>
           {par >= 4 && <div className="card" style={{ padding: "8px 10px" }}><div style={q}>Tee shot</div><Chips k="tee" label="Tee shot" opts={TEE} /></div>}
-          <div className="card" style={{ padding: "8px 10px" }}>
+          {!e.pu && <div className="card" style={{ padding: "8px 10px" }}>
             <div style={q}>{par === 3 ? "Tee shot from (metres)" : "Shot into the green from (metres)"}</div>
             <Chips k="ap" label="Distance to the green" opts={dist} />
             <div style={{ marginTop: 8 }}><Chips k="gr" label="Did it find the green" opts={[[true, "Hit the green"], [false, "Missed the green"]]} /></div>
-          </div>
-          <div className="card" style={{ padding: "8px 10px" }}>
+          </div>}
+          {!e.pu && <div className="card" style={{ padding: "8px 10px" }}>
             <div style={q}>Putts</div>
             <Chips k="p" label="Putts" opts={[[0, "0"], [1, "1"], [2, "2"], [3, "3+"]]} />
             {e.p !== 0 && <><div style={{ ...q, marginTop: 9 }}>First putt from</div><Chips k="fp" label="First putt from" opts={FP.map((b, k) => [k, b.label])} /></>}
+          </div>}
+          <div className="card" style={{ padding: "8px 10px" }}>
+            <div style={q}>Penalty shots on this hole</div>
+            <Chips k="pen" label="Penalty shots" opts={[[1, "1"], [2, "2"], [3, "3"], [4, "4"]]} />
+            <div className="cap" style={{ marginTop: 5 }}>{e.pu ? "Picked up, so only penalties and the tee shot are recorded." : "Already part of your score. This just records how many of your strokes were penalties."}</div>
           </div>
         </div>
-        <p className="cap" style={{ textAlign: "center" }}>{has ? "Skip any question. The score always counts." : "Enter your score, then answer what you can."}</p>
+        <p className="cap" style={{ textAlign: "center" }}>{has ? "Skip any question. The score always counts." : "Enter your score (or P if you picked up), then answer what you can."}</p>
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
         {i < 17 ? <button className="cta" disabled={!has} onClick={() => go(i + 1)}>Next hole</button> : <button className="cta" disabled={!done} onClick={() => setAsk(true)}>Finish round</button>}
@@ -3122,13 +3132,13 @@ function SoloCard({ s }) {
         return (
           <div key={k} style={cell}>
             <div className="cap" style={{ fontSize: 10.5 }}>{k + 1}</div>
-            <div className="px" style={{ fontSize: 19, lineHeight: "24px", height: 26, border: "2px solid var(--night)", background: v == null ? "var(--track)" : d < 0 ? "var(--fair)" : d === 0 ? "var(--card)" : d === 1 ? "var(--lime)" : "var(--red)", color: v == null ? "var(--muted)" : d < 0 || d >= 2 ? "#fff" : "var(--dk)" }}>{v == null ? "·" : v}</div>
+            <div className="px" style={{ fontSize: 19, lineHeight: "24px", height: 26, border: "2px solid var(--night)", background: v == null ? "var(--track)" : d < 0 ? "var(--fair)" : d === 0 ? "var(--card)" : d === 1 ? "var(--lime)" : "var(--red)", color: v == null ? "var(--muted)" : d < 0 || d >= 2 ? "#fff" : "var(--dk)" }}>{v == null ? "·" : e.pu ? "P" : v}</div>
           </div>
         );
       })}
     </div>
   );
-  return <div style={{ display: "grid", gap: 5 }} data-solo-card>{row(0, 9)}{row(9, 18)}<div className="cap" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><span>Green: under par</span><span>Sand: bogey</span><span>Red: double or worse</span></div></div>;
+  return <div style={{ display: "grid", gap: 5 }} data-solo-card>{row(0, 9)}{row(9, 18)}<div className="cap" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><span>Green: under par</span><span>Sand: bogey</span><span>Red: double or worse</span>{s.h.some(e => e && e.pu) && <span>P: picked up</span>}</div></div>;
 }
 
 function SoloReport({ solo, earlier, onBack, onGame, fresh }) {
@@ -3164,6 +3174,8 @@ function SoloReport({ solo, earlier, onBack, onGame, fresh }) {
           <Tile k="gir" v={st.gir[1] ? `${st.gir[0]}/${st.gir[1]}` : "–"} l="greens in regulation" />
           <Tile k="putts" v={st.puttHoles ? st.putts : "–"} l={st.puttHoles && st.puttHoles < n ? `putts (${plur(st.puttHoles, "hole")})` : "putts"} />
           <Tile k="ud" v={st.ud[1] ? `${st.ud[0]}/${st.ud[1]}` : "–"} l="up and downs" />
+          <Tile k="pen" v={st.pen} l={st.pen === 1 ? "penalty shot" : "penalty shots"} />
+          <Tile k="pu" v={st.pu} l={st.pu === 1 ? "hole picked up" : "holes picked up"} />
         </div>
         <div className="card" style={{ padding: "9px 10px" }}><div className="cap" style={{ fontWeight: 700, marginBottom: 6 }}>Scorecard</div><SoloCard s={solo} /></div>
         <button className="cta" onClick={onGame}>See my game and trends</button>
@@ -3193,6 +3205,7 @@ function MyGame({ rounds, onBack, onStart, onOpen, inProgress, onResume }) {
     ["Putts a round", x => [x.st.putts * 18, x.st.puttHoles], v => v.toFixed(1), -1],
     ["Three-putts a round", x => [x.st.three * 18, x.st.puttHoles], v => v.toFixed(1), -1],
     ["Up and downs", x => x.st.ud, v => `${Math.round(v * 100)}%`, 1],
+    ["Penalty shots a round", x => [x.st.pen * 18, x.n], v => v.toFixed(1), -1],
     ["Doubles or worse a round", x => [x.holes.filter(h => h.e.s - h.par >= 2).length * 18, x.n], v => v.toFixed(1), -1],
   ];
   const all = sg.flatMap(x => x.holes);
@@ -5299,13 +5312,17 @@ function Game({ user, cloud, profile, now0, finished }) {
   }, [now]); // eslint-disable-line react-hooks/exhaustive-deps
   const confirmDelete = () => {
     const at = Date.now();
-    if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, live, at }, ...t]); setRound(null); setLive(null); }
+    if (del.kind === "solo") { if (solo) setTrash(t => [{ id: at, kind: "solo", item: solo, at }, ...t]); setSolo(null); }
+    else if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, live, at }, ...t]); setRound(null); setLive(null); }
     else { const item = recent[del.i]; setTrash(t => [{ id: at, kind: "recent", item, at }, ...t]); if (item.id) cloud.setMine(`rounds/${item.id}`, { hidden: true }, true).catch(() => {}); }
     setNow(at); setDel(null);
   };
   const restore = x => {
     setTrash(t => t.filter(y => y.id !== x.id));
-    if (x.kind === "round") {
+    if (x.kind === "solo") {
+      if (solo) setTrash(t => [{ id: Date.now(), kind: "solo", item: solo, at: Date.now() }, ...t]); // swap: the one in progress goes to Recently deleted
+      setSolo(x.item);
+    } else if (x.kind === "round") {
       park(); // the round in progress is paused, not deleted
       applyHoles(x.item.holes || null); setRound(x.item); setLive(x.live || null);
     } else if (x.item && x.item.id) cloud.setMine(`rounds/${x.item.id}`, { hidden: false }, true).catch(() => {});
@@ -5646,7 +5663,7 @@ function Game({ user, cloud, profile, now0, finished }) {
         <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onPointerDown={() => { armed.current = true; }} onClick={() => ready() && setDel(null)}>
           <div className="sheet card" role="dialog" aria-label="Delete round" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
             <h2 className="h2">Delete this round?</h2>
-            <p className="cap" style={{ marginTop: 3 }}>{del.kind === "round" ? `${round.course.name}, in progress` : `${recent[del.i].course}, ${recent[del.i].when}`}. You can restore it from Recently deleted for 5 minutes.</p>
+            <p className="cap" style={{ marginTop: 3 }}>{del.kind === "solo" ? `${solo ? solo.course.name : "Solo round"}, solo round in progress` : del.kind === "round" ? `${round.course.name}, in progress` : `${recent[del.i].course}, ${recent[del.i].when}`}. You can restore it from Recently deleted for 5 minutes.</p>
             <div style={{ display: "grid", gap: 6, marginTop: 9 }}>
               <button className="cta" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => ready() && confirmDelete()}>Delete round</button>
               <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => ready() && setDel(null)}>Keep it</button>

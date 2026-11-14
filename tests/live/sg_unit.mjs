@@ -26,6 +26,12 @@ check("Score only: just the total", (g => g.total != null && g.tee === null && g
 check("Putts only: putting is known, the rest isn't", (g => g.putt != null && g.app === null && g.short === null)(holeSG(3, { s: 4, p: 2 })));
 check("More putts than strokes allow is capped", holeSG(3, { s: 2, p: 3, gr: true, fp: 1 }).putt === expPutts(FP[1].ft) - 1);
 
+check("Picked-up hole: counts for the total only", (g => g.total != null && g.tee === null && g.putt === null)(holeSG(4, { s: 7, pu: true, tee: "T", p: 2 })));
+check("Penalty after a tee shot in trouble is charged to the tee shot", near(holeSG(4, { s: 6, tee: "T", pen: 1, ap: 2, gr: true, p: 2, fp: 2 }).tee, holeSG(4, { s: 6, tee: "T", ap: 2, gr: true, p: 2, fp: 2 }).tee - 1, 1e-9));
+check("...and a penalty isn't mistaken for a chip", near(holeSG(4, { s: 6, tee: "F", pen: 1, ap: 2, gr: false, p: 2, fp: 1 }).short, 2.5 - 1 - expPutts(FP[1].ft), 1e-9));
+const penR = mk((par, i) => ({ s: par + 2, tee: par >= 4 ? "T" : undefined, pen: i % 4 === 0 ? 1 : 0, pu: i === 5, p: 2 }));
+check("Round counts penalty shots and pick-ups", roundSG(penR).st.pen === 5 && roundSG(penR).st.pu === 1);
+check("Trends and notes mention penalties", insights([penR]).some(x => x.id === "pens") && roundNotes([penR]).some(x => /penalty/.test(x.title)));
 // A round of bogeys from an 18 handicap is about what the benchmark expects
 const bogey = mk((par) => ({ s: par + 1, tee: par >= 4 ? "F" : undefined, ap: 2, gr: false, p: 2, fp: 1 }));
 const rb = roundSG(bogey);

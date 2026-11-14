@@ -53,7 +53,8 @@ export function holeSG(par, e) {
   const L = !drive && e.ap != null ? AP[e.ap].yd : LEN[par] || LEN[4];
   const total = expStrokes("tee", L) - S;
   const out = { total, tee: null, app: null, short: null, putt: null };
-  if (P == null) return out;
+  if (P == null || e.pu) return out; // a picked-up hole counts for the total only
+  const pen = e.pen || 0;
   const ft = e.fp != null ? FP[e.fp].ft : e.gr === false ? 8 : e.gr === true ? 26 : 16; // no answer: a typical first putt
   const onGreen = P === 0 ? 0 : expPutts(ft);
   out.putt = P === 0 ? 0 : onGreen - P;
@@ -61,11 +62,11 @@ export function holeSG(par, e) {
   if (drive) {
     const R = par === 4 && e.ap != null ? AP[e.ap].yd : L - 230;
     const after = e.tee === "F" ? expStrokes("fwy", R) : e.tee === "L" || e.tee === "R" ? expStrokes("rgh", R) : e.tee === "T" ? expStrokes("rec", L - 200) : (expStrokes("fwy", R) + expStrokes("rgh", R)) / 2;
-    teeV = expStrokes("tee", L) - 1 - after;
+    teeV = expStrokes("tee", L) - 1 - after - (e.tee === "T" ? Math.min(pen, 2) : 0); // penalties after a tee shot in trouble belong to the tee shot
     if (e.tee) out.tee = teeV;
   }
   if (e.gr == null) return out;
-  out.short = e.gr ? 0 : SHORT - clamp(S - P - Math.max(1, par - 2), 1, 2) - onGreen;
+  out.short = e.gr ? 0 : SHORT - clamp(S - P - pen - Math.max(1, par - 2), 1, 2) - onGreen;
   out.app = total - out.putt - out.short - teeV;
   return out;
 }
@@ -74,8 +75,8 @@ const played = r => r.h.map((e, i) => (e && e.s != null ? i : -1)).filter(i => i
 export const holesPlayed = r => played(r).length;
 export const grossOf = r => played(r).reduce((a, i) => a + r.h[i].s, 0);
 export const parOf = r => played(r).reduce((a, i) => a + r.holes[i].par, 0);
-const girOf = (par, e) => (e.p == null ? null : e.s - Math.min(e.p, e.s - 1) <= par - 2);
-const upDown = (par, e) => (e.gr !== false || e.p == null ? null : e.p <= 1 && e.s - e.p <= par - 1);
+const girOf = (par, e) => (e.p == null || e.pu ? null : e.s - Math.min(e.p, e.s - 1) <= par - 2);
+const upDown = (par, e) => (e.gr !== false || e.p == null || e.pu ? null : e.p <= 1 && e.s - e.p <= par - 1);
 
 /** A whole round. H: the handicap to compare with (null = the round's own course handicap). */
 export function roundSG(r, H = null) {
@@ -84,13 +85,14 @@ export function roundSG(r, H = null) {
   const per = { tee: (gap * SHARE.tee) / nDrive, app: (gap * SHARE.app) / 18, short: (gap * SHARE.short) / 18, putt: (gap * SHARE.putt) / 18 };
   const cats = {}; const pro = {};
   ["tee", "app", "short", "putt"].forEach(c => { cats[c] = { sg: 0, n: 0 }; pro[c] = { sg: 0, n: 0 }; });
-  const tot = { sg: 0, n: 0 }; const st = { fw: [0, 0], gir: [0, 0], ud: [0, 0], putts: 0, puttHoles: 0, three: 0, one: 0, trouble: 0, left: 0, right: 0, green: [0, 0] };
+  const tot = { sg: 0, n: 0 }; const st = { fw: [0, 0], gir: [0, 0], ud: [0, 0], putts: 0, puttHoles: 0, three: 0, one: 0, trouble: 0, left: 0, right: 0, green: [0, 0], pen: 0, pu: 0 };
   const holes = [];
   played(r).forEach(i => {
     const par = r.holes[i].par; const e = r.h[i]; const g = holeSG(par, e);
     tot.sg += g.total + gap / 18; tot.n++;
     ["tee", "app", "short", "putt"].forEach(c => { if (g[c] != null) { cats[c].sg += g[c] + per[c]; cats[c].n++; pro[c].sg += g[c]; pro[c].n++; } });
     if (par >= 4 && e.tee) { st.fw[1]++; if (e.tee === "F") st.fw[0]++; if (e.tee === "T") st.trouble++; if (e.tee === "L") st.left++; if (e.tee === "R") st.right++; }
+    st.pen += e.pen || 0; if (e.pu) st.pu++;
     const gir = girOf(par, e); if (gir != null) { st.gir[1]++; if (gir) st.gir[0]++; }
     if (e.gr != null) { st.green[1]++; if (e.gr) st.green[0]++; }
     const ud = upDown(par, e); if (ud != null) { st.ud[1]++; if (ud) st.ud[0]++; }
@@ -167,6 +169,11 @@ export function insights(rounds, H = null) {
   const hit = tees.filter(x => x.e.tee === "F"), miss = tees.filter(x => x.e.tee !== "F");
   if (hit.length >= 5 && miss.length >= 5) { const d = avg(miss.map(x => x.over)) - avg(hit.map(x => x.over)); if (d >= 0.3) add("fwcost", "info", "Fairways matter for you", `You score ${f1(d)} of a stroke worse on holes where you miss the fairway.`, 55); }
 
+  if (all.length >= 18) {
+    const pens = all.reduce((a, x) => a + (x.e.pen || 0), 0); const per = (pens / all.length) * 18;
+    if (per >= 2) add("pens", "bad", "Penalty shots are expensive", `About ${f1(per)} a round over ${span}. That's ${f1(per)} strokes before you've hit a bad shot in play.`, 79);
+    const pus = all.filter(x => x.e.pu).length; if ((pus / all.length) * 18 >= 2) add("pickups", "info", "A few holes get away", `You pick up about ${f1((pus / all.length) * 18)} holes a round. Each counts as a net double bogey.`, 56);
+  }
   // Approach
   const aps = AP.map((b, k) => { const v = all.filter(x => x.e.ap === k && x.e.gr != null); return { k, label: b.label, n: v.length, hit: v.filter(x => x.e.gr).length }; }).filter(b => b.n >= 5);
   if (aps.length >= 2) {
@@ -267,6 +274,7 @@ export function roundNotes(rounds, H = null) {
     if (g.cats[best].sg >= 0.5) add("good", `${GOOD[best]}: ${sgn(g.cats[best].sg)}`, detail[best]());
     if (worst !== best && g.cats[worst].sg <= -0.5) add("bad", `${BAD[worst]}: ${sgn(g.cats[worst].sg)}`, detail[worst]());
   }
+  if (st.pen >= 2) add("bad", `${st.pen} penalty shots`, `Without them this was a ${g.gross - st.pen}.`);
   // Against your own earlier rounds
   const rows = perRound(rounds.slice(-9), H); const me = rows[rows.length - 1]; const prev = rows.slice(0, -1);
   if (prev.length >= 2) {
