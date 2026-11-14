@@ -100,8 +100,17 @@ async def main():
                 (11, 0, 'Left', '50–100', 'Hit the green', '2', '6–10 m'), (12, 2, 'Right', '150–200', 'Missed the green', '3+', '6–10 m'), (13, -1, 'Fairway', '50–100', 'Hit the green', '1', '1–3 m'),
                 (14, 0, None, '100–150', 'Hit the green', '2', '3–6 m'), (15, 1, 'Right', '150–200', 'Missed the green', '2', '1–3 m'), (16, 0, 'Fairway', 'Under 50', 'Hit the green', '2', '3–6 m'),
                 (17, 3, 'Trouble', '200+', 'Missed the green', '2', '3–6 m')]
-        for i, over, tee, ap, gr, putts, fp in plan: await hole(i, over, tee, ap, gr, putts, fp)
+        seen_birdie = [False]
+        for i, over, tee, ap, gr, putts, fp in plan:
+            await hole(i, over, tee, ap, gr, putts, fp)
+            if i == 13:
+                await A.wait_for_timeout(250); m = A.locator('.moment')
+                seen_birdie[0] = await m.count() == 1 and 'BIRDIE!' in await m.inner_text()
+                await A.screenshot(path=f'{OUT}/solo_birdie.png')
+                if await m.count(): await m.click(); await A.wait_for_timeout(200)
+                check('...and the next hole opens at the top of the page', await A.evaluate('window.scrollY') == 0 and (await A.locator('.holeno').inner_text()) == '15')
         await A.wait_for_timeout(200)
+        check('Leaving hole 14 after a birdie played the BIRDIE! screen', seen_birdie[0])
         gross = sum(PARS) + 0 + 1 + 1 + 1 + 2 + sum(x[1] for x in plan)
         check('All 18 in: the bar shows the total', f'thru 18' in await A.locator('[data-solo-run]').inner_text() and f'{gross} strokes' in await A.locator('[data-solo-run]').inner_text(), await A.locator('[data-solo-run]').inner_text())
         await A.get_by_role('button', name='Finish round').click(); await A.wait_for_timeout(200)

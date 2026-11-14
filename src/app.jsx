@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.91";
+const APP_VERSION = "0.92";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3025,7 +3025,7 @@ function SgBars({ g }) {
   );
 }
 
-function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard }) {
+function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard, onMoments, me }) {
   const i = solo.hole; const par = solo.holes[i].par; const e = solo.h[i] || {}; const has = e.s != null;
   const [ask, setAsk] = useState(false);
   const [sure, setSure] = useState(false);
@@ -3035,7 +3035,16 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard }) {
   // Pick up: stop playing the hole. It counts as a net double bogey, like in a Puntaro round.
   const puScore = par + 2 + Math.floor(solo.ch / 18) + (solo.holes[i].si <= solo.ch % 18 ? 1 : 0);
   const pick = () => { SFX.tap(); set(e.pu ? { s: null, pu: null } : { s: puScore, pu: true, ap: null, gr: null, p: null, fp: null }); };
-  const go = k => onChange(s => ({ ...s, hole: Math.max(0, Math.min(17, k)) }));
+  // The same big screens as a Puntaro round: birdie or better plays when you leave the hole, once.
+  const celebrate = hh => {
+    const x = solo.h[hh]; if (!x || x.s == null || x.pu) return;
+    const p = solo.holes[hh].par; const d = x.s - p;
+    const kind = x.s === 1 && p > 2 ? "ace" : d <= -3 ? "albatross" : d === -2 ? "eagle" : d === -1 ? "birdie" : null;
+    const key = `${solo.id}:${hh}`; if (PLAYED.get(key) === kind) return; PLAYED.set(key, kind);
+    if (kind && onMoments) onMoments(holeScreens({ good: [{ id: "me", kind }], bad: [] }, hh, { me }));
+  };
+  const go = k => { const to = Math.max(0, Math.min(17, k)); if (to > i) celebrate(i); onChange(s => ({ ...s, hole: to })); };
+  useEffect(() => { try { window.scrollTo(0, 0); } catch (err) { /* fine */ } }, [i]);
   const done = holesPlayed(solo); const over = soloOver(solo);
   const note = useMemo(() => caddieNote(solo, i, earlier), [solo, i, earlier]);
   const q = { fontWeight: 700, fontSize: 12.5, color: "var(--muted)", marginBottom: 6 };
@@ -3111,7 +3120,7 @@ function SoloRound({ solo, earlier, onChange, onBack, onFinish, onDiscard }) {
             <h2 className="h2">Finish this round?</h2>
             <p className="cap" style={{ marginTop: 3 }}>{!done ? "No holes scored yet. " : done === 18 ? `${grossOf(solo)} strokes, ${fmtPar(over)}.` : `${plur(done, "hole")} scored (${fmtPar(over)}). A part round still feeds your trends.`}{done ? " It's saved to My game and your Round history." : ""}</p>
             <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
-              <button className="cta" disabled={!done} onClick={() => { setAsk(false); onFinish(); }}>Finish and see my report</button>
+              <button className="cta" disabled={!done} onClick={() => { setAsk(false); celebrate(i); onFinish(); }}>Finish and see my report</button>
               <button className="chip" style={{ padding: "8px 0", textAlign: "center" }} onClick={() => setAsk(false)}>Keep playing</button>
               <button style={{ padding: "8px 0", textAlign: "center", color: "var(--red)", fontWeight: 700, fontSize: 13 }} onClick={() => (sure ? onDiscard() : setSure(true))}>{sure ? "Tap again to throw this round away" : "Discard this round"}</button>
             </div>
@@ -5674,7 +5683,7 @@ function Game({ user, cloud, profile, now0, finished }) {
       {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{ setFriendIds, myRef, makeRef, onFind: findFriendCode, onSend: sendFriendRequest, onAddFriend: addFriend }} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); track("round_start", { players: r.playerIds.length, live: !!cfg.live, course: r.course.source || "", mode: r.mode }); if (cfg.live) startLive(r, cfg); }} />}
       <KeepAwake active={(view === "round" && !!round) || (view === "solo" && !!solo)} hole={view === "solo" && solo ? solo.hole + 1 : round ? round.hole + 1 : 1} />
       {view === "soloSetup" && <Setup solo people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{}} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); track("solo_start", {}); setSolo(newSolo(cfg, people.me)); setView("solo"); }} />}
-      {view === "solo" && solo && <SoloRound solo={solo} earlier={soloRounds} onChange={setSolo} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={finishSolo} onDiscard={() => { setSolo(null); setView("tabs"); setTab("home"); }} />}
+      {view === "solo" && solo && <SoloRound solo={solo} earlier={soloRounds} onChange={setSolo} onMoments={showMoments} me={{ name: (people.me.first || "").trim() || "You" }} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={finishSolo} onDiscard={() => { setSolo(null); setView("tabs"); setTab("home"); }} />}
       {view === "soloReport" && openSolo && <SoloReport solo={openSolo.solo} fresh={openSolo.fresh} earlier={soloRounds.filter(x => x.id !== openSolo.solo.id && x.at < openSolo.solo.at)} onBack={() => { const f = openSolo.fresh; setOpenSolo(null); setView(f ? "game" : gameFrom.current); }} onGame={() => { setOpenSolo(null); gameFrom.current = "tabs"; setView("game"); }} />}
       {view === "game" && <MyGame rounds={openSolo && openSolo.fresh && !soloRounds.some(x => x.id === openSolo.solo.id) ? [...soloRounds, openSolo.solo] : soloRounds} inProgress={!!solo} onResume={() => setView("solo")} onBack={() => setView("tabs")} onStart={() => setView("soloSetup")} onOpen={id => { const sr = soloRounds.find(x => x.id === id); if (sr) { gameFrom.current = "game"; setOpenSolo({ solo: sr, fresh: false }); setView("soloReport"); } }} />}
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} rowFx={rowFx} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
