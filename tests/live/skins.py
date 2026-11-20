@@ -63,7 +63,13 @@ async def main():
         await play(3)
         check('Hole 4: Mitch\'s birdie wins 3 skins for Mitch + Greg', 'MITCH + GREG WIN 3 SKINS' in (await txt()).upper(), await txt())
         await A.screenshot(path=f'{OUT}/skins_hole4.png')
-        await nxt(3); await play(4)
+        await A.get_by_role('button', name='Next hole').last.click(); await A.wait_for_timeout(300)
+        m = A.locator('.moment'); mt = (await m.inner_text()) if await m.count() else ''
+        check('Leaving hole 4: a 3 SKINS! screen for Mitch + Greg, with Mitch\'s birdie on it too', '3 SKINS!' in mt and 'MITCH + GREG' in mt.upper() and 'BIRDIE' in mt.upper(), mt)
+        await A.screenshot(path=f'{OUT}/skins_moment.png')
+        for _ in range(4):
+            if await A.locator('.moment').count(): await A.locator('.moment').click(); await A.wait_for_timeout(150)
+        await play(4)
         check('Hole 5: best ball level, the second ball decides', 'YOU + NIC WIN 1 SKIN' in (await txt()).upper() and 'Best ball level at 2. Second ball 2 to 1' in await txt(), await txt())
         check('Ticker keeps count: 2 to 3', 'You + Nic 2' in await tick.inner_text() and 'Mitch + Greg 3' in await tick.inner_text(), await tick.inner_text())
         await tick.click(); await A.wait_for_timeout(250)

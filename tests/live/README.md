@@ -26,7 +26,7 @@ Serve the app over http, not file:// (headless Chromium sometimes starts a file:
     python $T/banking.py      $APP /tmp $T   # one scorer: standing orders, bank on the row, bank as you score, own-phone banking, attacks (44)
     python $T/board.py        $APP /tmp $T   # live board: ticker, places and moves, pot/total, $ if it ended now, The Comp tab (14)
     python $T/solo.py         $APP /tmp $T   # solo rounds: shot questions, round report, My game trends, pick up, penalties, hold to delete, birdie screens, points, strokes, par 3s, share card, round so far, kept out of Puntaro stats (62)
-    python $T/skins.py        $APP /tmp $T   # 2v2 skins: best and second ball, carry-overs, chip-off after 18, board, money, share card (27)
+    python $T/skins.py        $APP /tmp $T   # 2v2 skins: best and second ball, carry-overs, chip-off after 18, board, money, share card, skin screens (28)
     python $T/skins_solo.py   $APP /tmp $T   # individual skins: outright winners, carry on a tie for the most, chip-off for those tied on 18, money (18)
     node $T/sg_unit.mjs                       # strokes gained engine: benchmarks, hole and round maths, penalties, points, par 3s, trends (47)
     python $T/handicap.py     $APP /tmp $T src/hcp.js  # estimates, EST/APP tags, Puntaro handicap from witnessed rounds (22)

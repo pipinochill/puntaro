@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.96";
+const APP_VERSION = "0.97";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -1619,6 +1619,7 @@ const GOOD = {
   birdie: { rank: 3, art: "bird", word: "BIRDIE!", label: "Birdie", color: "#2F4A3A", bg: "#BFE0F2", tilt: -7, sound: "birdie" },
   fire: { rank: 2, art: "flames", word: "ON FIRE", label: "On fire x3", color: "#B84A32", bg: "#FFFDF7", tilt: -6, sound: "mult" },
   roll: { rank: 1, art: "flames", word: "ON A ROLL", label: "On a roll x2", color: "#B84A32", bg: "#FFFDF7", tilt: -6, sound: "mult" },
+  skin: { rank: 2.5, art: "pot", word: "SKIN!", label: "Skin", color: "#2F4A3A", bg: "#E8D9A8", tilt: 5, sound: "mult" },
 };
 // What a score is called, for the tag on each player's row.
 function scoreName(v, par) {
@@ -1634,15 +1635,16 @@ function scoreName(v, par) {
   return { label: `+${d}`, bg: "#E89A86" };
 }
 // One screen per hole: the best moment big, then the other nice ones ("Also") and any busts ("Ouch") as rows underneath.
-const ROW_ART = { birdie: "bird", fire: "flames", roll: "flames", eagle: "eagle", albatross: "albatross", ace: "ace" };
+const ROW_ART = { skin: "pot", birdie: "bird", fire: "flames", roll: "flames", eagle: "eagle", albatross: "albatross", ace: "ace" };
 function holeScreens({ good, bad }, hh, people) {
   const nm = id => (people[id] ? people[id].name : "Someone");
   const ouch = bad.map(e => ({ art: "pot", word: `BUST −${e.lost}`, name: nm(e.id), note: e.kept ? `cushion keeps ${e.kept}` : "" }));
   if (good.length) {
-    const g = [...good].sort((a, b) => GOOD[b.kind].rank - GOOD[a.kind].rank); const top = GOOD[g[0].kind];
+    const rk = e => e.rank ?? GOOD[e.kind].rank;
+    const g = [...good].sort((a, b) => rk(b) - rk(a)); const top = { ...GOOD[g[0].kind], ...(g[0].word ? { word: g[0].word, label: g[0].label } : {}) };
     const also = [];
     g.slice(1).forEach(e => { // the same thing for several players goes on one row: "You, Nic & Mitch"
-      const word = `${GOOD[e.kind].word.replace("!", "")}${e.x ? ` x${e.x}` : ""}`.trim();
+      const word = `${(e.word || GOOD[e.kind].word).replace("!", "")}${e.x ? ` x${e.x}` : ""}`.trim();
       const r = also.find(x => x.word === word);
       if (r) r.names.push(nm(e.id)); else also.push({ art: ROW_ART[e.kind], word, names: [nm(e.id)], color: GOOD[e.kind].color });
     });
@@ -3739,9 +3741,14 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   /* Big moments play when you leave a hole, for the final scores: all the good news on one screen, then the bad. */
   const holeEvents = hh => {
     const good = [], bad = [];
-    if (!pc) return { good, bad };
+    // Skins: whoever took the skin (or a pile of carried ones) gets a stamp too. Several skins outrank a birdie.
+    if (round.games.includes("skins")) {
+      const x = skinsCalc(round).holes[hh];
+      if (x && x.win != null) good.push({ id: x.win, kind: "skin", word: x.worth > 1 ? `${x.worth} SKINS!` : "SKIN!", label: x.worth > 1 ? `${x.worth} skins` : "Skin", rank: x.worth >= 3 ? 3.5 : 2.5 });
+    }
     ids.forEach(id => {
       const v = round.scores[id][hh]; if (v == null) return;
+      if (!pc) { const sc = v - PAR[hh]; const k = v === 1 && PAR[hh] > 2 ? "ace" : sc <= -3 ? "albatross" : sc === -2 ? "eagle" : sc === -1 ? "birdie" : null; if (k) good.push({ id, kind: k }); return; }
       const st = pc[id]; const sc = v - PAR[hh]; const bu = st.bustAt[hh];
       if (bu && bu.lost + (bu.kept || 0) > 0) bad.push({ id, kind: "bust", lost: bu.lost, kept: bu.kept || 0 });
       const k = v === 1 && PAR[hh] > 2 ? "ace" : sc <= -3 ? "albatross" : sc === -2 ? "eagle" : sc === -1 ? "birdie" : null;
@@ -3754,7 +3761,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   const celebrateHole = hh => {
     const ev = holeEvents(hh); const key = `${round.drawSeed}:${hh}`; const sig = JSON.stringify(ev);
     if (PLAYED.get(key) === sig) return; PLAYED.set(key, sig);
-    if (ev.good.length || ev.bad.length) api.moments(holeScreens(ev, hh, people));
+    if (ev.good.length || ev.bad.length) api.moments(holeScreens(ev, hh, round.games.includes("skins") && round.mode === "2v2" && round.teams ? { ...people, ...Object.fromEntries(skinsCalc(round).U.map(u => [u.key, { name: u.ids.map(id => people[id].name).join(" + ") }])) } : people));
   };
   const prevH = useRef(h);
   useEffect(() => { if (h > prevH.current) celebrateHole(prevH.current); prevH.current = h; }, [h]); // eslint-disable-line react-hooks/exhaustive-deps
