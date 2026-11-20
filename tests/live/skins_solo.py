@@ -40,8 +40,13 @@ async def main():
                 await A.get_by_role('button', name=f'{n} plus one').click()
                 for _ in range(abs(d)): await A.get_by_role('button', name=f'{n} {"plus" if d > 0 else "minus"} one').click()
             await A.wait_for_timeout(120)
+        seen = {}
         async def nxt(h):
-            await A.get_by_role('button', name='Next hole').last.click(); await A.wait_for_timeout(200)
+            await A.get_by_role('button', name='Next hole').last.click(); await A.wait_for_timeout(250)
+            if await A.locator('.moment').count(): seen[h + 2] = await A.locator('.moment').last.inner_text() if False else await A.locator('.moment').inner_text()
+            if h + 2 in (5, 7, 9) and await A.locator('.carry').count():
+                await A.wait_for_timeout(1200); await A.screenshot(path=f'{OUT}/carry_{h + 2}.png')
+                check(f'Hole {h + 2} alarm shows {h} coins', await A.locator('.coin').count() == {5: 2, 7: 4, 9: 6}[h + 2] and (await A.locator('.coin').first.bounding_box())['width'] > 20)
             for _ in range(4):
                 if await A.locator('.moment').count(): await A.locator('.moment').click(); await A.wait_for_timeout(150)
             got = await A.locator('.holeno').inner_text()
@@ -57,6 +62,11 @@ async def main():
         await A.screenshot(path=f'{OUT}/skins_i_hole3.png')
         for h in range(3, 18): await nxt(h - 1); await play(h)
         check('No Puntaro comeback badge in a skins round', await A.get_by_text('LAST PLACE').count() == 0)
+        flat = {k: v.replace(chr(10), ' ') for k, v in seen.items()}
+        check('Moving onto hole 5 with 2 skins on it: HEADS UP, "Worth a bit now"', 'HEADS UP' in flat.get(5, '') and '2 SKINS' in flat.get(5, '') and 'Worth a bit now' in flat.get(5, ''), flat.get(5))
+        check('Hole 7 with 4 skins: WARNING, "Someone grab this", worth $60 to the winner (4 x $5 x 3 players)', 'WARNING' in flat.get(7, '') and 'Someone grab this' in flat.get(7, '') and '$60' in flat.get(7, ''), flat.get(7))
+        check('Hole 9 with 6 skins: RED ALERT', 'RED ALERT' in flat.get(9, '') and '6 SKINS' in flat.get(9, ''), flat.get(9))
+        check('No alarm for a single skin (hole 4)', 'HEADS UP' not in flat.get(4, '') and 'WARNING' not in flat.get(4, ''), flat.get(4))
         check('15 skins left after the 18th', '15 SKINS TO A CHIP-OFF' in (await t()).upper(), await t())
         off = A.locator('[data-skins-off]')
         names = [await x.inner_text() for x in await off.get_by_role('button').all()]

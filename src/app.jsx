@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.98";
+const APP_VERSION = "0.99";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -270,6 +270,10 @@ const SFX = (() => {
     stopTheme: () => { if (!song) return; clearTimeout(song.timer); const s = song; song = null; try { s.out.gain.setTargetAtTime(0, ctx.currentTime, 0.04); } catch (e) { /* fine */ } },
     tap: () => { const a = ac(); if (a) tone(a, 587, 0, 0.05, { type: "triangle", vol: 0.06 }); },
     up: mk(a => { tone(a, 523, 0, 0.07); tone(a, 784, 0.06, 0.1); }),
+    // Carry-over alarms, louder and longer as more skins pile up.
+    alarm1: mk(a => { tone(a, 880, 0, 0.12, { type: "square", vol: 0.05 }); tone(a, 1175, 0.16, 0.16, { type: "square", vol: 0.05 }); }),
+    alarm2: mk(a => { [0, 0.22, 0.44].forEach(t => { tone(a, 988, t, 0.1, { type: "square", vol: 0.07 }); tone(a, 740, t + 0.1, 0.1, { type: "square", vol: 0.07 }); }); }),
+    alarm3: mk(a => { [0, 0.3, 0.6, 0.9].forEach(t => tone(a, 1100, t, 0.26, { type: "sawtooth", to: 550, vol: 0.09 })); noise(a, 0, 0.3, { from: 400, to: 3000, vol: 0.06 }); }),
     down: mk(a => { tone(a, 392, 0, 0.07); tone(a, 262, 0.06, 0.13, { type: "triangle", vol: 0.1 }); }),
     bank: mk(a => { tone(a, 988, 0, 0.07, { vol: 0.06 }); tone(a, 1319, 0.07, 0.38, { vol: 0.05 }); tone(a, 1976, 0.07, 0.2, { type: "triangle", vol: 0.03, det: 0 }); noise(a, 0.07, 0.08, { from: 7000, to: 5000, vol: 0.04 }); }),
     bust: mk(a => { noise(a, 0, 0.42, { from: 1300, to: 120, vol: 0.14 }); tone(a, 220, 0, 0.6, { type: "sawtooth", to: 45, vol: 0.07 }); [[392, 0.65], [370, 0.9], [349, 1.15]].forEach(([f, t]) => tone(a, f, t, 0.22, { type: "triangle", vol: 0.11 })); tone(a, 330, 1.4, 0.7, { type: "triangle", to: 247, vol: 0.11 }); }),
@@ -337,7 +341,7 @@ const HAPTIC = (() => {
 })();
 // Which sounds also buzz, and how (milliseconds on, off, on...).
 const BUZZ = { up: 10, down: 18, bank: [25, 50, 35], bust: [70, 40, 140], mult: [12, 35, 12, 35, 12], ntp: [15, 40, 15, 40, 45], birdie: [15, 35, 15, 35, 60], eagle: [20, 40, 20, 40, 90], ace: [30, 40, 30, 40, 30, 40, 160],
-  flip: 15, bless: [12, 40, 30], curse: 90, swing: 25, start: [20, 60, 40] };
+  flip: 15, bless: [12, 40, 30], curse: 90, swing: 25, start: [20, 60, 40], alarm1: [30, 60, 30], alarm2: [60, 50, 60, 50, 60], alarm3: [150, 60, 150, 60, 150, 60, 300] };
 Object.keys(BUZZ).forEach(k => { const f = SFX[k]; SFX[k] = (...a) => { HAPTIC.buzz(BUZZ[k]); return f(...a); }; });
 { const ev = SFX.event; SFX.event = k => { HAPTIC.buzz(k === "lost" || k === "water" || k === "fourputt" ? [50, 40, 50] : [15, 40, 25]); return ev(k); }; }
 
@@ -920,6 +924,18 @@ const unitName = (sc, key, people) => { const u = sc.U.find(x => x.key === key);
 const plSk = n => `${Number.isInteger(n) ? n : n.toFixed(1)} skin${n === 1 ? "" : "s"}`;
 const skNum = n => (Number.isInteger(n) ? n : n.toFixed(1));
 const wins = (sc, key, people) => (sc.team || unitName(sc, key, people) === "You" ? "WIN" : "WINS");
+// The carry-over alarm for the hole you're walking onto, once 2 or more skins ride on it. Gets louder as the pile grows.
+const CARRY_LINES = { 2: "Worth a bit now", 3: "Getting spicy", 4: "Someone grab this", 5: "Big hole coming" };
+function carryScreen(round, h, people) {
+  if (!round.games.includes("skins") || h > 17) return null;
+  const sc = skinsCalc(round); if (sc.thru !== h || sc.onLine < 2) return null;
+  const n = sc.onLine; const lvl = n >= 6 ? 3 : n >= 4 ? 2 : 1;
+  const biggest = !sc.holes.some(x => x.worth >= n);
+  const line = CARRY_LINES[n] || (biggest && n >= 7 ? "Biggest pot of the day" : "Huge. Nobody blink.");
+  const stake = round.stake && !skinsPot(round) ? (sc.team ? ` Worth ${money(n * round.stake)} a player.` : ` Worth ${money(n * round.stake * (round.playerIds.length - 1))} to whoever wins it.`) : "";
+  const who = `${sc.carry} ${sc.carry === 1 ? "hole" : "holes"} without a winner.${stake}`;
+  return { carry: { n, hole: h + 1, lvl, line, who }, sound: `alarm${lvl}` };
+}
 // Short codes for the hole grid: A/B for teams, a player's initial (two letters if two share one).
 function skinCodes(sc, people) {
   if (sc.team) return { A: "A", B: "B" };
@@ -1326,6 +1342,20 @@ const CSS = `
 .mrn{font-size:15px;font-weight:700;color:#1B1C1A;}
 .mtap{font-size:14px;font-weight:700;color:#FBF6EA;margin-top:4px;}
 .dimmer{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.86);display:flex;flex-direction:column;align-items:center;justify-content:center;animation:mfade .6s ease both;cursor:pointer;touch-action:none;}
+.carry{width:330px;max-width:100%;border:4px solid #1B1C1A;box-shadow:6px 6px 0 #1B1C1A;background:#FBF6EA;color:#1B1C1A;text-align:center;padding:16px 14px 14px;animation:mfade .25s steps(3) both;}
+.carry.l1{border-top:14px solid #E8B04A;}
+.carry.l2{border-top:14px solid #E8B04A;border-bottom:14px solid #E8B04A;}
+.carry3{padding:16px;background:repeating-linear-gradient(45deg,#1B1C1A 0 14px,#E8B04A 14px 28px);border:4px solid #1B1C1A;animation:cshake .5s steps(2) infinite;}
+.carry3 .carry{background:#B4472E;color:#FBF6EA;box-shadow:none;}
+@keyframes cshake{0%{transform:translate(0,0) rotate(-1deg)}50%{transform:translate(3px,-2px) rotate(1deg)}100%{transform:translate(-2px,2px) rotate(-1deg)}}
+.clvl{font-family:Silkscreen,monospace;font-weight:700;font-size:20px;letter-spacing:1px;}
+.cbig{font-family:'Jersey 15',monospace;line-height:.85;}
+.coins{display:flex;align-items:flex-end;justify-content:center;gap:6px;margin:12px auto 6px;min-height:20px;}
+.cstack{display:flex;flex-direction:column-reverse;}
+.coin{display:block;flex:none;width:36px;height:14px;margin-top:-3px;background:#E8C27A;border:3px solid #1B1C1A;box-shadow:inset 0 -4px 0 #B88A3F;animation:cdrop .3s steps(3) both;}
+.cstack .coin:nth-child(even){transform:translateX(3px);}
+@keyframes cdrop{from{transform:translateY(-30px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion: reduce){.carry3{animation:none}.coin{animation:none}}
 .mcap{max-width:326px;width:100%;background:#FBF6EA;color:#1B1C1A;border:3px solid #1B1C1A;box-shadow:5px 5px 0 #1B1C1A;padding:12px 14px;text-align:center;font-size:16px;font-weight:600;line-height:1.35;}
 .rowstamp{position:absolute;right:58px;top:50%;transform:translateY(-50%);z-index:3;pointer-events:none;animation:rsout .4s steps(4) 2.6s forwards;}
 @keyframes rsout{to{opacity:0}}
@@ -1681,6 +1711,27 @@ function MomentRow({ r }) {
 /* A big moment: art, a stamp and confetti over the round. Tap to carry on; it also goes by itself. */
 function Moment({ m, more, onDone }) {
   if (!m) return null;
+  if (m.carry) {
+    const { n, hole, lvl, line, who } = m.carry;
+    const box = (
+      <div className={`carry l${lvl}`}>
+        <div className="clvl" style={{ color: lvl === 3 ? "#FBF6EA" : lvl === 2 ? "#B4472E" : "#8A6A1F" }}>{["", "HEADS UP", "WARNING", "RED ALERT"][lvl]}</div>
+        <div className="coins" aria-hidden="true">{Array.from({ length: Math.ceil(Math.min(n, 12) / 4) }).map((_, c) => (
+          <div key={c} className="cstack">{Array.from({ length: Math.min(4, Math.min(n, 12) - c * 4) }).map((_, i) => <i key={i} className="coin" style={{ animationDelay: `${0.15 + (c * 4 + i) * 0.08}s` }} />)}</div>
+        ))}</div>
+        <div className="cbig" style={{ fontSize: lvl === 3 ? 76 : lvl === 2 ? 64 : 54 }}>{n} SKINS</div>
+        <div className="clvl" style={{ fontSize: 17, marginTop: 4 }}>ON HOLE {hole}</div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginTop: 8 }}>"{line}"</div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 8, opacity: 0.9 }}>{who}</div>
+      </div>
+    );
+    return (
+      <div className="moment" key={m.key} role="alertdialog" aria-label={`${["", "Heads up", "Warning", "Red alert"][lvl]}: ${n} skins on hole ${hole}`} onClick={onDone}>
+        {lvl === 3 ? <div className="carry3">{box}</div> : box}
+        <div className="mtap">Tell the group before they tee off. Tap to carry on</div>
+      </div>
+    );
+  }
   const mix = !!((m.also && m.also.length) || (m.ouch && m.ouch.length));
   return (
     <div className={mix ? "moment mix" : "moment"} key={m.key} role="alertdialog" aria-label={`${m.word} ${m.sub || ""}`} onClick={onDone}>
@@ -3779,6 +3830,9 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   const celebrateHole = hh => {
     const ev = holeEvents(hh); const key = `${round.drawSeed}:${hh}`; const sig = JSON.stringify(ev);
     if (PLAYED.get(key) === sig) return; PLAYED.set(key, sig);
+    const carry = carryScreen(round, hh + 1, people);
+    if (carry && !(ev.good.length || ev.bad.length)) { api.moments([carry]); return; }
+    if (carry) { api.moments([...holeScreens(ev, hh, round.games.includes("skins") && round.mode === "2v2" && round.teams ? { ...people, ...Object.fromEntries(skinsCalc(round).U.map(u => [u.key, { name: u.ids.map(id => people[id].name).join(" + ") }])) } : people), carry]); return; }
     if (ev.good.length || ev.bad.length) api.moments(holeScreens(ev, hh, round.games.includes("skins") && round.mode === "2v2" && round.teams ? { ...people, ...Object.fromEntries(skinsCalc(round).U.map(u => [u.key, { name: u.ids.map(id => people[id].name).join(" + ") }])) } : people));
   };
   const prevH = useRef(h);
