@@ -1,5 +1,5 @@
 """A hole left blank mustn't freeze someone's game: later busts still count, and the row says what's missing."""
-import asyncio, sys
+import asyncio, json, sys
 from playwright.async_api import async_playwright
 sys.path.insert(0, sys.argv[3]); import rules, fakecloud as fc
 URL, OUT = sys.argv[1], sys.argv[2]; res = []
@@ -22,6 +22,11 @@ async def main():
             await clear(); await A.get_by_role('button', name='Next hole').last.click(); await A.wait_for_timeout(400); await clear()
             if await A.get_by_role('button', name='Draw the cards').count(): await A.get_by_role('button', name='Draw the cards').click(); await A.wait_for_timeout(400)
             if await A.get_by_role('button', name='Flip all').count(): await A.get_by_role('button', name='Flip all').click(); await A.wait_for_timeout(400); await A.get_by_role('button', name="Let's play").click(); await A.wait_for_timeout(300)
+        # Fix the hole 4 cards so a random Safety net or Lifeline can't change what this test checks
+        await A.wait_for_timeout(1500)
+        st = json.loads(cloud.docs['users/u_a/state/now']['json']); r = st['round']
+        if r['draws'][3]: r['draws'][3].update({k: 'dd' for k in r['draws'][3]}); cloud.docs['users/u_a/state/now']['json'] = json.dumps(st)
+        await fc.open_app(A, URL); await A.get_by_role('button', name='Resume scoring').click(); await A.wait_for_timeout(500); await clear()
         for n in ['You','Nic','Mitch','Greg']:
             for _ in range(9): await A.get_by_role('button', name=f'{n} plus one').click()
         await A.wait_for_timeout(300)

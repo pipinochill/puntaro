@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.97";
+const APP_VERSION = "0.98";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -902,8 +902,15 @@ function skinsCalc(r) {
 }
 // Money. Teams: each player on the team with fewer skins pays the difference times the stake.
 // Individuals: every skin is worth the stake from each of the other players.
+const skinsPot = r => r.split === "skinpot";
 function skinsNets(r, sc) {
   const nets = {}; const st = r.stake || 0;
+  if (skinsPot(r)) {
+    // Fixed buy-in: everyone puts in the stake, and the pot is shared out by skins won. Nobody loses more than the stake.
+    const all = Object.values(sc.won).reduce((a, b) => a + b, 0); const pool = st * r.playerIds.length;
+    sc.U.forEach(u => u.ids.forEach(id => (nets[id] = Math.round(((all ? (pool * sc.won[u.key]) / all / u.ids.length : st) - st) * 100) / 100)));
+    return nets;
+  }
   if (sc.team) { const d = sc.won.A - sc.won.B; r.playerIds.forEach(id => (nets[id] = Math.round((r.teams[id] === 0 ? d : -d) * st * 100) / 100)); return nets; }
   const all = Object.values(sc.won).reduce((a, b) => a + b, 0); const n = r.playerIds.length;
   r.playerIds.forEach(id => (nets[id] = Math.round((n * sc.won[id] - all) * st * 100) / 100));
@@ -979,7 +986,10 @@ function SkinsOff({ sc, people, api, canScore }) {
       {canScore ? (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
-            {sc.contenders.map(k => <button key={k} className="cta" style={{ padding: "9px 4px", fontSize: 14 }} onClick={() => api.setWolf(SKINS_OFF, k)}>{unitName(sc, k, people)}</button>)}
+            {sc.contenders.map(k => <button key={k} className="cta" style={{ padding: "9px 4px", fontSize: 14 }} onClick={() => {
+              api.setWolf(SKINS_OFF, k);
+              if (api.moments) api.moments([{ ...GOOD.skin, word: "CHIP-OFF!", sub: `${unitName(sc, k, people).toUpperCase()} +${sc.left}`, caption: [`${unitName(sc, k, people)} ${sc.team || unitName(sc, k, people) === "You" ? "take" : "takes"} the last ${plSk(sc.left)}`] }]);
+            }}>{unitName(sc, k, people)}</button>)}
           </div>
           <button onClick={() => (split ? api.setWolf(SKINS_OFF, "split") : setSplit(true))} style={{ marginTop: 7, width: "100%", fontSize: 13, fontWeight: 700, color: "var(--muted)" }}>{split ? "Tap again to split them instead" : "Can't play it off? Split them"}</button>
         </>
@@ -1853,7 +1863,7 @@ function LiveBoard({ round, people, onClose }) {
             <div data-skins-board style={{ display: "grid", gap: 9 }}>
               <div style={{ border: "3px solid var(--night)", borderTop: "none" }}><SkinsTotals sc={sc} people={people} stake={round.stake} money round={round} /></div>
               <SkinsGrid round={round} people={people} />
-              <p className="cap">{sc.thru < 18 ? `${plSk(sc.onLine)} on hole ${sc.thru + 1}. ` : ""}{round.stake ? (sc.team ? `${money(round.stake)} a skin: the team behind pays the difference, per player.` : `${money(round.stake)} a skin from each of the other players.`) : "Playing for bragging rights."} If skins are still on the line after the 18th, a chip-off or putt-off decides them.</p>
+              <p className="cap">{sc.thru < 18 ? `${plSk(sc.onLine)} on hole ${sc.thru + 1}. ` : ""}{round.stake ? (skinsPot(round) ? `${money(round.stake * round.playerIds.length)} pot, shared out by skins won.` : sc.team ? `${money(round.stake)} a skin: the team behind pays the difference, per player.` : `${money(round.stake)} a skin from each of the other players.`) : "Playing for bragging rights."} If skins are still on the line after the 18th, a chip-off or putt-off decides them.</p>
             </div>
           )}
           {tab !== "skins" && <>
@@ -2226,7 +2236,7 @@ function greeting(p) {
   const name = String((p && p.first) || "").trim().split(/\s+/)[0] || "mate";
   return lines[GREET](name);
 }
-function Home({ solo, onSolo, onGame, soloCount = 0, people, round, recent, board, onOpenRound, onStart, onJoin, liveCode, onLiveDetails, parked = [], onResumeParked, onDropParked, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
+function Home({ onPurge, solo, onSolo, onGame, soloCount = 0, people, round, recent, board, onOpenRound, onStart, onJoin, liveCode, onLiveDetails, parked = [], onResumeParked, onDropParked, onResume, goFriends, dark, setDark, askDelete, onRules, onAbout, trash, now, onRestore }) {
   return (
     <div style={{ paddingBottom: 19 }}>
       <div className="stripes" style={{ padding: "17px 14px 44px" }}>
@@ -2314,18 +2324,18 @@ function Home({ solo, onSolo, onGame, soloCount = 0, people, round, recent, boar
 
         {trash.filter(x => x.kind !== "recent").length > 0 && (
           <div>
-            <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recently deleted</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 5 minutes, then gone for good.</p></div>
+            <div style={{ margin: "5px 2px 6px" }}><h2 className="h2">Recently deleted</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 5 minutes, then gone for good. Hold one to delete it now.</p></div>
             <div className="card" style={{ padding: "5px 11px" }}>
               {trash.filter(x => x.kind !== "recent").map((x, i) => {
                 const left = Math.max(0, Math.ceil((TRASH_MS - (now - x.at)) / 1000));
                 return (
-                  <div key={x.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                  <HoldRow key={x.id} onHold={() => onPurge(x)} data-trash={x.kind} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700 }}>{x.kind !== "recent" ? x.item.course.name : x.item.course}</div>
                       <div className="cap">{x.kind === "solo" ? "Solo round, in progress" : x.kind === "round" ? "In progress" : x.item.when} · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</div>
                     </div>
                     <button className="chip" onClick={() => onRestore(x)}>Restore</button>
-                  </div>
+                  </HoldRow>
                 );
               })}
             </div>
@@ -2342,7 +2352,7 @@ function Home({ solo, onSolo, onGame, soloCount = 0, people, round, recent, boar
 }
 
 // Finished rounds: tap for the scoresheet, hold to remove (stats keep it).
-function History({ recent, askDelete, onOpenRound, trash, now, onRestore }) {
+function History({ recent, askDelete, onOpenRound, trash, now, onRestore, onPurge }) {
   const gone = trash.filter(x => x.kind === "recent");
   return (
     <div style={{ paddingBottom: 19 }}>
@@ -2350,15 +2360,15 @@ function History({ recent, askDelete, onOpenRound, trash, now, onRestore }) {
       <div style={{ padding: 12, display: "grid", gap: 11 }}>
         {gone.length > 0 && (
           <div>
-            <div style={{ margin: "0 2px 6px" }}><h2 className="h2">Recently deleted</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 5 minutes, then gone for good.</p></div>
+            <div style={{ margin: "0 2px 6px" }}><h2 className="h2">Recently deleted</h2><p className="cap" style={{ marginTop: 2 }}>Kept for 5 minutes, then gone for good. Hold one to delete it now.</p></div>
             <div className="card" style={{ padding: "5px 11px" }}>
               {gone.map((x, i) => {
                 const left = Math.max(0, Math.ceil((TRASH_MS - (now - x.at)) / 1000));
                 return (
-                  <div key={x.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+                  <HoldRow key={x.id} onHold={() => onPurge(x)} data-trash={x.kind} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
                     <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700 }}>{x.item.course}</div><div className="cap">{x.item.when} · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</div></div>
                     <button className="chip" onClick={() => onRestore(x)}>Restore</button>
-                  </div>
+                  </HoldRow>
                 );
               })}
             </div>
@@ -2438,6 +2448,7 @@ function Rules({ onBack }) {
           <p>If the best balls are level, the second ball decides. If both are level, nobody wins and the skin carries over, so the next hole is worth two, then three, and so on.</p>
           <p>Skins still on the line after the 18th go to a chip-off or putt-off: one player from each team, winner takes the lot. If you can't play it off, split them.</p>
           <p>Money: each skin is worth the stake per player. At the end, each player on the team with fewer skins pays the difference in skins times the stake.</p>
+          <p>Prefer a cap? Choose Fixed buy-in: everyone puts in the stake and the pot is shared out by skins won.</p>
           <p>Playing as individuals: the most Stableford points on a hole, outright, wins the skin. A tie for the most carries it over. A chip-off after the 18th is between the players tied for the most on the 18th. Each skin is worth the stake from each of the other players.</p>
         </RuleSection>
         <RuleSection title="Standing orders and own phones">
@@ -3105,7 +3116,13 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
         </>}
         <Label sub="Agree a buy-in before you tee off. The app tracks who owes who and never moves money.">Prize pool</Label>
         <div className="card" style={{ padding: 12 }}>
-          <div className="cap" style={{ fontWeight: 600 }}>{skins ? "Each skin is worth, per player" : "Buy-in per player"}</div>
+          {skins && (
+            <div className="seg" role="group" aria-label="How skins pay" style={{ marginBottom: 9 }}>
+              <button className={`chip ${split !== "skinpot" ? "on" : ""}`} aria-pressed={split !== "skinpot"} onClick={() => setSplit("skineach")}>Per skin</button>
+              <button className={`chip ${split === "skinpot" ? "on" : ""}`} aria-pressed={split === "skinpot"} onClick={() => setSplit("skinpot")}>Fixed buy-in</button>
+            </div>
+          )}
+          <div className="cap" style={{ fontWeight: 600 }}>{skins && split !== "skinpot" ? "Each skin is worth, per player" : "Buy-in per player"}</div>
           <div className="seg" style={{ marginTop: 6 }}>
             {STAKES.map(s => <button key={s} className={`chip ${!custom && stake === s ? "on" : ""}`} onClick={() => { setCustom(false); setStake(s); }}>{s === 0 ? "Bragging rights" : money(s)}</button>)}
             <button className={`chip ${custom ? "on" : ""}`} onClick={() => { setCustom(true); const v = Number(customText); if (v > 0) setStake(v); }}>Custom amount</button>
@@ -3120,7 +3137,8 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
           {stake > 0 && (
             <>
               {effMode === "2v2"
-                ? <p className="cap" style={{ marginTop: 11 }}>{skins ? `At the end, each player on the team with fewer skins pays the difference times ${money(stake)}. Win by 3 skins and each winner collects ${money(stake * 3)}.` : "Winning team splits the pool. A tie hands every buy-in back."}</p>
+                ? <p className="cap" style={{ marginTop: 11 }}>{skins && split === "skinpot" ? `A ${money(stake * sel.length)} pot, shared out by skins won. Nobody loses more than ${money(stake)}.` : skins ? `At the end, each player on the team with fewer skins pays the difference times ${money(stake)}. Win by 3 skins and each winner collects ${money(stake * 3)}.` : "Winning team splits the pool. A tie hands every buy-in back."}</p>
+                : skins && split === "skinpot" ? <p className="cap" style={{ marginTop: 11 }}>A {money(stake * sel.length)} pot, shared out by skins won. Win 6 of 18 skins and you get a third of it. Nobody loses more than {money(stake)}.</p>
                 : skins ? <p className="cap" style={{ marginTop: 11 }}>Every skin is worth {money(stake)} from each of the other players. Win 3 skins in a group of {sel.length} and you collect {money(stake * 3 * (sel.length - 1))}, less what you owe for skins others win.</p>
                 : <>
                   <div className="cap" style={{ fontWeight: 600, marginTop: 11 }}>How it pays out</div>
@@ -3166,7 +3184,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
         {solo ? <button className="cta" onClick={() => onGo({ solo: true, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes || null })}>Tee off solo</button> :
-        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts: skins ? { ...opts, cards: false, catchup: false, bonuses: false, penalties: false, ntp: false, cushion: false } : opts, orders: skins ? {} : liveOn && scoring === "each" ? {} : Object.fromEntries(sel.filter(id => orders[id] && orders[id] !== "call").map(id => [id, { 0: orders[id] }])), live: liveOn ? { scoring, name: liveName.trim() } : null })}>{liveOn ? "Tee off live" : "Tee off"}</button>}
+        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split: skins ? (split === "skinpot" ? "skinpot" : "skineach") : SPLITS.some(x => x[0] === split) ? split : "603010", opts: skins ? { ...opts, cards: false, catchup: false, bonuses: false, penalties: false, ntp: false, cushion: false } : opts, orders: skins ? {} : liveOn && scoring === "each" ? {} : Object.fromEntries(sel.filter(id => orders[id] && orders[id] !== "call").map(id => [id, { 0: orders[id] }])), live: liveOn ? { scoring, name: liveName.trim() } : null })}>{liveOn ? "Tee off live" : "Tee off"}</button>}
       </div>
     </div>
   );
@@ -3805,7 +3823,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
           <div style={{ display: "flex", gap: can.live ? 4 : 6 }}>
             {can.live && <button className="px" onClick={onLive} aria-label="Live round details" style={{ fontSize: can.live ? 16 : 18, lineHeight: 1, background: "var(--red)", color: "#fff", padding: "6px 7px", display: "flex", alignItems: "center", gap: 4 }}><span className="blink" style={{ width: 7, height: 7, background: "#fff", display: "block" }} />LIVE</button>}
             <button className="px" aria-label="Rules" onClick={onRules} style={{ fontSize: can.live ? 16 : 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: can.live ? "6px 8px" : "6px 11px" }}>RULES</button>
-            <button className="px" aria-label="Finish" onClick={onFinish} style={{ fontSize: can.live ? 16 : 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: can.live ? "6px 8px" : "6px 11px" }}>FINISH</button>
+            <button className="px" aria-label="Finish" onClick={() => { celebrateHole(h); onFinish(); }} style={{ fontSize: can.live ? 16 : 18, lineHeight: 1, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: can.live ? "6px 8px" : "6px 11px" }}>FINISH</button>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11 }}>
@@ -4473,7 +4491,7 @@ function Summary({ round, people, onSave, onBack, footer, record, onSkinsOff }) 
         {round.stake > 0 && (
           <div className="card" style={{ padding: 12 }}>
             <h3 style={{ fontWeight: 800, fontSize: 15 }}>Prize pool</h3>
-            <p className="cap">{sk ? (sk.team ? `${money(round.stake)} a skin. Each player on the team behind pays the difference in skins.` : `${money(round.stake)} a skin from each of the other players, netted out.`) : <>{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}.</>} {sk ? "" : isTeam ? "Winning team splits the pool." : SPLITS.find(s => s[0] === round.split)[1] + "."}{anyTie ? " Tied players share the prize for the places they cover." : ""}</p>
+            <p className="cap">{sk ? (skinsPot(round) ? `${money(round.stake * round.playerIds.length)} pot, shared out by skins won. Nobody loses more than ${money(round.stake)}.` : sk.team ? `${money(round.stake)} a skin. Each player on the team behind pays the difference in skins.` : `${money(round.stake)} a skin from each of the other players, netted out.`) : <>{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}.</>} {sk ? "" : isTeam ? "Winning team splits the pool." : SPLITS.find(s => s[0] === round.split)[1] + "."}{anyTie ? " Tied players share the prize for the places they cover." : ""}</p>
             <div style={{ marginTop: 6 }}>
               {ranked.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
@@ -4730,6 +4748,17 @@ function richRound(rec) {
       });
     } catch (e) { out = null; }
   }
+  // Skins rounds: skins won (a team's skins count for both partners) and whether you came out on top. No Puntaro points.
+  if (!out && r && r.playerIds && r.playerIds.includes(pid) && (r.games || []).includes("skins")) {
+    try {
+      out = withHoles(r.holes, () => {
+        const sc = skinsCalc(r); const u = sc.U.find(x => x.ids.includes(pid)); const mineSk = u ? sc.won[u.key] : 0;
+        const top = Math.max(...Object.values(sc.won));
+        return { id: rec.id, at: rec.at, course: rec.course, pts: null, skins: mineSk, skinsGame: true, place: null, of: r.playerIds.length,
+          win: top > 0 && mineSk === top, busts: null, streak: null, ntp: 0, scores: range18.map(i => r.scores[pid][i] ?? null), pars: range18.map(i => PAR[i]), live: !!rec.live };
+      });
+    } catch (e) { out = null; }
+  }
   if (!out && mine) out = { id: rec.id, at: rec.at, course: rec.course, pts: mine.pts || 0, place: null, of: null, win: !!mine.win, busts: null, streak: null, ntp: mine.ntp || 0, scores: null, pars: null };
   RICH.set(k, out); return out;
 }
@@ -4738,8 +4767,11 @@ function statsOf(list, range) {
   const rs = list.filter(x => x && (!range || (x.at >= range.start && x.at < range.end)));
   if (!rs.length) return null;
   const withB = rs.filter(x => x.busts != null);
-  const best = rs.reduce((b, x) => (!b || x.pts > b.pts ? x : b), null);
-  return { rounds: rs.length, wins: rs.filter(x => x.win).length, ntp: rs.reduce((a, x) => a + (x.ntp || 0), 0), pts: rs.reduce((a, x) => a + x.pts, 0) / rs.length,
+  const withP = rs.filter(x => x.pts != null); const sk = rs.filter(x => x.skinsGame);
+  const best = withP.reduce((b, x) => (!b || x.pts > b.pts ? x : b), null);
+  const bestSk = sk.reduce((b, x) => (!b || x.skins > b.skins ? x : b), null);
+  return { rounds: rs.length, wins: rs.filter(x => x.win).length, ntp: rs.reduce((a, x) => a + (x.ntp || 0), 0), pts: withP.length ? withP.reduce((a, x) => a + x.pts, 0) / withP.length : null,
+    skinsRounds: sk.length, skins: sk.reduce((a, x) => a + x.skins, 0), skinsBest: bestSk ? { skins: bestSk.skins, course: bestSk.course, at: bestSk.at } : null,
     busts: withB.length ? withB.reduce((a, x) => a + x.busts, 0) / withB.length : null,
     best: best ? { pts: best.pts, course: best.course, at: best.at } : null, streak: rs.reduce((m, x) => Math.max(m, x.streak || 0), 0) };
 }
@@ -4747,7 +4779,9 @@ function statsOf(list, range) {
 function statsFromHistory(history, id, range) {
   const rs = (history || []).filter(x => x.players && x.players[id] && (!range || (x.at >= range.start && x.at < range.end)));
   if (!rs.length) return null;
-  return { rounds: rs.length, wins: rs.filter(x => x.players[id].win).length, ntp: rs.reduce((a, x) => a + (x.players[id].ntp || 0), 0), pts: rs.reduce((a, x) => a + (x.players[id].pts || 0), 0) / rs.length };
+  const wp = rs.filter(x => x.players[id].pts != null); const sk = rs.filter(x => x.players[id].skins != null);
+  return { rounds: rs.length, wins: rs.filter(x => x.players[id].win).length, ntp: rs.reduce((a, x) => a + (x.players[id].ntp || 0), 0), pts: wp.length ? wp.reduce((a, x) => a + x.players[id].pts, 0) / wp.length : null,
+    skinsRounds: sk.length, skins: sk.reduce((a, x) => a + x.players[id].skins, 0) };
 }
 // Anyone's stats for a season (or all time): you from your rounds, app friends from their card, others from rounds together.
 function statsFor2(ctx, id, range) {
@@ -4761,11 +4795,18 @@ function statsFor2(ctx, id, range) {
   }
   return statsFromHistory(ctx.history, id, range);
 }
+// Skins king: most skins won in the range, among you and your friends.
+function skinsKing(ctx, range) {
+  const rows = ["me", ...ctx.friendIds].filter(id => id === "me" || ctx.people[id]).map(id => ({ id, s: statsFor2(ctx, id, range) })).filter(r => r.s && r.s.skins > 0);
+  if (!rows.length) return null;
+  const top = Math.max(...rows.map(r => r.s.skins));
+  return { ids: rows.filter(r => r.s.skins === top).map(r => r.id), skins: top, rounds: rows.find(r => r.s.skins === top).s.skinsRounds };
+}
 // The friends ladder: qualified players by average points, then everyone still short of MIN_ROUNDS.
 function ladderFor(ctx, range) {
   const rows = ["me", ...ctx.friendIds].filter(id => id === "me" || ctx.people[id]).map(id => ({ id, s: statsFor2(ctx, id, range) }));
-  const q = rows.filter(r => r.s && r.s.rounds >= MIN_ROUNDS).sort((a, b) => b.s.pts - a.s.pts || b.s.rounds - a.s.rounds);
-  const rest = rows.filter(r => !(r.s && r.s.rounds >= MIN_ROUNDS)).sort((a, b) => ((b.s && b.s.rounds) || 0) - ((a.s && a.s.rounds) || 0));
+  const q = rows.filter(r => r.s && r.s.rounds >= MIN_ROUNDS && r.s.pts != null).sort((a, b) => b.s.pts - a.s.pts || b.s.rounds - a.s.rounds);
+  const rest = rows.filter(r => !(r.s && r.s.rounds >= MIN_ROUNDS && r.s.pts != null)).sort((a, b) => ((b.s && b.s.rounds) || 0) - ((a.s && a.s.rounds) || 0));
   q.forEach((r, i) => { r.rank = i && r.s.pts === q[i - 1].s.pts ? q[i - 1].rank : i + 1; });
   return { q, rest };
 }
@@ -4802,6 +4843,12 @@ function MeStats({ ctx, goLadder }) {
           <StatTile n={s ? s.rounds : 0} l="rounds" /><StatTile n={s ? s.wins : 0} l="wins" /><StatTile n={s ? fmtPts(s.pts) : "–"} l="avg points" />
           <StatTile n={s ? s.ntp : 0} l="NTPs" /><StatTile n={s && s.busts != null ? fmtPts(s.busts) : "–"} l="busts a round" /><StatTile n={place} l={placeSub} />
         </div>
+        {s && s.skinsRounds > 0 && (() => { const K = skinsKing(ctx, ctx.cur); const king = K && K.ids.includes("me"); return (
+          <div data-me-skins style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+            {king && <Sprite name="crown" size={3} />}
+            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{plSk(s.skins)} from {s.skinsRounds} skins round{s.skinsRounds === 1 ? "" : "s"}</div><div className="cap">{king ? "You're the skins king this season." : K ? `Skins king: ${K.ids.map(id => (id === "me" ? "You" : ctx.people[id].name)).join(" & ")}, ${plSk(K.skins)}` : ""}{s.skinsBest ? `${king || K ? " · " : ""}best haul ${plSk(s.skinsBest.skins)}` : ""}</div></div>
+          </div>
+        ); })()}
         <button onClick={goLadder} style={{ marginTop: 8, fontWeight: 700, color: "var(--fair)" }}>See the friends ladder ›</button>
       </div>
       <div className="card" style={{ padding: "10px 11px" }}>
@@ -4862,7 +4909,7 @@ function RoundsList({ rounds, empty }) {
             <button onClick={() => setOpen(on ? null : k)} aria-expanded={on} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 0", textAlign: "left" }}>
               <span style={{ width: 22, display: "flex", justifyContent: "center" }}>{x.win ? <Sprite name="crown" size={3} /> : null}</span>
               <span style={{ flex: 1, minWidth: 0 }}><span className="hd" style={{ fontWeight: 700 }}>{x.course}</span><span className="cap" style={{ display: "block" }}>{shortDay(x.at)}{x.place ? ` · ${ordinal(x.place)} of ${x.of}` : ""}</span></span>
-              <span style={{ textAlign: "right" }}><span className="px" style={{ fontSize: 24, lineHeight: 1 }}>{x.pts}</span><span className="cap" style={{ display: "block" }}>pts</span></span>
+              <span style={{ textAlign: "right" }}><span className="px" style={{ fontSize: 24, lineHeight: 1 }}>{x.pts == null ? (x.skins ?? "–") : x.pts}</span><span className="cap" style={{ display: "block" }}>{x.pts == null && x.skins != null ? (x.skins === 1 ? "skin" : "skins") : "pts"}</span></span>
             </button>
             {on && (
               <div style={{ padding: "0 0 10px 30px" }}>
@@ -4991,6 +5038,12 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friend
             </button>
           ))}
         </div>
+        {(() => { const K = skinsKing(ctx, range); return K && (
+          <div className="card" data-skins-king style={{ padding: "9px 11px", display: "flex", alignItems: "center", gap: 9 }}>
+            <PixelArt k="pot" px={1.6} />
+            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>Skins king{range ? " this season" : ""}: {K.ids.map(nm).join(" & ")}</div><div className="cap">{plSk(K.skins)} won in skins rounds</div></div>
+          </div>
+        ); })()}
         {period === "season" && PL.q[0] && (
           <div className="card" style={{ padding: "9px 11px", display: "flex", alignItems: "center", gap: 9 }}>
             <Sprite name="crown" size={4} />
@@ -5478,7 +5531,7 @@ function Game({ user, cloud, profile, now0, finished }) {
     const me = people.me;
     const cur = seasonOf(Date.now()); const seasons = {};
     for (let x = prevSeason(cur), i = 0; i < 8; i++, x = prevSeason(x)) { const st = statsOf(myRounds, x); if (st) seasons[x.key] = st; }
-    const recent = [...myRounds].sort((a, b) => b.at - a.at).slice(0, 15).map(x => ({ at: x.at, course: x.course, pts: x.pts, place: x.place, of: x.of, win: x.win, busts: x.busts, ntp: x.ntp, scores: x.scores, pars: x.pars }));
+    const recent = [...myRounds].sort((a, b) => b.at - a.at).slice(0, 15).map(x => ({ at: x.at, course: x.course, pts: x.pts, skins: x.skinsGame ? x.skins : undefined, place: x.place, of: x.of, win: x.win, busts: x.busts, ntp: x.ntp, scores: x.scores, pars: x.pars }));
     const card = { name: displayName(me), first: (me.first || "").slice(0, 20), li: (me.last || "").trim().slice(0, 1).toUpperCase(), color: me.color || ME_COLOR, hi: me.hi, hk: me.hk || "", ref: myRef || "",
       // month is kept for friends still on older versions of the app
       stats: { month: statsFor(history, "me", "month"), season: statsOf(myRounds, cur), all: statsOf(myRounds, null), cur: cur.key, seasons, recent } };
@@ -5589,6 +5642,12 @@ function Game({ user, cloud, profile, now0, finished }) {
       if (team) { const best = Math.max(...team.map(x => x.total)); const w = team.filter(x => x.total === best); if (w.length === 1) winners = ids.filter(id => r.teams[id] === w[0].k); }
       else { const best = Math.max(...ids.map(id => pc[id].total)); winners = ids.filter(id => pc[id].total === best); }
       // A joined player only knows the host's player ids, so they keep just their own result (as "me").
+      if ((r.games || []).includes("skins")) {
+        // Skins: the side(s) with the most skins win; each player records their side's skins.
+        const sc = skinsCalc(r); const top = Math.max(...Object.values(sc.won)); const of = id => sc.won[sc.U.find(u => u.ids.includes(id)).key];
+        (joined ? [myId] : ids).forEach(id => { players[joined ? "me" : id] = { skins: of(id), win: top > 0 && of(id) === top, ntp: 0 }; });
+        return { gross: t.gross, net: r.useHcp ? t.net : t.gross, players };
+      }
       (joined ? [myId] : ids).forEach(id => { players[joined ? "me" : id] = { pts: pc[id].total, ntp: r.opts.ntp ? r.ntp.filter((w, h) => w === id && PAR[h] === 3).length : 0, win: winners.includes(id) }; });
     } catch (e) { /* stats are a bonus; never block saving */ }
     return { gross: t.gross, net: r.useHcp ? t.net : t.gross, players };
@@ -5638,6 +5697,7 @@ function Game({ user, cloud, profile, now0, finished }) {
   const confirmDelete = () => {
     const at = Date.now();
     if (del.kind === "solo") { if (solo) setTrash(t => [{ id: at, kind: "solo", item: solo, at }, ...t]); setSolo(null); }
+    else if (del.kind === "purge") { setTrash(t => t.filter(y => y.id !== del.x.id)); setDel(null); return; }
     else if (del.kind === "round") { setTrash(t => [{ id: at, kind: "round", item: round, live, at }, ...t]); setRound(null); setLive(null); }
     else { const item = recent[del.i]; setTrash(t => [{ id: at, kind: "recent", item, at }, ...t]); if (item.id) cloud.setMine(`rounds/${item.id}`, { hidden: true }, true).catch(() => {}); }
     setNow(at); setDel(null);
@@ -5987,11 +6047,12 @@ function Game({ user, cloud, profile, now0, finished }) {
       {del && (
         <div style={{ position: "fixed", inset: 0, maxWidth: 430, margin: "0 auto", zIndex: 30, display: "flex", alignItems: "flex-end", background: "rgba(0,0,0,.6)" }} onPointerDown={() => { armed.current = true; }} onClick={() => ready() && setDel(null)}>
           <div className="sheet card" role="dialog" aria-label="Delete round" onClick={e => e.stopPropagation()} style={{ width: "100%", padding: 12, boxShadow: "none" }}>
-            <h2 className="h2">Delete this round?</h2>
-            <p className="cap" style={{ marginTop: 3 }}>{del.kind === "solo" ? `${solo ? solo.course.name : "Solo round"}, solo round in progress` : del.kind === "round" ? `${round.course.name}, in progress` : `${recent[del.i].course}, ${recent[del.i].when}`}. You can restore it from Recently deleted for 5 minutes.</p>
+            <h2 className="h2">{del.kind === "purge" ? "Delete it for good now?" : "Delete this round?"}</h2>
+            {del.kind === "purge" ? <p className="cap" style={{ marginTop: 3 }}>{del.x.kind === "recent" ? del.x.item.course : del.x.item.course.name}. It skips the countdown and can't be restored.</p> :
+            <p className="cap" style={{ marginTop: 3 }}>{del.kind === "solo" ? `${solo ? solo.course.name : "Solo round"}, solo round in progress` : del.kind === "round" ? `${round.course.name}, in progress` : `${recent[del.i].course}, ${recent[del.i].when}`}. You can restore it from Recently deleted for 5 minutes.</p>}
             <div style={{ display: "grid", gap: 6, marginTop: 9 }}>
-              <button className="cta" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => ready() && confirmDelete()}>Delete round</button>
-              <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => ready() && setDel(null)}>Keep it</button>
+              <button className="cta" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => ready() && confirmDelete()}>{del.kind === "purge" ? "Delete for good" : "Delete round"}</button>
+              <button className="chip" style={{ padding: "6px 0", textAlign: "center" }} onClick={() => ready() && setDel(null)}>{del.kind === "purge" ? "Keep the countdown" : "Keep it"}</button>
             </div>
           </div>
         </div>
@@ -6009,9 +6070,9 @@ function Game({ user, cloud, profile, now0, finished }) {
       {view === "tabs" && (
         <>
           <div style={{ flex: 1 }}>
-            {tab === "home" && <Home solo={solo} soloCount={soloRounds.length} onSolo={() => setView(solo ? "solo" : "soloSetup")} onGame={() => setView("game")} onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
+            {tab === "home" && <Home onPurge={x => { armed.current = false; setDel({ kind: "purge", x }); }} solo={solo} soloCount={soloRounds.length} onSolo={() => setView(solo ? "solo" : "soloSetup")} onGame={() => setView("game")} onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "dev" && isAdmin(user) && <DevTab user={user} />}
-            {tab === "history" && <History recent={recent} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} onOpenRound={openRound} trash={trash} now={now} onRestore={restore} />}
+            {tab === "history" && <History onPurge={x => { armed.current = false; setDel({ kind: "purge", x }); }} recent={recent} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} onOpenRound={openRound} trash={trash} now={now} onRestore={restore} />}
             {tab === "friends" && <Friends ctx={statCtx} history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => { track("friend", { via: "request" }); return cloud.acceptRequest(id); }} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
             {tab === "me" && <Me onGame={() => setView("game")} soloCount={soloRounds.length} ctx={statCtx} goLadder={() => setTab("friends")} history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
           </div>

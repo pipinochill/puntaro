@@ -63,6 +63,11 @@ async def main():
         check('Chip-off is between the three tied on the 18th, not Greg', 'You, Nic and Mitch, who tied on the 18th' in await off.inner_text() and 'Greg' not in ' '.join(names), await off.inner_text())
         await A.screenshot(path=f'{OUT}/skins_i_chipoff.png')
         await off.get_by_role('button', name='Nic', exact=True).click(); await A.wait_for_timeout(250)
+        mt = await A.locator('.moment').inner_text() if await A.locator('.moment').count() else ''
+        check('The chip-off gets its own screen: CHIP-OFF! NIC +15', 'CHIP-OFF!' in mt and 'NIC +15' in mt, mt)
+        await A.screenshot(path=f'{OUT}/skins_chipoff_moment.png')
+        for _ in range(3):
+            if await A.locator('.moment').count(): await A.locator('.moment').click(); await A.wait_for_timeout(150)
         check('Nic takes the 15: Nic 15, Mitch 2, You 1, Greg 0', (await tick.inner_text()).startswith('Nic 15'), await tick.inner_text())
         await tick.click(); await A.wait_for_timeout(250)
         board = A.get_by_role('dialog', name='Live board')
@@ -81,6 +86,17 @@ async def main():
         await A.get_by_role('button', name='SHARE THE RESULT').click(); await A.wait_for_timeout(2500)
         alt = await A.get_by_role('dialog', name='Share the result').locator('img').get_attribute('alt') or ''
         check('Share card: NIC WINS · 15 SKINS', 'NIC WINS' in alt and '15 SKINS' in alt, alt)
+        await A.get_by_role('dialog', name='Share the result').get_by_role('button', name='Close').click(); await A.wait_for_timeout(200)
+        if await A.get_by_role('button', name='Save round').count(): await A.get_by_role('button', name='Save round').click(); await A.wait_for_timeout(800)
+        await fc.flushed(A)
+        await fc.open_app(A, URL)
+        await A.get_by_role('button', name='Me', exact=True).click(); await A.wait_for_timeout(500)
+        me = A.locator('[data-me-skins]'); mt = await me.inner_text() if await me.count() else ''
+        check('Me tab: skins this season, and Nic (no app) is the skins king', '1 skin from 1 skins round' in mt and 'Skins king: Nic, 15 skins' in mt, mt or (await A.locator('body').inner_text())[:1400].replace(chr(10), ' | '))
+        await A.get_by_role('button', name='Friends', exact=True).click(); await A.wait_for_timeout(400)
+        k = A.locator('[data-skins-king]'); kt = await k.inner_text() if await k.count() else ''
+        check('Friends ladder shows the season\'s skins king', 'Skins king this season: Nic' in kt and '15 skins' in kt, kt)
+        check('A skins round doesn\'t drag down average Puntaro points (no points recorded)', 'avg pts' in await A.locator('body').inner_text())
         sw = await A.evaluate('document.documentElement.scrollWidth'); check('Nothing sticks out sideways', sw <= 392, str(sw))
         check('No page errors', not A.errs, str(A.errs))
         print(f'{sum(res)}/{len(res)} passed'); await b.close()
