@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.94";
+const APP_VERSION = "0.95";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -105,6 +105,7 @@ const METRICS = [
 ];
 const GAMES = [
   { id: "punt", name: "Puntaro", blurb: "Bank it or bust it. Net scores, so every handicap has a shot.", hero: true },
+  { id: "skins", name: "Skins", blurb: "2v2. Best Stableford points on a hole wins the skin. Ties carry over." },
 ];
 const STAKES = [0, 5, 10, 20];
 const SPLITS = [["win", "Winner takes all"], ["603010", "60/30/10"], ["spoon", "Wooden spoon pays"]];
@@ -868,6 +869,106 @@ function bankAdvice(r, id, h, s) {
   else if (eff >= 12 || exposure >= gain) level = "think";
   return { risk, level, pot, cardNext };
 }
+/* ───────────── SKINS (2v2) ─────────────
+   Each hole is a skin. A team's score is its best Stableford points on the hole; if those tie, the second ball
+   decides. A full tie carries the skin to the next hole. Skins still on the line after the 18th go to a chip-off
+   or putt-off, recorded in round.wolf[17] ("A", "B" or "split"): an old synced slot, so live rounds need no new rules. */
+const SKINS_OFF = 17;
+const stblPts = (r, id, h) => { const s = r.scores[id][h]; if (s == null) return null; if (isPickup(r, id, h)) return 0; return Math.max(0, 2 + PAR[h] - netOf(r, id, h)); };
+const TEAM_KEY = ["A", "B"];
+function skinsCalc(r) {
+  const T = [0, 1].map(k => r.playerIds.filter(id => r.teams && r.teams[id] === k));
+  const holes = []; const won = [0, 0]; let carry = 0; let thru = 0;
+  for (let h = 0; h < 18; h++) {
+    const pts = T.map(ids => ids.map(id => stblPts(r, id, h)));
+    if (!T[0].length || !T[1].length || pts.flat().some(v => v == null)) break;
+    const s = pts.map(a => [...a].sort((x, y) => y - x));
+    const worth = carry + 1;
+    const win = s[0][0] !== s[1][0] ? (s[0][0] > s[1][0] ? 0 : 1) : (s[0][1] ?? 0) !== (s[1][1] ?? 0) ? ((s[0][1] ?? 0) > (s[1][1] ?? 0) ? 0 : 1) : null;
+    const by = win == null ? null : s[0][0] !== s[1][0] ? "best" : "second";
+    if (win != null) { won[win] += worth; carry = 0; } else carry = worth;
+    holes.push({ h, best: [s[0][0], s[1][0]], second: [s[0][1] ?? 0, s[1][1] ?? 0], win, by, worth, pts });
+    thru = h + 1;
+  }
+  const v = r.wolf && r.wolf[SKINS_OFF];
+  const off = thru === 18 && carry > 0 ? (v === "A" ? 0 : v === "B" ? 1 : v === "split" ? "split" : null) : null;
+  const left = thru === 18 ? carry : 0;
+  if (off === 0 || off === 1) won[off] += left; else if (off === "split") { won[0] += left / 2; won[1] += left / 2; }
+  return { T, holes, won, carry, thru, onLine: carry + 1, left, off, needOff: thru === 18 && carry > 0 && off == null, done: thru === 18 && (carry === 0 || off != null) };
+}
+// Money: each player on the team with fewer skins pays the difference in skins times the stake.
+function skinsNets(r, sc) {
+  const nets = {}; const d = sc.won[0] - sc.won[1];
+  r.playerIds.forEach(id => (nets[id] = Math.round((r.teams[id] === 0 ? d : -d) * (r.stake || 0) * 100) / 100));
+  return nets;
+}
+const teamName = (sc, k, people) => sc.T[k].map(id => people[id].name).join(" + ");
+const plSk = n => `${Number.isInteger(n) ? n : n.toFixed(1)} skin${n === 1 ? "" : "s"}`;
+
+// One line for the hole being looked at: what it's worth, or how it went.
+function SkinsStrip({ round, people, h, api, canScore = true }) {
+  const sc = skinsCalc(round); const hole = sc.holes[h];
+  const big = { fontSize: 21, lineHeight: 1 };
+  return (
+    <div data-skins-strip style={{ border: "3px solid var(--night)", background: "var(--card)" }}>
+      {hole ? (
+        <div style={{ padding: "7px 10px", background: hole.win == null ? "var(--flag)" : "var(--pine)", color: hole.win == null ? "var(--dk)" : "#F4F0E6" }} data-skins-result>
+          <div className="px" style={big}>{hole.win == null ? (h === 17 ? `TIED · ${plSk(hole.worth).toUpperCase()} TO A CHIP-OFF` : `TIED · ${plSk(hole.worth).toUpperCase()} CARRY TO ${h + 2}`) : `${teamName(sc, hole.win, people).toUpperCase()} WIN ${plSk(hole.worth).toUpperCase()}`}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginTop: 2 }}>{hole.win == null ? `Best ball ${hole.best[0]} each, second ball ${hole.second[0]} each` : hole.by === "best" ? `Best ball ${hole.best[hole.win]} pts to ${hole.best[1 - hole.win]}` : `Best ball level at ${hole.best[0]}. Second ball ${hole.second[hole.win]} to ${hole.second[1 - hole.win]}`}</div>
+        </div>
+      ) : (
+        <div style={{ padding: "7px 10px", background: "var(--flag)", color: "var(--dk)", display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <span className="px" style={big}>{h === sc.thru ? `${plSk(sc.onLine).toUpperCase()} ON THIS HOLE` : "SKINS"}</span>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>{h === sc.thru ? (sc.carry ? `${sc.carry} carried over` : "No carry-over") : `Finish hole ${sc.thru + 1} first`}</span>
+        </div>
+      )}
+      <div style={{ display: "flex", borderTop: "3px solid var(--night)" }}>
+        {[0, 1].map(k => (
+          <div key={k} data-skins-team={TEAM_KEY[k]} style={{ flex: 1, padding: "5px 8px", textAlign: "center", borderLeft: k ? "3px solid var(--night)" : "none" }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>{teamName(sc, k, people)}</div>
+            <div className="px" style={{ fontSize: 22, lineHeight: 1 }}>{plSk(sc.won[k])}</div>
+          </div>
+        ))}
+      </div>
+      {sc.needOff && <SkinsOff sc={sc} people={people} api={api} canScore={canScore} />}
+    </div>
+  );
+}
+function SkinsOff({ sc, people, api, canScore }) {
+  const [split, setSplit] = useState(false);
+  return (
+    <div data-skins-off style={{ padding: "9px 10px", borderTop: "3px solid var(--night)", background: "var(--sel)" }}>
+      <div className="px" style={{ fontSize: 21, lineHeight: 1 }}>{plSk(sc.left).toUpperCase()} LEFT: CHIP-OFF OR PUTT-OFF</div>
+      <p style={{ fontSize: 13, marginTop: 4 }}>One player from each team. Closest chip or first putt holed takes the lot. Who won?</p>
+      {canScore ? (
+        <>
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            {[0, 1].map(k => <button key={k} className="cta" style={{ flex: 1, padding: "9px 4px", fontSize: 14 }} onClick={() => api.setWolf(SKINS_OFF, TEAM_KEY[k])}>{teamName(sc, k, people)}</button>)}
+          </div>
+          <button onClick={() => (split ? api.setWolf(SKINS_OFF, "split") : setSplit(true))} style={{ marginTop: 7, width: "100%", fontSize: 13, fontWeight: 700, color: "var(--muted)" }}>{split ? "Tap again to split them instead" : "Can't play it off? Split them"}</button>
+        </>
+      ) : <p className="cap" style={{ marginTop: 6 }}>Waiting for the scorer to record who won.</p>}
+    </div>
+  );
+}
+// Hole by hole: who took each skin, and how many.
+function SkinsGrid({ round, people }) {
+  const sc = skinsCalc(round);
+  const cell = (h) => {
+    const x = sc.holes[h];
+    const bg = !x ? "var(--track)" : x.win === 0 ? "var(--pine)" : x.win === 1 ? "var(--red)" : "var(--line)";
+    const t = !x ? "" : x.win == null ? "–" : `${TEAM_KEY[x.win]}${x.worth > 1 ? x.worth : ""}`;
+    return <div key={h} style={{ textAlign: "center" }}><div className="cap" style={{ fontSize: 10.5 }}>{h + 1}</div><div className="px" data-skin-hole={h} style={{ fontSize: 16, lineHeight: "22px", height: 24, border: "2px solid var(--night)", background: bg, color: x && x.win != null ? "#fff" : "var(--ink)" }}>{t}</div></div>;
+  };
+  return (
+    <div style={{ display: "grid", gap: 5 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 2 }}>{range18.slice(0, 9).map(cell)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 2 }}>{range18.slice(9).map(cell)}</div>
+      <p className="cap">A: {teamName(sc, 0, people)} · B: {teamName(sc, 1, people)} · –: tied, carried on.{sc.off != null ? ` Last ${plSk(sc.left)}: ${sc.off === "split" ? "split" : `chip-off won by ${TEAM_KEY[sc.off]}`}.` : ""}</p>
+    </div>
+  );
+}
+
 const teamRows = (r, pc) => [0, 1].map(k => { const ids = r.playerIds.filter(id => r.teams[id] === k); return { k, ids, total: ids.reduce((a, id) => a + pc[id].total, 0) }; });
 // 2v2: winning team splits the pool. A tie hands every buy-in back.
 function teamPayouts(r, pc) {
@@ -904,6 +1005,10 @@ function summarize(r, people, gid) {
     if (m === 0) return "No points yet";
     return Object.keys(pts).filter(k => pts[k] === m).map(n).join(" & ") + ` (${m})`;
   };
+  if (gid === "skins") {
+    const sc = skinsCalc(r);
+    return [[teamName(sc, 0, people), plSk(sc.won[0])], [teamName(sc, 1, people), plSk(sc.won[1])]];
+  }
   if (gid === "nassau") {
     const t = nassauCalc(r);
     const f = {}, b = {}, o = {};
@@ -1650,6 +1755,18 @@ function boardData(round) {
 }
 
 function Ticker({ round, people, onOpen }) {
+  if (round.games.includes("skins")) {
+    const sc = skinsCalc(round);
+    return (
+      <button onClick={onOpen} aria-label="Open the live board" data-ticker style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 12px", background: "var(--on-bg)", color: "var(--on-fg)", textAlign: "left", borderBottom: "3px solid var(--night)" }}>
+        <span style={{ flex: 1, minWidth: 0, display: "flex", gap: 12, overflow: "hidden", whiteSpace: "nowrap", fontWeight: 700, fontSize: 13.5 }}>
+          {[0, 1].map(k => <span key={k}>{teamName(sc, k, people)} {Number.isInteger(sc.won[k]) ? sc.won[k] : sc.won[k].toFixed(1)}</span>)}
+          {sc.thru < 18 && <span style={{ opacity: 0.8 }}>{sc.onLine} on the line</span>}
+        </span>
+        <span className="px" style={{ flex: "none", fontSize: 15, lineHeight: 1 }}>BOARD ›</span>
+      </button>
+    );
+  }
   const d = boardData(round);
   const order = d.hasPunt ? d.punt : d.comp;
   return (
@@ -1669,9 +1786,11 @@ function Ticker({ round, people, onOpen }) {
 function LiveBoard({ round, people, onClose }) {
   const can = useContext(LiveCtx);
   const d = boardData(round);
-  const [tab, setTab] = useState(d.hasPunt ? "punt" : "comp");
-  const payTab = d.hasPunt || d.isTeam ? "punt" : "comp";
-  const showPay = d.pay && tab === payTab;
+  const hasSkins = round.games.includes("skins");
+  const [tab, setTab] = useState(hasSkins ? "skins" : d.hasPunt ? "punt" : "comp");
+  const payTab = hasSkins ? "skins" : d.hasPunt || d.isTeam ? "punt" : "comp";
+  const showPay = d.pay && tab === payTab && !hasSkins;
+  const sc = hasSkins ? skinsCalc(round) : null;
   const col = { textAlign: "right", flex: "none" };
   const Move = ({ m }) => <span style={{ width: 22, flex: "none", fontSize: 11, fontWeight: 800, color: m > 0 ? "var(--fair)" : m < 0 ? "var(--red)" : "var(--muted)" }}>{m > 0 ? `▲${m}` : m < 0 ? `▼${-m}` : "–"}</span>;
   const order = tab === "punt" ? d.punt : d.comp;
@@ -1686,11 +1805,30 @@ function LiveBoard({ round, people, onClose }) {
           <button onClick={onClose} aria-label="Close"><X size={24} /></button>
         </div>
         <div style={{ padding: "9px 12px 14px" }}>
-          {d.hasPunt && (
+          {(d.hasPunt || hasSkins) && (
             <div style={{ display: "flex", gap: 6, marginBottom: 8 }} role="tablist">
-              {[["punt", "Puntaro"], ["comp", "The Comp"]].map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)} style={{ padding: "4px 11px", fontSize: 13 }}>{l}</button>)}
+              {[hasSkins ? ["skins", "Skins"] : ["punt", "Puntaro"], ["comp", "The Comp"]].map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)} style={{ padding: "4px 11px", fontSize: 13 }}>{l}</button>)}
             </div>
           )}
+          {tab === "skins" && (() => {
+            const d0 = sc.won[0] - sc.won[1]; const lead = d0 > 0 ? 0 : d0 < 0 ? 1 : null; const per = Math.abs(d0) * (round.stake || 0);
+            return (
+              <div data-skins-board style={{ display: "grid", gap: 9 }}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[0, 1].map(k => (
+                    <div key={k} data-skins-total={TEAM_KEY[k]} style={{ flex: 1, border: "3px solid var(--night)", padding: "6px 9px", background: lead === k ? "var(--sel)" : "var(--card)" }}>
+                      <div className="cap" style={{ fontWeight: 700 }}>{teamName(sc, k, people)}</div>
+                      <div className="px" style={{ fontSize: 32, lineHeight: 1 }}>{Number.isInteger(sc.won[k]) ? sc.won[k] : sc.won[k].toFixed(1)}</div>
+                      <div className="cap" style={{ fontWeight: 700, color: lead === k && per ? "var(--fair)" : "var(--muted)" }}>{lead === k ? (per ? `up ${money(per)} each` : "in front") : lead == null ? "level" : "behind"}</div>
+                    </div>
+                  ))}
+                </div>
+                <SkinsGrid round={round} people={people} />
+                <p className="cap">{sc.thru < 18 ? `${plSk(sc.onLine)} on hole ${sc.thru + 1}. ` : ""}{round.stake ? `${money(round.stake)} a skin: the team behind pays the difference, per player.` : "Playing for bragging rights."} If skins are still on the line after the 18th, a chip-off or putt-off decides them.</p>
+              </div>
+            );
+          })()}
+          {tab !== "skins" && <>
           {d.isTeam && tab === "punt" && (
             <div style={{ display: "flex", gap: 6, marginBottom: 8 }} data-teams>
               {d.tr.map((t, i) => <div key={t.k} style={{ flex: 1, border: "3px solid var(--night)", padding: "5px 8px", background: i === 0 && d.tr[0].total !== d.tr[1].total ? "var(--sel)" : "var(--card)" }}><div className="cap" style={{ fontWeight: 700 }}>{t.ids.map(id => people[id].name).join(" + ")}</div><div className="px" style={{ fontSize: 24, lineHeight: 1 }}>{t.total}</div></div>)}
@@ -1728,6 +1866,7 @@ function LiveBoard({ round, people, onClose }) {
             {showPay ? " $ is what each would win if the round ended now." : ""}
             {tab === "punt" && can.live && can.scoring === "each" ? " Bank calls still secret aren't shown until they're revealed." : ""}
           </p>
+          </>}
         </div>
       </div>
     </div>
@@ -1745,6 +1884,17 @@ function GamePanel({ gid, round, people, h, api }) {
   const ids = round.playerIds;
   const done = holeDone(round, h);
   const meta = GAMES.find(g => g.id === gid);
+
+  if (gid === "skins") {
+    const sc = skinsCalc(round);
+    return (
+      <div>
+        <p className="cap">Best Stableford points on the hole wins the skin. Level? The second ball decides. Still level, it carries over.</p>
+        <div style={{ marginTop: 9 }}><SkinsGrid round={round} people={people} /></div>
+        {sc.thru < 18 && <p className="cap" style={{ marginTop: 6 }}>{plSk(sc.onLine)} on hole {sc.thru + 1}.</p>}
+      </div>
+    );
+  }
 
   if (gid === "punt") {
     const pc = puntCalc(round);
@@ -2255,6 +2405,12 @@ function Rules({ onBack }) {
           <p>Whatever is still in your pot after the 18th hole banks automatically.</p>
           <p>Handicap cushion (always on when handicaps are on): when you bust you keep 2% of your pot for every handicap stroke you get, up to half, rounded down. A 16 stroke player busting with 20 points keeps 6 and loses 14. It's there to level the field.</p>
         </RuleSection>
+        <RuleSection title="Skins (2v2)">
+          <p>Each hole is worth one skin. Each team counts its best Stableford points on the hole. The higher team wins the skin.</p>
+          <p>If the best balls are level, the second ball decides. If both are level, nobody wins and the skin carries over, so the next hole is worth two, then three, and so on.</p>
+          <p>Skins still on the line after the 18th go to a chip-off or putt-off: one player from each team, winner takes the lot. If you can't play it off, split them.</p>
+          <p>Money: each skin is worth the stake per player. At the end, each player on the team with fewer skins pays the difference in skins times the stake.</p>
+        </RuleSection>
         <RuleSection title="Standing orders and own phones">
           <p>A standing order banks for a player so nobody has to ask every hole. Pick one at setup, or change it mid-round: I'll call it, Bank at 10+, Bank at 20+, or When my streak breaks (banks on the hole a bogey ends a streak, if there's a pot).</p>
           <p>Orders bank at the end of the hole, like a normal bank, and reset the streak. A change starts from the hole still open, never earlier ones.</p>
@@ -2726,6 +2882,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
   const [finding, setFinding] = useState(false);
   const [sel, setSel] = useState(() => ["me", ...friendIds.filter(id => people[id]).slice(0, 3)]);
   const [games, setGames] = useState(["punt"]);
+  const skins = games.includes("skins");
   const [useHcp, setUseHcp] = useState(true);
   const [stake, setStake] = useState(10);
   const [custom, setCustom] = useState(false);
@@ -2750,6 +2907,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
   const [mode, setMode] = useState("ffa");
   const [teams, setTeams] = useState({});
   const effMode = sel.length === 4 ? mode : "ffa";
+  useEffect(() => { if (effMode !== "2v2" && games.includes("skins")) setGames(["punt"]); }, [effMode]); // eslint-disable-line react-hooks/exhaustive-deps
   const teamOf = id => (teams[id] != null ? teams[id] : sel.indexOf(id) < 2 ? 0 : 1);
   const teamCount = sel.filter(id => teamOf(id) === 0).length;
   const setTeam = (id, k) => setTeams(x => ({ ...x, ...Object.fromEntries(sel.map(i => [i, teamOf(i)])), [id]: k }));
@@ -2834,6 +2992,15 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
           {effMode === "2v2" && <button className="chip" onClick={autoBalance}>Auto-balance by handicap</button>}
         </div>
         {effMode === "2v2" && teamCount !== 2 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600, marginTop: 5 }}>Two players per team. Tap a Team pill to switch someone.</p>}
+        {effMode === "2v2" && (
+          <>
+            <Label sub={skins ? "Each hole is a skin. The team with the best Stableford points on the hole wins it. Level? The second ball decides. Still level, it carries over." : "Everyone plays their own Puntaro, and the team totals decide it."}>Game</Label>
+            <div className="seg" role="group" aria-label="Game">
+              <button className={`chip ${!skins ? "on" : ""}`} aria-pressed={!skins} onClick={() => setGames(["punt"])}>Puntaro</button>
+              <button className={`chip ${skins ? "on" : ""}`} aria-pressed={skins} onClick={() => setGames(["skins"])}>Skins</button>
+            </div>
+          </>
+        )}
 
         {sheet === "friend" && (
           <Sheet title="Add a friend" onClose={() => { setSheet(null); setQ(""); setForgot(null); }}>
@@ -2888,6 +3055,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
           )}
         </div>
 
+        {!skins && <>
         <Label sub="Cards, catch-up odds and the handicap cushion are always part of the game. These three are up to your group.">Extras</Label>
         <div className="seg">
           <button className={`chip ${!showCustom && extraKeys.every(k => opts[k]) ? "on" : ""}`} onClick={() => { setExtras(true); setShowCustom(false); }}>Everything</button>
@@ -2906,9 +3074,10 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
           </div>
         )}
 
+        </>}
         <Label sub="Agree a buy-in before you tee off. The app tracks who owes who and never moves money.">Prize pool</Label>
         <div className="card" style={{ padding: 12 }}>
-          <div className="cap" style={{ fontWeight: 600 }}>Buy-in per player</div>
+          <div className="cap" style={{ fontWeight: 600 }}>{skins ? "Each skin is worth, per player" : "Buy-in per player"}</div>
           <div className="seg" style={{ marginTop: 6 }}>
             {STAKES.map(s => <button key={s} className={`chip ${!custom && stake === s ? "on" : ""}`} onClick={() => { setCustom(false); setStake(s); }}>{s === 0 ? "Bragging rights" : money(s)}</button>)}
             <button className={`chip ${custom ? "on" : ""}`} onClick={() => { setCustom(true); const v = Number(customText); if (v > 0) setStake(v); }}>Custom amount</button>
@@ -2923,7 +3092,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
           {stake > 0 && (
             <>
               {effMode === "2v2"
-                ? <p className="cap" style={{ marginTop: 11 }}>Winning team splits the pool. A tie hands every buy-in back.</p>
+                ? <p className="cap" style={{ marginTop: 11 }}>{skins ? `At the end, each player on the team with fewer skins pays the difference times ${money(stake)}. Win by 3 skins and each winner collects ${money(stake * 3)}.` : "Winning team splits the pool. A tie hands every buy-in back."}</p>
                 : <>
                   <div className="cap" style={{ fontWeight: 600, marginTop: 11 }}>How it pays out</div>
                   <div className="seg" style={{ marginTop: 6 }}>
@@ -2957,7 +3126,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
           )}
         </div>
 
-        {games.includes("punt") && !(liveOn && scoring === "each") && (
+        {games.includes("punt") && !skins && !(liveOn && scoring === "each") && (
           <div className="card" style={{ padding: "9px 12px", marginTop: 9, display: "flex", alignItems: "center", gap: 9 }}>
             <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 800, fontSize: 14 }}>Banking</div><div className="cap" data-orders-summary>{ordersSummary(sel, people, id => orders[id] || "call")}</div></div>
             <button className="chip" aria-label="Change banking" onClick={() => setOrdersOpen(true)} style={{ padding: "4px 10px", fontSize: 13 }}>Change</button>
@@ -2968,7 +3137,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
       </div>
       <div style={{ position: "sticky", bottom: 0, padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
         {solo ? <button className="cta" onClick={() => onGo({ solo: true, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes || null })}>Tee off solo</button> :
-        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games, useHcp, stake, split, opts, orders: liveOn && scoring === "each" ? {} : Object.fromEntries(sel.filter(id => orders[id] && orders[id] !== "call").map(id => [id, { 0: orders[id] }])), live: liveOn ? { scoring, name: liveName.trim() } : null })}>{liveOn ? "Tee off live" : "Tee off"}</button>}
+        <button className="cta" disabled={sel.length < 2 || (effMode === "2v2" && teamCount !== 2)} onClick={() => onGo({ mode: effMode, teams: effMode === "2v2" ? Object.fromEntries(sel.map(id => [id, teamOf(id)])) : null, course: { name: course.name, tee: tee.name, slope: tee.slope, rating: tee.rating, par: cpar }, holes: course.holes, playerIds: sel, games: effMode === "2v2" ? games : ["punt"], useHcp, stake, split, opts: skins && effMode === "2v2" ? { ...opts, cards: false, catchup: false, bonuses: false, penalties: false, ntp: false, cushion: false } : opts, orders: skins ? {} : liveOn && scoring === "each" ? {} : Object.fromEntries(sel.filter(id => orders[id] && orders[id] !== "call").map(id => [id, { 0: orders[id] }])), live: liveOn ? { scoring, name: liveName.trim() } : null })}>{liveOn ? "Tee off live" : "Tee off"}</button>}
       </div>
     </div>
   );
@@ -3626,6 +3795,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
       {ids.length > 1 && <Ticker round={round} people={people} onOpen={() => setBoardOpen(true)} />}
       {boardOpen && <LiveBoard round={round} people={people} onClose={() => setBoardOpen(false)} />}
       <div style={{ padding: "9px 12px 75px", display: "grid", gap: 6, alignContent: "start" }}>
+        {round.games.includes("skins") && <SkinsStrip round={round} people={people} h={h} api={api} canScore={can.score()} />}
         {ntpHole && <NtpCard key={h} round={round} people={people} ids={ids} h={h} api={api} disabled={!can.score()} />}
         {notices.length > 0 && (
         <div style={{ position: "sticky", top: 0, zIndex: 6, display: "grid", gap: 6, padding: "6px 0", background: "var(--chalk)", borderBottom: "2px solid var(--night)" }}>
@@ -3798,7 +3968,7 @@ function Scorecard({ round, people }) {
   return (
     <div className="card" style={{ padding: "9px 11px" }}>
       <h3 style={{ fontWeight: 800, fontSize: 15 }}>Scoresheet</h3>
-      <p className="cap">Gross scores. P picked up (counts as net double bogey), B banked after the hole, X bust.</p>
+      <p className="cap">{round.games.includes("punt") ? "Gross scores. P picked up (counts as net double bogey), B banked after the hole, X bust." : `Gross scores. P picked up (counts as net double bogey). Pts: Stableford points${round.useHcp ? " with handicap strokes" : ""}.`}</p>
       <div style={{ overflowX: "auto", marginTop: 6 }}>
         <div style={{ minWidth: 70 + ids.length * (w + 2) }}>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 2, paddingBottom: 4 }}>
@@ -3811,7 +3981,7 @@ function Scorecard({ round, people }) {
               <Row label={h + 1} par={PAR[h]}>
                 {ids.map(id => {
                   const v = round.scores[id][h]; const d = v == null ? 0 : v - PAR[h];
-                  const bust = pc[id].bustAt[h]; const bank = (round.bank[id][h] || pc[id].autoAt[h]) && !bust;
+                  const pu = round.games.includes("punt"); const bust = pu && pc[id].bustAt[h]; const bank = pu && (round.bank[id][h] || pc[id].autoAt[h]) && !bust;
                   return (
                     <div key={id} style={{ ...cell, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
                       <span style={{ display: "inline-grid", placeItems: "center", minWidth: 20, height: 20, fontWeight: 700, color: d < 0 ? "var(--fair)" : d > 0 ? "var(--red)" : "var(--ink)", border: v == null ? "none" : d < 0 ? "2px solid var(--fair)" : d > 0 ? "2px solid var(--red)" : "none", borderRadius: d < 0 ? "50%" : 0 }} title={isPickup(round, id, h) ? `Picked up (counts as ${v})` : undefined}>{v == null ? "·" : isPickup(round, id, h) ? "P" : v}</span>
@@ -3828,7 +3998,7 @@ function Scorecard({ round, people }) {
             </div>
           ))}
           <Row label="Total" par={half(0, 18)} strong>{ids.map(id => <div key={id} style={cell}>{tot(id, 0, 18)}</div>)}</Row>
-          <Row label="Pts" par="" strong>{ids.map(id => <div key={id} style={{ ...cell, color: "var(--fair)" }}>{pc[id].total}</div>)}</Row>
+          <Row label="Pts" par="" strong>{ids.map(id => <div key={id} style={{ ...cell, color: "var(--fair)" }}>{round.games.includes("punt") ? pc[id].total : range18.reduce((a, h) => a + (stblPts(round, id, h) || 0), 0)}</div>)}</Row>
         </div>
       </div>
     </div>
@@ -3854,7 +4024,16 @@ function cardFacts(round, people, at) {
   });
   rows.forEach((r, i) => { r.rank = i && r.pts === rows[i - 1].pts ? rows[i - 1].rank : i + 1; }); // ties share a place
   let head, sub;
-  if (isTeam) {
+  const sk = isTeam && round.games.includes("skins") ? skinsCalc(round) : null;
+  if (sk) {
+    const nmOf = id => (rows.find(r => r.id === id) || {}).name || "?";
+    const tn = k => sk.T[k].map(id => nmOf(id).toUpperCase()).join(" & ");
+    const w = sk.won[0] === sk.won[1] ? null : sk.won[0] > sk.won[1] ? 0 : 1;
+    head = w == null ? "SKINS SHARED" : `${tn(w)} WIN`;
+    sub = w == null ? `${plSk(sk.won[0]).toUpperCase()} EACH` : `${plSk(sk.won[w]).toUpperCase()} TO ${sk.won[1 - w]}`;
+    [0, 1].forEach(k => sk.T[k].forEach(id => { const r = rows.find(x => x.id === id); if (r) { r.pts = sk.won[k]; r.line = `${k === 0 ? "Team A" : "Team B"} · ${r.line}`; } }));
+    rows.sort((a, b) => b.pts - a.pts); rows.forEach((r, i) => { r.rank = i && r.pts === rows[i - 1].pts ? rows[i - 1].rank : i + 1; r.unitLabel = "SKINS"; });
+  } else if (isTeam) {
     const tr = teamRows(round, pc).sort((x, y) => y.total - x.total);
     const tie = tr[0].total === tr[1].total;
     head = tie ? "DEAD HEAT" : `TEAM ${tr[0].k + 1} WINS`;
@@ -3905,7 +4084,7 @@ async function drawResultCard(f) {
     text(r.name, nx, mid + (rh > 90 ? 2 : 6), fit(r.name, 560, Math.round(rh * 0.36), SERIF, "700"), "#1B1C1A", "left");
     if (rh > 90) text(r.line, nx, mid + 40, fit(r.line, 600, Math.round(rh * 0.22), SANS, "600"), "#6B675C", "left");
     text(`${r.pts}`, solo ? 978 : 930, mid + 20, `400 ${Math.round(rh * 0.6)}px ${PX}`, r.color || "#1B1C1A", "right");
-    if (!solo) text(r.pts === 1 ? "PT" : "PTS", 978, mid + 20, `400 ${Math.round(rh * 0.26)}px ${PX}`, "#6B675C", "right");
+    if (!solo) text(r.unitLabel ? (r.pts === 1 ? "SKIN" : r.unitLabel) : r.pts === 1 ? "PT" : "PTS", 978, mid + 20, `400 ${Math.round(rh * 0.26)}px ${PX}`, "#6B675C", "right");
   });
   // footer
   text(f.foot || "BANK IT OR BUST", W / 2, H - 92, fit(f.foot || "BANK IT OR BUST", 980, 44, PX, "400"), "#2F4A3A");
@@ -4169,7 +4348,7 @@ function DevTab({ user }) {
   );
 }
 
-function Summary({ round, people, onSave, onBack, footer, record }) {
+function Summary({ round, people, onSave, onBack, footer, record, onSkinsOff }) {
   const comp = round.playerIds.map(id => ({ id, ...totalsFor(round, id) })).sort((a, b) => (round.useHcp ? a.netPar - b.netPar : a.grossPar - b.grossPar));
   const hasPunt = round.games.includes("punt");
   const pc = puntCalc(round);
@@ -4181,7 +4360,9 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
   const score = Object.fromEntries(round.playerIds.map(id => [id, hasPunt || isTeam ? pc[id].total : -(round.useHcp ? comp.find(c => c.id === id).netPar : comp.find(c => c.id === id).grossPar)]));
   const pay = isTeam ? teamPayouts(round, pc) : payouts(round, ranked, score);
   const anyTie = !isTeam && new Set(ranked.map(id => score[id])).size < ranked.length;
+  const sk = isTeam && round.games.includes("skins") ? skinsCalc(round) : null;
   const nets = {}; round.playerIds.forEach(id => (nets[id] = Math.round((pay[id] - round.stake) * 100) / 100));
+  if (sk) Object.assign(nets, skinsNets(round, sk));
   const owes = settle(nets);
   const sign = v => (v > 0 ? `+${money(v)}` : v < 0 ? `${MINUS}${money(-v)}` : "$0");
   const [sharing, setSharing] = useState(false);
@@ -4196,6 +4377,21 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
       <div style={{ padding: record ? "12px 12px 24px" : "12px 12px 86px", display: "grid", gap: 11 }}>
         <button className="cta px" onClick={() => setSharing(true)} style={{ fontSize: 24, lineHeight: 1, padding: "12px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 9 }}><Sprite name="crown" size={3} />SHARE THE RESULT</button>
         {sharing && <ResultCardSheet round={round} people={people} at={record ? record.at : null} onClose={() => setSharing(false)} />}
+        {sk && (
+          <div className="card" style={{ padding: 12 }} data-skins-summary>
+            <h3 style={{ fontWeight: 800, fontSize: 15 }}>Skins</h3>
+            <div style={{ display: "flex", gap: 6, margin: "8px 0 9px" }}>
+              {[0, 1].map(k => { const win = sk.won[k] > sk.won[1 - k]; return (
+                <div key={k} className="card" style={{ flex: 1, padding: "7px 9px", boxShadow: "none", background: win ? "var(--sel)" : "var(--card)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>{win && <Sprite name="crown" size={3} />}<span className="cap" style={{ fontWeight: 700 }}>{teamName(sk, k, people)}</span></div>
+                  <div className="px" style={{ fontSize: 30, lineHeight: 1 }}>{Number.isInteger(sk.won[k]) ? sk.won[k] : sk.won[k].toFixed(1)}</div>
+                </div>
+              ); })}
+            </div>
+            <SkinsGrid round={round} people={people} />
+            {sk.needOff && !record && <div style={{ marginTop: 8 }}><SkinsStrip round={round} people={people} h={17} api={{ setWolf: (h, v) => onSkinsOff && onSkinsOff(v) }} canScore={!!onSkinsOff} /></div>}
+          </div>
+        )}
         <Scorecard round={round} people={people} />
         <div className="card" style={{ padding: "5px 11px" }}>
           <div style={{ padding: "9px 0 0" }}>
@@ -4249,7 +4445,7 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
         {round.stake > 0 && (
           <div className="card" style={{ padding: 12 }}>
             <h3 style={{ fontWeight: 800, fontSize: 15 }}>Prize pool</h3>
-            <p className="cap">{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}. {isTeam ? "Winning team splits the pool." : SPLITS.find(s => s[0] === round.split)[1] + "."}{anyTie ? " Tied players share the prize for the places they cover." : ""}</p>
+            <p className="cap">{sk ? `${money(round.stake)} a skin. Each player on the team behind pays the difference in skins.` : <>{money(round.stake * round.playerIds.length)} pool, paid by {hasPunt ? "Puntaro" : "The Comp"}.</>} {sk ? "" : isTeam ? "Winning team splits the pool." : SPLITS.find(s => s[0] === round.split)[1] + "."}{anyTie ? " Tied players share the prize for the places they cover." : ""}</p>
             <div style={{ marginTop: 6 }}>
               {ranked.map((id, i) => (
                 <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
@@ -4271,7 +4467,7 @@ function Summary({ round, people, onSave, onBack, footer, record }) {
           </div>
         )}
 
-        {round.games.filter(g => g !== "mystery" && g !== "punt").map(g => (
+        {round.games.filter(g => g !== "mystery" && g !== "punt" && g !== "skins").map(g => (
           <div key={g} className="card" style={{ padding: 12 }}>
             <h3 style={{ fontWeight: 800, fontSize: 15 }}>{GAMES.find(x => x.id === g).name}</h3>
             <div style={{ marginTop: 6 }}>
@@ -5780,7 +5976,7 @@ function Game({ user, cloud, profile, now0, finished }) {
       {view === "game" && <MyGame rounds={openSolo && openSolo.fresh && !soloRounds.some(x => x.id === openSolo.solo.id) ? [...soloRounds, openSolo.solo] : soloRounds} inProgress={!!solo} onResume={() => setView("solo")} onBack={() => setView("tabs")} onStart={() => setView("soloSetup")} onOpen={id => { const sr = soloRounds.find(x => x.id === id); if (sr) { gameFrom.current = "game"; setOpenSolo({ solo: sr, fresh: false }); setView("soloReport"); } }} />}
       {view === "round" && round && <Round round={round} people={roundPeople} api={api} rowFx={rowFx} onLive={() => setLiveSheet(true)} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={() => { moveOn(18); setView("summary"); }} onRules={() => { setRulesFrom("round"); setView("rules"); }} />}
       {view === "rules" && <Rules onBack={() => setView(rulesFrom)} />}
-      {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} footer={liveFooter()} />}
+      {view === "summary" && round && <Summary round={round} people={roundPeople} onSave={save} onBack={() => setView("round")} footer={liveFooter()} onSkinsOff={can.score() ? v => api.setWolf(SKINS_OFF, v) : null} />}
       {view === "card" && openRec && <Summary record={openRec.rec} round={openRec.round} people={openRec.people} onBack={() => { setOpenRec(null); setView("tabs"); }} />}
       {view === "tabs" && (
         <>
