@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "1.00";
+const APP_VERSION = "1.01";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -3785,22 +3785,22 @@ function BankOnly({ round, people, id, api, hostName, onBack, onLive, onRules, o
 function RoundHcpSheet({ round, people, live, onSet, onClose }) {
   const [edit, setEdit] = useState(null);
   const [val, setVal] = useState("");
-  const others = round.playerIds.filter(id => id !== "me");
+  const others = round.playerIds;
   const n = Number(val); const ok = val.trim() !== "" && !Number.isNaN(n) && n >= -10 && n <= MAX_INDEX;
   const hi = ok ? Math.round(n * 10) / 10 : null;
   const open = id => { setEdit(id); setVal(Number((people[id] && people[id].hi) ?? 0).toFixed(1)); };
   return (
     <Sheet title="Edit handicaps" onClose={onClose}>
-      <p className="cap" style={{ marginBottom: 6 }}>Strokes are worked out again for every hole, including ones already played.{live ? " Everyone in the live round sees the change." : ""} Your own handicap stays as you teed off.</p>
+      <p className="cap" style={{ marginBottom: 6 }}>Strokes are worked out again for every hole, including ones already played.{live ? " Everyone in the live round sees the change." : ""} Changing yours here is for this round only.</p>
       {others.map((id, i) => (
         <div key={id} style={{ padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <Avatar p={people[id]} size={28} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="hd" style={{ fontWeight: 700 }}>{people[id].name}</div>
+              <div className="hd" style={{ fontWeight: 700 }}>{id === "me" ? "You" : people[id].name}</div>
               <div className="cap">Plays off {round.hcp[id]}{round.hcpEd && round.hcpEd[id] ? " (changed)" : ""}</div>
             </div>
-            {edit !== id && <button className="chip" aria-label={`Edit ${people[id].name}'s handicap`} onClick={() => open(id)}>Edit</button>}
+            {edit !== id && <button className="chip" aria-label={id === "me" ? "Edit your handicap" : `Edit ${people[id].name}'s handicap`} onClick={() => open(id)}>Edit</button>}
           </div>
           {edit === id && (
             <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
@@ -3892,9 +3892,9 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   useEffect(() => setLastId(null), [h]);
   // A player on their own phone in a one-scorer round sees their pot and a bank button, with the scoresheet a tap away.
   const [sheetView, setSheetView] = useState(false);
-  // Mid-round handicap changes: whoever keeps score in a local round, the host in a live one. Not your own.
+  // Mid-round handicap changes: whoever keeps score in a local round, the host in a live one.
   const [hcpOpen, setHcpOpen] = useState(false);
-  const canHcp = round.useHcp && !!api.setHcp && can.host && !can.done && ids.some(id => id !== "me");
+  const canHcp = round.useHcp && !!api.setHcp && can.host && !can.done;
   const [boardOpen, setBoardOpen] = useState(false);
   const bankOnly = !!pc && can.live && can.scoring === "one" && !can.host && !!can.live.myId && round.playerIds.includes(can.live.myId);
   const bump = (id, d) => {
@@ -6022,13 +6022,14 @@ function Game({ user, cloud, profile, now0, finished }) {
     setEvent: (id, h, k) => { push([[["ev", id, h], nextEvent(round.events[id][h], k)]]); setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? nextEvent(x, k) : x)) } })); },
     setWolf: (h, v) => { push([[["wolf", h], v]]); setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })); },
     // Change a player's handicap mid-round. Strokes are worked out again for every hole. Live rounds: the host only,
-    // never their own player, and everyone sees it was changed. A guest's saved handicap is updated too.
+    // and everyone sees it was changed. A guest's saved handicap is updated too. Your own changes this round only,
+    // and raising it is remembered for the fair-play checks, like raising it on Me.
     setHcp: (id, hi) => {
-      if (id === "me") return;
       const ch = courseHcp(hi, round.course);
       push([[["hx", id], ch], [["hw"], id]]);
       setRound(r => ({ ...r, hcp: { ...r.hcp, [id]: ch }, hcpEd: { ...(r.hcpEd || {}), [id]: true } }));
-      if (people[id]) setPersonHcp(id, { hi, hk: people[id].hk || "" });
+      if (id === "me") { if (hi > people.me.hi) setPeople(p => ({ ...p, me: { ...p.me, raises: [...(p.me.raises || []), { at: Date.now(), from: p.me.hi, to: hi, round: true }].slice(-12) } })); }
+      else if (people[id]) setPersonHcp(id, { hi, hk: people[id].hk || "" });
     },
     setBbb: (h, k, id) => { const x = round.bbb[h]; push([[["bbb", h], { ...(x || {}), [k]: x && x[k] === id ? null : id }]]); setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })); },
     markSeen: h => setRound(r => ({ ...r, seen: r.seen.map((x, i) => (i === h ? true : x)) })),

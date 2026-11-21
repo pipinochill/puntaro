@@ -185,7 +185,7 @@ service cloud.firestore {
       function watchKeys() { return ['members', 'claims', 'at', 'who', 'updatedAt', 'bc', 'ord', 'bh']; }
       function playKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'ord', 'bh']; }
       function hostKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'hostAt', 'bk', 'scoring', 'ord', 'hx', 'hw']; }
-      // Mid-round handicap change: the host, one player at a time (named in hw), never the host's own player,
+      // Mid-round handicap change: the host, one player at a time (named in hw), their own included,
       // a whole number of strokes from 0 to 72. Everyone sees it. Only hostKeys has hx, so only the host gets here.
       // Only your own player's entry in a per-player map (bc: bank calls, ord: standing orders).
       // bh names the one hole changed, and it must still be open: that player's next hole has no score
@@ -228,7 +228,7 @@ service cloud.firestore {
       function changesHcp() {
         let d = after().hx.diff(before().get('hx', {}));
         let w = after().hw;
-        return w is string && w in before().base.playerIds && w != 'me'
+        return w is string && w in before().base.playerIds
           && d.affectedKeys().hasOnly([w]) && d.removedKeys().size() == 0
           && after().hx[w] is int && after().hx[w] >= 0 && after().hx[w] <= 72;
       }
