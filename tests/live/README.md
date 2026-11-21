@@ -29,6 +29,8 @@ Serve the app over http, not file:// (headless Chromium sometimes starts a file:
     python $T/skins.py        $APP /tmp $T   # 2v2 skins: best and second ball, carry-overs, chip-off after 18, board, money, share card, skin screens (28)
     python $T/skins_solo.py   $APP /tmp $T   # individual skins: outright winners, carry on a tie for the most, chip-off for those tied on 18, chip-off screen, carry-over alarms, money, Me and ladder skins king (29)
     python $T/skins_pot.py    $APP /tmp $T   # skins with a fixed buy-in: pot shared by skins won, capped losses (5)
+    python $T/edit_hcp.py     $APP /tmp $T   # edit a guest's or no-app friend's handicap: new round player list, friend profile, kept (10)
+    python $T/round_fixes.py  $APP /tmp $T   # change the play-off winner before saving; mid-round handicap changes, live host only, attacks (21)
     node $T/sg_unit.mjs                       # strokes gained engine: benchmarks, hole and round maths, penalties, points, par 3s, trends (47)
     python $T/handicap.py     $APP /tmp $T src/hcp.js  # estimates, EST/APP tags, Puntaro handicap from witnessed rounds (22)
     node tests/live/hcp_unit.mjs                       # handicap maths: differentials, WHS table, slow up (18)

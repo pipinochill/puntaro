@@ -184,7 +184,9 @@ service cloud.firestore {
       function joinKeys() { return ['members', 'claims', 'who', 'updatedAt']; }
       function watchKeys() { return ['members', 'claims', 'at', 'who', 'updatedAt', 'bc', 'ord', 'bh']; }
       function playKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'ord', 'bh']; }
-      function hostKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'hostAt', 'bk', 'scoring', 'ord']; }
+      function hostKeys() { return ['s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'hostAt', 'bk', 'scoring', 'ord', 'hx', 'hw']; }
+      // Mid-round handicap change: the host, one player at a time (named in hw), never the host's own player,
+      // a whole number of strokes from 0 to 72. Everyone sees it. Only hostKeys has hx, so only the host gets here.
       // Only your own player's entry in a per-player map (bc: bank calls, ord: standing orders).
       // bh names the one hole changed, and it must still be open: that player's next hole has no score
       // and no cards yet. So nobody can bank (or set an order) after seeing how the next hole went.
@@ -223,6 +225,13 @@ service cloud.firestore {
         return d.affectedKeys().hasOnly([w]) && before().claims.get(w, null) == me()
           && after().at[w] is int && after().at[w] > before().get('at', {}).get(w, 0) && after().at[w] <= 18;
       }
+      function changesHcp() {
+        let d = after().hx.diff(before().get('hx', {}));
+        let w = after().hw;
+        return w is string && w in before().base.playerIds && w != 'me'
+          && d.affectedKeys().hasOnly([w]) && d.removedKeys().size() == 0
+          && after().hx[w] is int && after().hx[w] >= 0 && after().hx[w] <= 72;
+      }
       // "edited" marks can be added but never removed.
       function keepsEdits() { return after().get('ed', {}).keys().hasAll(before().get('ed', {}).keys()); }
       // Cards: one card hole at a time (named in `deal`), never changed once dealt, and in
@@ -257,6 +266,7 @@ service cloud.firestore {
         && (!touches('claims') || takesSeat() || releasesSeat())
         && (!touches('at') || movesOn())
         && (!touches('ed') || keepsEdits())
+        && (!touches('hx') || changesHcp())
         && (!touches('draws') || addsDraws())
         && (!touches('bk') || (before().scoring == 'one' && after().scoring == 'one'))
         && (!touches('bc') || (before().scoring == 'one' && after().scoring == 'one' && ownEntry('bc')))

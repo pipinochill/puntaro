@@ -40,7 +40,7 @@ function MapPin(p) { return <Ico {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a
 
 /* ───────────── DATA ───────────── */
 const APP_NAME = "Puntaro"; // working title, change here only
-const APP_VERSION = "0.99";
+const APP_VERSION = "1.00";
 if (typeof window !== "undefined") window.PUNTARO_VERSION = APP_VERSION; // index.html compares this with the service worker before reloading
 const DEF_PAR = [4,4,3,5,4,4,3,4,5, 4,3,5,4,4,3,4,5,4];
 const DEF_SI  = [7,11,15,1,9,5,17,3,13, 8,16,2,12,6,18,10,4,14];
@@ -989,6 +989,16 @@ function SkinsStrip({ round, people, h, api, canScore = true }) {
       )}
       <SkinsTotals sc={sc} people={people} />
       {sc.needOff && <SkinsOff sc={sc} people={people} api={api} canScore={canScore} />}
+      {h === 17 && sc.left > 0 && sc.off != null && <SkinsOffDone sc={sc} people={people} api={api} canScore={canScore} />}
+    </div>
+  );
+}
+// The play-off is recorded. The scorer can take it back (wrong name tapped) until the round is saved.
+function SkinsOffDone({ sc, people, api, canScore }) {
+  return (
+    <div data-skins-off-done style={{ padding: "8px 10px", borderTop: "3px solid var(--night)", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{sc.off === "split" ? `Last ${plSk(sc.left)}: split.` : `Last ${plSk(sc.left)}: chip-off won by ${unitName(sc, sc.off, people)}.`}</div>
+      {canScore && <button className="chip" aria-label="Change the play-off result" onClick={() => api.setWolf(SKINS_OFF, null)}>Change</button>}
     </div>
   );
 }
@@ -2962,7 +2972,8 @@ const EXTRA_INFO = {
   ntp: ["Nearest the pin", "Closest to the pin on a par 3 earns +3. You pick the winner before moving on."],
   penalties: ["Penalties", "Lost ball -3, wet one -2, four putt halves your pot."],
 };
-function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGuest, friendKit, onBack, onGo, solo }) {
+function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGuest, onSetHcp, friendKit, onBack, onGo, solo }) {
+  const [hcpFor, setHcpFor] = useState(null); // the guest whose handicap is being changed
   const [course, setCourse] = useState(COURSES[0]);
   const [liveOn, setLiveOn] = useState(false);
   const [scoring, setScoring] = useState("each");
@@ -3063,6 +3074,7 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
                 <div className="hd" style={{ fontWeight: 700 }}>{people[id].name}</div>
                 <div className="cap">HCP {fmtHcp(people[id])}{people[id].guest ? " · guest" : ""}</div>
               </div>
+              {onSetHcp && canEditHcp(people[id]) && <button className="chip" aria-label={`Edit ${people[id].name}'s handicap`} onClick={() => setHcpFor(id)}>Edit HCP</button>}
               {effMode === "2v2" && (
                 <button className="pill" aria-label={`${people[id].name} team ${teamOf(id) + 1}, tap to switch`} onClick={() => setTeam(id, 1 - teamOf(id))} style={{ background: teamOf(id) ? "var(--mint)" : "var(--flag)", color: "var(--dk)" }}>Team {teamOf(id) + 1}</button>
               )}
@@ -3122,6 +3134,8 @@ function Setup({ people, friendIds, saved, onSaveCourse, onAddGuest, onForgetGue
             <PersonForm cta="Add to round" onSubmit={g => { addPlayer(onAddGuest(g)); setSheet(null); }} />
           </Sheet>
         )}
+
+        {hcpFor && people[hcpFor] && <EditHcpSheet p={people[hcpFor]} onSave={v => onSetHcp(hcpFor, v)} onClose={() => setHcpFor(null)} />}
 
         <Label sub="Net scoring is what lets mixed handicaps play each other.">Handicaps</Label>
         <div className="card" style={{ padding: 12 }}>
@@ -3767,6 +3781,42 @@ function BankOnly({ round, people, id, api, hostName, onBack, onLive, onRules, o
   );
 }
 
+// Change players' handicaps mid-round. Course handicap is worked out from the index, and strokes for every hole follow.
+function RoundHcpSheet({ round, people, live, onSet, onClose }) {
+  const [edit, setEdit] = useState(null);
+  const [val, setVal] = useState("");
+  const others = round.playerIds.filter(id => id !== "me");
+  const n = Number(val); const ok = val.trim() !== "" && !Number.isNaN(n) && n >= -10 && n <= MAX_INDEX;
+  const hi = ok ? Math.round(n * 10) / 10 : null;
+  const open = id => { setEdit(id); setVal(Number((people[id] && people[id].hi) ?? 0).toFixed(1)); };
+  return (
+    <Sheet title="Edit handicaps" onClose={onClose}>
+      <p className="cap" style={{ marginBottom: 6 }}>Strokes are worked out again for every hole, including ones already played.{live ? " Everyone in the live round sees the change." : ""} Your own handicap stays as you teed off.</p>
+      {others.map((id, i) => (
+        <div key={id} style={{ padding: "8px 0", borderTop: i ? "1px solid var(--line)" : "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <Avatar p={people[id]} size={28} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="hd" style={{ fontWeight: 700 }}>{people[id].name}</div>
+              <div className="cap">Plays off {round.hcp[id]}{round.hcpEd && round.hcpEd[id] ? " (changed)" : ""}</div>
+            </div>
+            {edit !== id && <button className="chip" aria-label={`Edit ${people[id].name}'s handicap`} onClick={() => open(id)}>Edit</button>}
+          </div>
+          {edit === id && (
+            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+              <input aria-label="Handicap index" inputMode="decimal" value={val} onChange={e => setVal(e.target.value.replace(/[^0-9.\-]/g, "").slice(0, 5))} style={inp} />
+              <p className="cap" role={ok ? "status" : "alert"} style={ok ? {} : { color: "var(--red)", fontWeight: 600 }}>{ok ? `Handicap index ${hi.toFixed(1)}: plays off ${courseHcp(hi, round.course)} on this course.` : `Handicap index should be between -10 and ${MAX_INDEX}.`}</p>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button className="chip" onClick={() => setEdit(null)} style={{ flex: 1, padding: "8px 0", textAlign: "center" }}>Cancel</button>
+                <button className="cta" disabled={!ok} onClick={() => { onSet(id, hi); setEdit(null); }} style={{ flex: 1, padding: 8, fontSize: 15 }}>Save</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </Sheet>
+  );
+}
 function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLive }) {
   const can = useContext(LiveCtx);
   const [gtab, setGtab] = useState(round.games[0] || null);
@@ -3842,6 +3892,9 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
   useEffect(() => setLastId(null), [h]);
   // A player on their own phone in a one-scorer round sees their pot and a bank button, with the scoresheet a tap away.
   const [sheetView, setSheetView] = useState(false);
+  // Mid-round handicap changes: whoever keeps score in a local round, the host in a live one. Not your own.
+  const [hcpOpen, setHcpOpen] = useState(false);
+  const canHcp = round.useHcp && !!api.setHcp && can.host && !can.done && ids.some(id => id !== "me");
   const [boardOpen, setBoardOpen] = useState(false);
   const bankOnly = !!pc && can.live && can.scoring === "one" && !can.host && !!can.live.myId && round.playerIds.includes(can.live.myId);
   const bump = (id, d) => {
@@ -3936,6 +3989,7 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
                   {v != null && round.useHcp && st > 0 ? `, net ${n} here` : ""}
                   {can.enteredBy && v != null && can.enteredBy(id, h) && <span>{` · by ${can.enteredBy(id, h)}`}</span>}
                   {can.edited && v != null && can.edited(id, h) && <span>{" · edited"}</span>}
+                  {round.useHcp && round.hcpEd && round.hcpEd[id] && <span>{` · plays off ${round.hcp[id]} (changed)`}</span>}
                 </div>
                 {v != null && (() => { const n = isPickup(round, id, h) ? { label: `PICK UP (${v})`, bg: "#F2B8A8" } : scoreName(v, PAR[h]); return <span className="pill px" style={{ background: n.bg, padding: "1px 6px", fontSize: 13, marginTop: 3, marginRight: 4 }}>{n.label}</span>; })()}
                 {(() => {
@@ -3993,6 +4047,8 @@ function Round({ round, people, api, rowFx = {}, onBack, onFinish, onRules, onLi
           </div>
         )}
         </fieldset>
+        {canHcp && <button className="chip" onClick={() => setHcpOpen(true)} style={{ justifySelf: "center", padding: "7px 14px" }}>Edit handicaps</button>}
+        {hcpOpen && <RoundHcpSheet round={round} people={people} live={!!can.live} onSet={api.setHcp} onClose={() => setHcpOpen(false)} />}
       </div>
 
       <div style={{ position: "sticky", bottom: 0, marginTop: "auto", padding: "9px 12px 14px", background: "linear-gradient(to top, var(--chalk) 70%, transparent)" }}>
@@ -4489,6 +4545,7 @@ function Summary({ round, people, onSave, onBack, footer, record, onSkinsOff }) 
             <h3 style={{ fontWeight: 800, fontSize: 15 }}>Skins</h3>
             <div style={{ border: "3px solid var(--night)", borderTop: "none", margin: "8px 0 9px" }}><SkinsTotals sc={sk} people={people} stake={round.stake} money round={round} /></div>
             <SkinsGrid round={round} people={people} />
+            {sk.left > 0 && sk.off != null && onSkinsOff && !record && <button className="chip" aria-label="Change the play-off result" onClick={() => onSkinsOff(null)} style={{ marginTop: 8 }}>Wrong winner? Change the play-off</button>}
             {sk.needOff && !record && <div style={{ marginTop: 8 }}><SkinsStrip round={round} people={people} h={17} api={{ setWolf: (h, v) => onSkinsOff && onSkinsOff(v) }} canScore={!!onSkinsOff} /></div>}
           </div>
         )}
@@ -4659,6 +4716,28 @@ function PersonForm({ cta, onSubmit }) {
       {err && name.length + last.length > 0 && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{err}</p>}
       <button className="cta" disabled={!!err} onClick={() => onSubmit({ name: name.trim(), last: last.trim(), hi: picked.hi, hk: picked.hk })}>{cta}</button>
     </div>
+  );
+}
+
+// Only players you score for (guests and friends without the app) can have their handicap changed by you.
+// Puntaro friends keep their own handicap up to date on their phone.
+const canEditHcp = p => !!p && p.id !== "me" && !p.uid;
+
+// Change the handicap of a guest or a friend without the app. Starts from what they have now.
+function EditHcpSheet({ p, onSave, onClose }) {
+  const [hp, setHp] = useState(() => p.hk === "est"
+    ? { mode: "est", hi: Number(p.hi ?? 18).toFixed(1), usual: (USUAL_SCORES.find(u => u.hi === p.hi) || {}).key || null }
+    : { mode: "ga", hi: Number(p.hi ?? 18).toFixed(1), usual: null });
+  const picked = pickHcp(hp);
+  return (
+    <Sheet title={`${p.name}'s handicap`} onClose={onClose}>
+      <div style={{ display: "grid", gap: 8 }}>
+        <p className="cap">Now HCP {fmtHcp(p)}. Rounds already played keep the handicap they were played off.</p>
+        <HcpPicker value={hp} onChange={setHp} who="them" />
+        {picked.err && <p className="cap" role="alert" style={{ color: "var(--red)", fontWeight: 600 }}>{picked.err}</p>}
+        <button className="cta" disabled={!!picked.err} onClick={() => { onSave({ hi: picked.hi, hk: picked.hk }); onClose(); }}>Save handicap</button>
+      </div>
+    </Sheet>
   );
 }
 
@@ -4985,7 +5064,8 @@ function RoundsList({ rounds, empty }) {
   );
 }
 
-function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose, ctx }) {
+function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onSetHcp, onClose, ctx }) {
+  const [editHcp, setEditHcp] = useState(false);
   const p = people[id]; const [ask, setAsk] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   if (!p) return null;
   const linked = !!p.uid;
@@ -4995,12 +5075,16 @@ function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose
     return { at: x.at, course: x.course, pts, place: 1 + ps.filter(v => v > pts).length, of: ps.length, win: !!x.players[id].win, ntp: x.players[id].ntp || 0, busts: null };
   });
   const rounds = linked ? ((card && card.stats && card.stats.recent) || []) : together;
+  if (editHcp) return <EditHcpSheet p={p} onSave={v => onSetHcp(id, v)} onClose={() => setEditHcp(false)} />;
   return (
     <Sheet title={linked ? (card && card.name) || p.name : `${p.name}${p.last ? ` ${p.last}` : ""}`} onClose={onClose}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <Avatar p={p} size={52} />
         <div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>HCP {fmtHcp(p)}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>HCP {fmtHcp(p)}</div>
+            {onSetHcp && canEditHcp(p) && <button className="chip" aria-label={`Edit ${p.name}'s handicap`} onClick={() => setEditHcp(true)}>Edit</button>}
+          </div>
           <div className="cap">{linked ? "Puntaro friend. Stats from all their rounds." : "Player without the app. Stats from rounds you've played together."}</div>
         </div>
       </div>
@@ -5038,7 +5122,7 @@ function ProfileSheet({ id, people, history, card, onUnfriend, onRemove, onClose
   );
 }
 
-function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friendCards = {}, requests = [], onAccept, onDecline, onFind, onSend, onUnfriend, myRef, makeRef, ctx }) {
+function Friends({ people, friendIds, history, onAddFriend, onSetHcp, setFriendIds, friendCards = {}, requests = [], onAccept, onDecline, onFind, onSend, onUnfriend, myRef, makeRef, ctx }) {
   const [period, setPeriod] = useState("season");
   const [sheet, setSheet] = useState(false);
   const [open, setOpen] = useState(null);
@@ -5108,7 +5192,7 @@ function Friends({ people, friendIds, history, onAddFriend, setFriendIds, friend
         {friendIds.length === 0 && <p className="cap" style={{ textAlign: "center" }}>No friends yet. Tap Add to share your code or scan a mate's.</p>}
       </div>
       {sheet && <AddFriendSheet people={people} friendIds={friendIds} setFriendIds={setFriendIds} myRef={myRef} makeRef={makeRef} onFind={onFind} onSend={onSend} onAddFriend={onAddFriend} onClose={() => setSheet(false)} />}
-      {open && <ProfileSheet ctx={ctx} id={open} people={people} history={history} card={people[open] && people[open].uid ? friendCards[people[open].uid] : null} onUnfriend={onUnfriend} onRemove={id => setFriendIds(f => f.filter(x => x !== id))} onClose={() => setOpen(null)} />}
+      {open && <ProfileSheet ctx={ctx} id={open} people={people} history={history} card={people[open] && people[open].uid ? friendCards[people[open].uid] : null} onUnfriend={onUnfriend} onRemove={id => setFriendIds(f => f.filter(x => x !== id))} onSetHcp={onSetHcp} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -5654,6 +5738,8 @@ function Game({ user, cloud, profile, now0, finished }) {
   // Hidden rather than deleted, so past rounds with this guest still show their name, and Undo can bring them back.
   const forgetGuest = (id, on) => setPeople(p => (p[id] ? { ...p, [id]: { ...p[id], forgot: on || undefined } } : p));
   const addFriend = f => { const id = newPerson(f, false); setFriendIds(x => [...x, id]); };
+  // Guests and friends without the app: you enter their handicap, so you can change it.
+  const setPersonHcp = (id, { hi, hk }) => setPeople(p => (canEditHcp(p[id]) ? { ...p, [id]: { ...p[id], hi, hk } } : p));
   const saveCourse = c => setSaved(s => [c, ...s.filter(x => x.id !== c.id)]);
   const [trash, setTrash] = useState(() => (Array.isArray(start.trash) ? start.trash.filter(x => Date.now() - x.at < TRASH_MS) : []));
   // Paused rounds: a round that a new one replaced. { id, at, round, live } kept for PARK_MS.
@@ -5935,6 +6021,15 @@ function Game({ user, cloud, profile, now0, finished }) {
     },
     setEvent: (id, h, k) => { push([[["ev", id, h], nextEvent(round.events[id][h], k)]]); setRound(r => ({ ...r, events: { ...r.events, [id]: r.events[id].map((x, i) => (i === h ? nextEvent(x, k) : x)) } })); },
     setWolf: (h, v) => { push([[["wolf", h], v]]); setRound(r => ({ ...r, wolf: r.wolf.map((x, i) => (i === h ? v : x)) })); },
+    // Change a player's handicap mid-round. Strokes are worked out again for every hole. Live rounds: the host only,
+    // never their own player, and everyone sees it was changed. A guest's saved handicap is updated too.
+    setHcp: (id, hi) => {
+      if (id === "me") return;
+      const ch = courseHcp(hi, round.course);
+      push([[["hx", id], ch], [["hw"], id]]);
+      setRound(r => ({ ...r, hcp: { ...r.hcp, [id]: ch }, hcpEd: { ...(r.hcpEd || {}), [id]: true } }));
+      if (people[id]) setPersonHcp(id, { hi, hk: people[id].hk || "" });
+    },
     setBbb: (h, k, id) => { const x = round.bbb[h]; push([[["bbb", h], { ...(x || {}), [k]: x && x[k] === id ? null : id }]]); setRound(r => ({ ...r, bbb: r.bbb.map((x, i) => (i === h ? { ...(x || {}), [k]: x && x[k] === id ? null : id } : x)) })); },
     markSeen: h => setRound(r => ({ ...r, seen: r.seen.map((x, i) => (i === h ? true : x)) })),
     setHole: h => {
@@ -6111,9 +6206,9 @@ function Game({ user, cloud, profile, now0, finished }) {
           </div>
         </div>
       )}
-      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{ setFriendIds, myRef, makeRef, onFind: findFriendCode, onSend: sendFriendRequest, onAddFriend: addFriend }} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); track("round_start", { players: r.playerIds.length, live: !!cfg.live, course: r.course.source || "", mode: r.mode }); if (cfg.live) startLive(r, cfg); }} />}
+      {view === "setup" && <Setup people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} onSetHcp={setPersonHcp} friendKit={{ setFriendIds, myRef, makeRef, onFind: findFriendCode, onSend: sendFriendRequest, onAddFriend: addFriend }} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); park(); const r = buildRound(cfg, people, false); setLive(null); setLiveErr(""); setRound(r); setView("round"); track("round_start", { players: r.playerIds.length, live: !!cfg.live, course: r.course.source || "", mode: r.mode }); if (cfg.live) startLive(r, cfg); }} />}
       <KeepAwake active={(view === "round" && !!round) || (view === "solo" && !!solo)} hole={view === "solo" && solo ? solo.hole + 1 : round ? round.hole + 1 : 1} />
-      {view === "soloSetup" && <Setup solo people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} friendKit={{}} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); track("solo_start", {}); setSolo(newSolo(cfg, people.me)); setView("solo"); }} />}
+      {view === "soloSetup" && <Setup solo people={people} friendIds={friendIds} saved={saved} onSaveCourse={saveCourse} onAddGuest={addGuest} onForgetGuest={forgetGuest} onSetHcp={setPersonHcp} friendKit={{}} onBack={() => setView("tabs")} onGo={cfg => { SFX.swing(); track("solo_start", {}); setSolo(newSolo(cfg, people.me)); setView("solo"); }} />}
       {view === "solo" && solo && <SoloRound solo={solo} earlier={soloRounds} onChange={setSolo} onMoments={showMoments} me={{ name: (people.me.first || "").trim() || "You" }} onBack={() => { setView("tabs"); setTab("home"); }} onFinish={finishSolo} onDiscard={() => { setSolo(null); setView("tabs"); setTab("home"); }} />}
       {view === "soloReport" && openSolo && <SoloReport name={(people.me.first || "").trim() || "You"} solo={openSolo.solo} fresh={openSolo.fresh} earlier={soloRounds.filter(x => x.id !== openSolo.solo.id && x.at < openSolo.solo.at)} onBack={() => { const f = openSolo.fresh; setOpenSolo(null); setView(f ? "game" : gameFrom.current); }} onGame={() => { setOpenSolo(null); gameFrom.current = "tabs"; setView("game"); }} />}
       {view === "game" && <MyGame rounds={openSolo && openSolo.fresh && !soloRounds.some(x => x.id === openSolo.solo.id) ? [...soloRounds, openSolo.solo] : soloRounds} inProgress={!!solo} onResume={() => setView("solo")} onBack={() => setView("tabs")} onStart={() => setView("soloSetup")} onOpen={id => { const sr = soloRounds.find(x => x.id === id); if (sr) { gameFrom.current = "game"; setOpenSolo({ solo: sr, fresh: false }); setView("soloReport"); } }} />}
@@ -6127,7 +6222,7 @@ function Game({ user, cloud, profile, now0, finished }) {
             {tab === "home" && <Home onPurge={x => { armed.current = false; setDel({ kind: "purge", x }); }} solo={solo} soloCount={soloRounds.length} onSolo={() => setView(solo ? "solo" : "soloSetup")} onGame={() => setView("game")} onAbout={() => setAbout(true)} onRules={() => { setRulesFrom("tabs"); setView("rules"); }} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} trash={trash} now={now} onRestore={restore} dark={dark} setDark={setDark} people={people} round={round} recent={recent} board={board} onOpenRound={openRound} onStart={() => (round ? setAskNew(true) : setView("setup"))} onLiveDetails={() => setLiveSheet(true)} parked={parked} onResumeParked={resumeParked} onDropParked={dropParked} onJoin={() => setJoinCode("")} liveCode={live ? live.code : null} onResume={() => setView("round")} goFriends={() => setTab("friends")} />}
             {tab === "dev" && isAdmin(user) && <DevTab user={user} />}
             {tab === "history" && <History onPurge={x => { armed.current = false; setDel({ kind: "purge", x }); }} recent={recent} askDelete={(kind, i) => { armed.current = false; setDel({ kind, i }); }} onOpenRound={openRound} trash={trash} now={now} onRestore={restore} />}
-            {tab === "friends" && <Friends ctx={statCtx} history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} friendCards={friendCards} requests={requests} onAccept={id => { track("friend", { via: "request" }); return cloud.acceptRequest(id); }} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
+            {tab === "friends" && <Friends ctx={statCtx} history={history} people={people} friendIds={friendIds} setFriendIds={setFriendIds} onAddFriend={addFriend} onSetHcp={setPersonHcp} friendCards={friendCards} requests={requests} onAccept={id => { track("friend", { via: "request" }); return cloud.acceptRequest(id); }} onDecline={id => cloud.declineRequest(id)} onFind={findFriendCode} onSend={sendFriendRequest} onUnfriend={unfriend} myRef={myRef} makeRef={makeRef} />}
             {tab === "me" && <Me onGame={() => setView("game")} soloCount={soloRounds.length} ctx={statCtx} goLadder={() => setTab("friends")} history={history} people={people} setPeople={setPeople} dark={dark} setDark={setDark} saved={saved} onAbout={() => setAbout(true)} user={user} onSignOut={signOut} onStartFresh={startFresh} onDeleteAccount={deleteAccount} myRef={myRef} makeRef={makeRef} cloud={cloud} />}
           </div>
           <nav style={{ position: "sticky", bottom: 0, display: "flex", background: "var(--card)", borderTop: "4px solid var(--night)", padding: "6px 9px 11px", gap: 5 }}>

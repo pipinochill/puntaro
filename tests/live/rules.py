@@ -33,7 +33,7 @@ def can_create(code, data, uid, now=None):
 JOIN = {'members', 'claims', 'who', 'updatedAt'}
 WATCH = {'members', 'claims', 'at', 'who', 'updatedAt', 'bc', 'ord', 'bh'}
 PLAY = {'s', 'ev', 'ntp', 'wolf', 'bbb', 'draws', 'deal', 'by', 'ed', 'members', 'claims', 'at', 'who', 'updatedAt', 'ord', 'bh'}
-HOST = (PLAY - {'bh'}) | {'bk', 'scoring', 'hostAt'}
+HOST = (PLAY - {'bh'}) | {'bk', 'scoring', 'hostAt', 'hx', 'hw'}
 
 def own_entry(before, after, uid, k):
     w = after.get('who'); bh = after.get('bh')
@@ -75,6 +75,11 @@ def can_update(before, after, uid, now=None):
         if not ok: return False, 'at'
     if 'ed' in ch:
         if not set((before.get('ed') or {}).keys()) <= set((after.get('ed') or {}).keys()): return False, 'ed'
+    if 'hx' in ch:
+        ad, rm, chg = diff(after.get('hx'), before.get('hx')); w = after.get('hw'); v = (after.get('hx') or {}).get(w)
+        ok = (isinstance(w, str) and w in before['base']['playerIds'] and w != 'me' and (ad | rm | chg) <= {w} and not rm
+              and isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 72)
+        if not ok: return False, 'hx'
     if 'draws' in ch:
         ad, rm, chg = diff(after.get('draws'), before.get('draws')); dl = after.get('deal')
         if chg or rm or not isinstance(dl, int) or not ad <= {str(dl)}: return False, 'draws'

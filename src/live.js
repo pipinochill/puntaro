@@ -63,8 +63,11 @@ export function roundToDoc(r, people, { code, uid, scoring, myName }) {
 export function docToRound(d, local = {}) {
   const b = d.base;
   const per = (m, fill) => Object.fromEntries(b.playerIds.map(id => [id, arr18(m && m[id], fill)]));
+  // hx: handicaps the host changed mid-round (course handicap by player). They replace the ones set at tee-off.
+  const hx = d.hx || {};
   return {
     ...b,
+    hcp: { ...(b.hcp || {}), ...hx }, hcpEd: Object.fromEntries(Object.keys(hx).map(k => [k, true])),
     scores: per(d.s, null), bank: local.bank || per(d.bk, false), events: per(d.ev, null), orders: d.ord || {},
     ntp: arr18(d.ntp, null), ntpOk: Array(18).fill(false), wolf: arr18(d.wolf, null), bbb: arr18(d.bbb, null), draws: arr18(d.draws, null),
     hole: local.hole ?? 0, seen: local.seen || Array(18).fill(false),
